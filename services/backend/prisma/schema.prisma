@@ -1,0 +1,241 @@
+// First-pass schema mirroring packages/shared's types and PRD section 9's
+// data model. Field-level detail will grow as Prompt 8 (catalogue, orders,
+// routing, payments) is built out — this is the scaffold, not the final shape.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TemperatureClass {
+  ambient
+  refrigerated
+  frozen
+}
+
+enum SellerType {
+  store
+  home_seller
+  aspiring_entrepreneur
+}
+
+enum OnboardingStatus {
+  pending
+  filming
+  reviewing
+  kit_issued
+  live
+  suspended
+  delisted
+}
+
+enum StockStatus {
+  in_stock
+  made_to_order
+  out_of_stock
+}
+
+enum OrderStatus {
+  placed
+  accepted
+  packed
+  shipped
+  delivered
+  cancelled
+}
+
+enum ShipmentStatus {
+  pending
+  label_created
+  picked_up
+  in_transit
+  delivered
+  exception
+}
+
+model HubMetro {
+  id        String   @id @default(cuid())
+  name      String
+  state     String
+  active    Boolean  @default(true)
+  stores    Store[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Store {
+  id                    String            @id @default(cuid())
+  name                  String
+  ownerName             String
+  sellerType            SellerType
+  hubMetro              HubMetro          @relation(fields: [hubMetroId], references: [id])
+  hubMetroId            String
+  onboardingStatus      OnboardingStatus  @default(pending)
+  verificationStatus    String            @default("unverified")
+  foodSafetyAttestedAt  DateTime?
+  verifiedAt            DateTime?
+  qualityScore          Float?
+  payoutAccountId       String?
+  listings              Listing[]
+  shipments             Shipment[]
+  payouts               Payout[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+}
+
+model CanonicalProduct {
+  id                String            @id @default(cuid())
+  canonicalName     String
+  category          String
+  cuisine           String
+  packSize          String
+  images            String[]
+  temperatureClass  TemperatureClass
+  shippingWeightOz  Float
+  aliases           NameAlias[]
+  listings          Listing[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model NameAlias {
+  id                 String           @id @default(cuid())
+  canonicalProduct   CanonicalProduct @relation(fields: [canonicalProductId], references: [id])
+  canonicalProductId String
+  alias              String
+  language           String
+  confidence         Float
+
+  @@index([alias])
+}
+
+model Listing {
+  id                 String           @id @default(cuid())
+  store              Store            @relation(fields: [storeId], references: [id])
+  storeId            String
+  canonicalProduct   CanonicalProduct @relation(fields: [canonicalProductId], references: [id])
+  canonicalProductId String
+  priceCents         Int
+  stockStatus        StockStatus      @default(in_stock)
+  leadTimeDays       Int?
+  batchQuantityCap   Int?
+  temperatureClass   TemperatureClass
+  shippingWeightOz   Float
+  cartItems          CartItem[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model Buyer {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  phone         String?
+  addresses     Address[]
+  carts         Cart[]
+  orders        Order[]
+  subscriptions Subscription[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  buyer     Buyer   @relation(fields: [buyerId], references: [id])
+  buyerId   String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  zip       String
+  isDefault Boolean @default(false)
+}
+
+model Cart {
+  id       String     @id @default(cuid())
+  buyer    Buyer      @relation(fields: [buyerId], references: [id])
+  buyerId  String
+  items    CartItem[]
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cart      Cart    @relation(fields: [cartId], references: [id])
+  cartId    String
+  listing   Listing @relation(fields: [listingId], references: [id])
+  listingId String
+  quantity  Int
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  buyer          Buyer       @relation(fields: [buyerId], references: [id])
+  buyerId        String
+  status         OrderStatus @default(placed)
+  totalCents     Int
+  shippingCents  Int
+  taxCents       Int
+  shipments      Shipment[]
+  payment        Payment?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Shipment {
+  id                String            @id @default(cuid())
+  order             Order             @relation(fields: [orderId], references: [id])
+  orderId           String
+  store             Store             @relation(fields: [storeId], references: [id])
+  storeId           String
+  temperatureClass  TemperatureClass
+  carrier           String?
+  trackingNumber    String?
+  labelUrl          String?
+  status            ShipmentStatus    @default(pending)
+  estimatedDelivery DateTime?
+  packingPhotoUrl   String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model Payment {
+  id                    String   @id @default(cuid())
+  order                 Order    @relation(fields: [orderId], references: [id])
+  orderId               String   @unique
+  buyerChargeCents      Int
+  stripePaymentIntentId String
+  status                String   @default("requires_payment")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Payout {
+  id                 String    @id @default(cuid())
+  store              Store     @relation(fields: [storeId], references: [id])
+  storeId            String
+  orderId            String
+  grossCents         Int
+  takeRateBps        Int
+  fulfilmentFeeCents Int
+  netCents           Int
+  status             String    @default("scheduled")
+  scheduledFor       DateTime?
+  paidAt             DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Subscription {
+  id             String    @id @default(cuid())
+  buyer          Buyer     @relation(fields: [buyerId], references: [id])
+  buyerId        String
+  type           String
+  status         String    @default("active")
+  cadence        String?
+  nextRenewalAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
