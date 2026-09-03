@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AfriMart — Design System</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("84d5f320-90b4-43bf-bed4-b60f2123f739") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("9cd108d1-54a6-431a-9851-a7dfb5ef5c14") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("bb4eac47-1d40-4c8b-b940-ba792bfc7636") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("0ad0f166-3368-4d2f-97f2-04eafaebbf55") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("b1f1ecc5-6c29-4826-ae04-4a59e7ebe1fa") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("84d5f320-90b4-43bf-bed4-b60f2123f739") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("9cd108d1-54a6-431a-9851-a7dfb5ef5c14") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("bb4eac47-1d40-4c8b-b940-ba792bfc7636") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("0ad0f166-3368-4d2f-97f2-04eafaebbf55") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("b1f1ecc5-6c29-4826-ae04-4a59e7ebe1fa") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("84d5f320-90b4-43bf-bed4-b60f2123f739") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("9cd108d1-54a6-431a-9851-a7dfb5ef5c14") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("bb4eac47-1d40-4c8b-b940-ba792bfc7636") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("0ad0f166-3368-4d2f-97f2-04eafaebbf55") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("b1f1ecc5-6c29-4826-ae04-4a59e7ebe1fa") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("c3535d5b-2ba6-43d7-8b85-e2c7a2d22a1b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("47992210-cb84-4cf7-b376-3db39bf20d30") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("bd884411-d5c7-45ee-b128-9d689395f1c0") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("64fb36f7-7d30-4f3d-9aa8-fb6a7d5ff16b") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("6f6eb368-07f0-4ae4-8f21-3111387a2b63") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c3535d5b-2ba6-43d7-8b85-e2c7a2d22a1b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("47992210-cb84-4cf7-b376-3db39bf20d30") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("bd884411-d5c7-45ee-b128-9d689395f1c0") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("64fb36f7-7d30-4f3d-9aa8-fb6a7d5ff16b") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("6f6eb368-07f0-4ae4-8f21-3111387a2b63") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("c3535d5b-2ba6-43d7-8b85-e2c7a2d22a1b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("47992210-cb84-4cf7-b376-3db39bf20d30") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("bd884411-d5c7-45ee-b128-9d689395f1c0") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("64fb36f7-7d30-4f3d-9aa8-fb6a7d5ff16b") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("6f6eb368-07f0-4ae4-8f21-3111387a2b63") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("c3535d5b-2ba6-43d7-8b85-e2c7a2d22a1b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("47992210-cb84-4cf7-b376-3db39bf20d30") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("bd884411-d5c7-45ee-b128-9d689395f1c0") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("64fb36f7-7d30-4f3d-9aa8-fb6a7d5ff16b") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("6f6eb368-07f0-4ae4-8f21-3111387a2b63") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("83af64f0-bf33-4d13-bd9d-ac70c0429bf0") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("a0700d30-0d25-439c-9ce9-9803587dca63") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d2e74097-f3fa-42a7-94f9-e8a42590c34a") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("8e4ada0c-25dc-459f-9991-60f81ee2efa9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("83af64f0-bf33-4d13-bd9d-ac70c0429bf0") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("a0700d30-0d25-439c-9ce9-9803587dca63") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d2e74097-f3fa-42a7-94f9-e8a42590c34a") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("8e4ada0c-25dc-459f-9991-60f81ee2efa9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("83af64f0-bf33-4d13-bd9d-ac70c0429bf0") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("a0700d30-0d25-439c-9ce9-9803587dca63") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("d2e74097-f3fa-42a7-94f9-e8a42590c34a") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("8e4ada0c-25dc-459f-9991-60f81ee2efa9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("83af64f0-bf33-4d13-bd9d-ac70c0429bf0") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("a0700d30-0d25-439c-9ce9-9803587dca63") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("d2e74097-f3fa-42a7-94f9-e8a42590c34a") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("8e4ada0c-25dc-459f-9991-60f81ee2efa9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+:root{
+  --green:#1f3d2b;--green-700:#183021;--green-800:#112318;--green-50:#eef4ef;--green-100:#d5e4d9;
+  --terra:#c05621;--terra-600:#a2461a;--terra-50:#fcf1ea;
+  --gold:#b0894f;--gold-soft:#cbab72;--gold-line:#d9c39b;
+  --ivory:#faf5ee;--cream:#f3ebdf;--panel:#fffdf8;--card:#ffffff;
+  --ink:#23201a;--ink-2:#574f42;--ink-3:#7f7361;
+  --line:#e7dcc9;--line-soft:#efe6d6;
+  --leaf:#3e9c63;--amber:#e8a44d;--berry:#c0392b;--teal:#264653;
+  --serif:'Cormorant Garamond',Georgia,serif;
+  --sans:'Hanken Grotesk',-apple-system,system-ui,sans-serif;
+  --r-xs:2px;--r-sm:3px;--r-md:5px;--r-lg:8px;
+}
+*{box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{margin:0;background:var(--ivory);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;font-weight:400}
+a{color:var(--green);text-decoration:none}a:hover{color:var(--terra)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 40px}
+.eyebrow{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--terra)}
+.eyebrow.muted{color:var(--ink-3)}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:500;margin:0;color:var(--ink);letter-spacing:-.01em}
+p{margin:0 0 1em;text-wrap:pretty}
+.serif{font-family:var(--serif)}
+.rule{height:1px;background:var(--line);border:0}
+.gold-rule{height:0;border:0;border-top:1px solid var(--gold-line)}
+.gold-rule.ornament{position:relative;text-align:center;overflow:visible}
+
+/* ---------- masthead ---------- */
+.masthead{background:var(--green);color:#f4ede1;padding:76px 0 64px;position:relative}
+.masthead .wrap{position:relative}
+.masthead .eyebrow{color:var(--gold-soft)}
+.wordmark{font-family:var(--serif);font-weight:600;letter-spacing:-.02em;line-height:.98}
+.masthead .wordmark{font-size:clamp(64px,11vw,132px);margin:.18em 0 .28em}
+.wordmark .mart{color:var(--terra)}
+.wordmark .mart.on-dark{color:#d98a5a}
+.masthead .tagline{font-family:var(--serif);font-style:italic;font-weight:400;font-size:clamp(22px,3vw,30px);color:#e6dcc9;max-width:30ch}
+.masthead .meta{display:flex;flex-wrap:wrap;gap:14px 40px;margin-top:44px;font-family:var(--sans);font-size:12.5px;letter-spacing:.04em;color:#a9b8ab}
+.masthead .meta b{color:#f4ede1;font-weight:600}
+.masthead .goldstrip{position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,transparent,var(--gold) 20%,var(--gold-soft) 50%,var(--gold) 80%,transparent)}
+
+/* ---------- section scaffold ---------- */
+section{padding:74px 0}
+section+section{border-top:1px solid var(--line)}
+.sec-head{display:grid;grid-template-columns:230px 1fr;gap:48px;margin-bottom:52px}
+.sec-head .num{font-family:var(--serif);font-style:italic;font-size:19px;color:var(--gold)}
+.sec-head h2{font-size:clamp(32px,4vw,46px);line-height:1.02;margin:.32em 0 0}
+.sec-head .lede{font-size:17.5px;color:var(--ink-2);max-width:52ch;line-height:1.62}
+.sec-head .lede .serif{font-style:italic}
+@media(max-width:760px){.sec-head{grid-template-columns:1fr;gap:14px;margin-bottom:40px}.wrap{padding:0 24px}}
+
+/* ---------- principles ---------- */
+.principles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.principles .cell{background:var(--ivory);padding:30px 26px}
+.principles .n{font-family:var(--serif);font-style:italic;color:var(--gold);font-size:17px}
+.principles h4{font-size:23px;margin:14px 0 9px}
+.principles p{font-size:14px;color:var(--ink-2);margin:0;line-height:1.55}
+@media(max-width:860px){.principles{grid-template-columns:repeat(2,1fr)}}
+
+/* ---------- colour ---------- */
+.swatch-row{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-bottom:34px}
+@media(max-width:860px){.swatch-row{grid-template-columns:repeat(2,1fr)}}
+.swatch{border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;background:var(--card)}
+.swatch .chip{height:132px;display:flex;align-items:flex-end;padding:14px}
+.swatch .chip .role{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.swatch .info{padding:14px 16px}
+.swatch .info .nm{font-family:var(--serif);font-size:20px;line-height:1.1}
+.swatch .info .hex{font-family:var(--sans);font-size:12px;letter-spacing:.08em;color:var(--ink-3);text-transform:uppercase;margin-top:5px}
+.scale{display:flex;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;margin-top:4px}
+.scale span{flex:1;height:56px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;font-size:10px;letter-spacing:.06em}
+.legend{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:26px;font-size:13px;color:var(--ink-2)}
+.legend .sw{display:inline-flex;align-items:center;gap:9px}
+.legend .dot{width:13px;height:13px;border-radius:2px;border:1px solid rgba(0,0,0,.08)}
+
+/* ---------- type ---------- */
+.type-grid{display:grid;grid-template-columns:1fr;gap:0}
+.spec{padding:26px 0;border-top:1px solid var(--line-soft);display:grid;grid-template-columns:180px 1fr;gap:32px;align-items:baseline}
+.spec:first-child{border-top:0}
+.spec .tag{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.spec .tag small{display:block;text-transform:none;letter-spacing:.02em;font-weight:400;color:var(--ink-3);margin-top:7px;font-size:12px;line-height:1.5}
+.spec .sample{min-width:0}
+.d-display{font-family:var(--serif);font-weight:500;font-size:clamp(46px,6.4vw,74px);line-height:1.02;letter-spacing:-.02em}
+.d-title{font-family:var(--serif);font-weight:500;font-size:38px;line-height:1.08;letter-spacing:-.01em}
+.d-prod{font-family:var(--serif);font-weight:600;font-size:27px;line-height:1.12}
+.d-prod .alt{display:block;font-family:var(--sans);font-weight:400;font-size:13.5px;letter-spacing:.02em;color:var(--ink-3);margin-top:6px}
+.d-italic{font-family:var(--serif);font-style:italic;font-weight:400;font-size:29px;color:var(--green)}
+.d-body{font-family:var(--sans);font-size:16px;line-height:1.62;color:var(--ink-2);max-width:60ch}
+.d-label{font-family:var(--sans);font-weight:600;font-size:14px;letter-spacing:.01em}
+.d-caps{font-family:var(--sans);font-weight:600;font-size:12.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--terra)}
+@media(max-width:760px){.spec{grid-template-columns:1fr;gap:12px}}
+
+/* ---------- components ---------- */
+.demo{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:36px 40px;margin-bottom:28px}
+.demo .cap{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:24px}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.row.tight{gap:12px}
+
+/* buttons */
+.btn{font-family:var(--sans);font-weight:600;font-size:14.5px;letter-spacing:.015em;border-radius:var(--r-sm);border:1.5px solid transparent;padding:13px 26px;cursor:pointer;transition:.16s cubic-bezier(.2,.6,.2,1);display:inline-flex;align-items:center;gap:9px;line-height:1}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--green);color:#f4ede1;border-color:var(--green)}
+.btn-primary:hover{background:var(--green-700);border-color:var(--green-700)}
+.btn-accent{background:var(--terra);color:#fff;border-color:var(--terra)}
+.btn-accent:hover{background:var(--terra-600);border-color:var(--terra-600)}
+.btn-secondary{background:transparent;color:var(--green);border-color:var(--green)}
+.btn-secondary:hover{background:var(--green-50)}
+.btn-ghost{background:transparent;color:var(--green);border-color:transparent;padding-left:8px;padding-right:8px}
+.btn-ghost:hover{color:var(--terra)}
+.btn-sm{padding:9px 18px;font-size:13px}
+.btn svg{width:17px;height:17px}
+
+/* seals / badges */
+.seal{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--gold-line);border-radius:var(--r-xs);padding:7px 13px 7px 11px;background:linear-gradient(180deg,#fffdf8,#fbf5ea)}
+.seal svg{width:15px;height:15px;color:var(--gold)}
+.seal .lbl{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--green)}
+.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.06em;padding:5px 11px;border-radius:var(--r-xs);text-transform:uppercase}
+.badge svg{width:13px;height:13px}
+.badge.verified{color:var(--leaf);background:#e9f4ec;border:1px solid #cfe6d6}
+.badge.fresh{color:var(--teal);background:#e8eef0;border:1px solid #d3dee1}
+.badge.new{color:var(--terra);background:var(--terra-50);border:1px solid #f2ddcd}
+.badge.sale{color:#fff;background:var(--terra);border:1px solid var(--terra)}
+
+/* chips */
+.chip{font-family:var(--sans);font-size:13.5px;font-weight:500;padding:9px 16px;border-radius:var(--r-sm);border:1.5px solid var(--line);background:var(--card);color:var(--ink-2);cursor:pointer;transition:.16s;letter-spacing:.01em}
+.chip:hover{border-color:var(--green-100)}
+.chip.on{background:var(--green);border-color:var(--green);color:#f4ede1}
+.chip.suggest{border-style:dashed;border-color:var(--terra);color:var(--terra);background:var(--terra-50)}
+
+/* input */
+.field{max-width:420px}
+.field label{display:block;font-size:12.5px;font-weight:600;letter-spacing:.03em;color:var(--ink-2);margin-bottom:9px}
+.field .box{display:flex;align-items:center;gap:11px;border:1.5px solid var(--line);border-radius:var(--r-sm);background:var(--card);padding:0 15px;height:50px;transition:.16s}
+.field .box:focus-within{border-color:var(--green);box-shadow:0 0 0 3px rgba(192,86,33,.14)}
+.field .box svg{width:18px;height:18px;color:var(--ink-3);flex:none}
+.field input{border:0;outline:0;background:transparent;font-family:var(--sans);font-size:15px;color:var(--ink);width:100%}
+.field input::placeholder{color:var(--ink-3)}
+.field .hint{font-size:12.5px;color:var(--ink-3);margin-top:8px}
+
+/* rating */
+.rating{display:inline-flex;align-items:center;gap:3px}
+.rating svg{width:17px;height:17px;color:var(--amber)}
+.rating .cnt{font-family:var(--sans);font-size:13px;color:var(--ink-3);margin-left:8px}
+
+/* free shipping bar */
+.ship{max-width:460px}
+.ship .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px}
+.ship .top .a{font-family:var(--serif);font-size:19px;color:var(--ink)}
+.ship .top .a b{color:var(--terra);font-weight:600}
+.ship .top .b{font-size:12px;letter-spacing:.04em;color:var(--ink-3)}
+.ship .track{height:7px;background:var(--cream);border-radius:20px;overflow:hidden;border:1px solid var(--line-soft)}
+.ship .fill{height:100%;width:72%;background:linear-gradient(90deg,var(--terra),var(--terra-600));border-radius:20px}
+
+/* product card */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+@media(max-width:860px){.cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.cards{grid-template-columns:1fr}}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;transition:.2s cubic-bezier(.2,.6,.2,1)}
+.pcard:hover{box-shadow:0 14px 34px -18px rgba(31,61,43,.34);transform:translateY(-2px)}
+.pcard .shot{aspect-ratio:1/1;position:relative;display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 120% at 50% 24%,#fbf6ec 0%,#efe6d5 78%)}
+.pcard .shot svg{width:44px;height:44px;color:var(--gold);opacity:.55}
+.pcard .shot .flag{position:absolute;top:13px;left:13px}
+.pcard .shot .fav{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.86);border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.pcard .shot .fav svg{width:16px;height:16px;color:var(--terra);opacity:1}
+.pcard .body{padding:17px 18px 19px}
+.pcard .nm{font-family:var(--serif);font-weight:600;font-size:21px;line-height:1.14;color:var(--ink)}
+.pcard .alt{font-size:12.5px;color:var(--ink-3);margin-top:3px}
+.pcard .meta{display:flex;align-items:center;gap:8px;margin:12px 0 14px;font-size:12px;color:var(--ink-3)}
+.pcard .meta .v{display:inline-flex;align-items:center;gap:5px;color:var(--leaf)}
+.pcard .meta .v svg{width:13px;height:13px}
+.pcard .pfoot{display:flex;align-items:center;justify-content:space-between}
+.pcard .price{font-family:var(--serif);font-weight:600;font-size:23px;color:var(--ink)}
+.pcard .price small{font-family:var(--sans);font-size:11.5px;font-weight:400;color:var(--ink-3);letter-spacing:.02em}
+.pcard .add{width:40px;height:40px;border-radius:var(--r-sm);background:var(--green);border:0;color:#f4ede1;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.16s}
+.pcard .add:hover{background:var(--green-700)}
+.pcard .add svg{width:19px;height:19px}
+
+/* two apps */
+.apps{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+@media(max-width:760px){.apps{grid-template-columns:1fr}}
+.app{border:1px solid var(--line);border-radius:var(--r-lg);padding:32px 30px;background:var(--panel)}
+.app .k{font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;font-weight:600;color:var(--terra)}
+.app h3{font-size:29px;margin:12px 0 10px}
+.app p{font-size:14.5px;color:var(--ink-2);margin:0}
+.app .fl{margin-top:20px;padding-top:18px;border-top:1px solid var(--line-soft);font-size:13px;color:var(--ink-3);display:flex;flex-direction:column;gap:7px}
+.app .fl span{display:flex;gap:9px}
+.app .fl b{color:var(--green);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* voice */
+.voice{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+@media(max-width:760px){.voice{grid-template-columns:1fr}}
+.vcol{border:1px solid var(--line);border-radius:var(--r-lg);padding:30px 30px;background:var(--panel)}
+.vcol .h{display:flex;align-items:center;gap:10px;font-family:var(--sans);font-weight:600;font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:20px}
+.vcol.do .h{color:var(--leaf)}.vcol.dont .h{color:var(--berry)}
+.vcol ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:15px}
+.vcol li{font-family:var(--serif);font-size:19px;line-height:1.34;color:var(--ink);padding-left:22px;position:relative}
+.vcol li::before{position:absolute;left:0;top:.06em;font-family:var(--sans);font-size:14px;font-weight:700}
+.vcol.do li::before{content:'—';color:var(--gold)}
+.vcol.dont li{color:var(--ink-3);text-decoration:line-through;text-decoration-color:rgba(192,57,43,.4)}
+.vcol.dont li::before{content:'×';color:var(--berry);text-decoration:none}
+.pull{font-family:var(--serif);font-style:italic;font-weight:400;font-size:clamp(26px,3.6vw,38px);line-height:1.28;color:var(--green);max-width:24ch;margin:0 auto;text-align:center}
+.pull .b{color:var(--terra);font-style:normal;font-weight:600}
+
+/* elevation + motion */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+.elev-row{display:flex;gap:24px;flex-wrap:wrap;margin-top:6px}
+.elev{width:112px}
+.elev .box{height:76px;background:var(--card);border-radius:var(--r-md);border:1px solid var(--line)}
+.elev .e1{box-shadow:0 1px 2px rgba(31,61,43,.08)}
+.elev .e2{box-shadow:0 3px 8px -3px rgba(31,61,43,.16)}
+.elev .e3{box-shadow:0 10px 24px -12px rgba(31,61,43,.24)}
+.elev .e4{box-shadow:0 22px 46px -20px rgba(31,61,43,.32)}
+.elev .lb{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:11px;font-weight:600}
+.radii{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px}
+.radii .r{text-align:center}
+.radii .sq{width:66px;height:66px;background:var(--green-50);border:1.5px solid var(--green-100)}
+.radii .lb{font-size:11px;color:var(--ink-3);margin-top:9px;font-weight:600;letter-spacing:.04em}
+.mnote{font-size:14.5px;color:var(--ink-2);line-height:1.6}
+.mnote b{color:var(--ink);font-weight:600}
+.mono{font-family:var(--sans);font-size:12.5px;letter-spacing:.02em;color:var(--ink-3)}
+
+/* footer */
+.foot{background:var(--green);color:#cdbfa8;padding:56px 0 60px;position:relative}
+.foot .goldstrip{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--gold) 20%,var(--gold-soft) 50%,var(--gold) 80%,transparent)}
+.foot .wordmark{font-size:44px}
+.foot p{color:#a9b8ab;font-size:13.5px;max-width:44ch;margin:16px 0 0}
+.foot .row{margin-top:30px;gap:14px 34px;font-size:12px;letter-spacing:.06em;color:#8ea393}
+</style>
+</head>
+<body>
+
+<!-- ============ MASTHEAD ============ -->
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">The AfriMart Design System</div>
+    <div class="wordmark">Afri<span class="mart on-dark">Mart</span></div>
+    <div class="tagline">The market from home, delivered.</div>
+    <div class="meta">
+      <span><b>Version</b> &nbsp;1.0 — Premium direction</span>
+      <span><b>Palette</b> &nbsp;Market green · Terracotta · Gold</span>
+      <span><b>Type</b> &nbsp;Cormorant Garamond · Hanken Grotesk</span>
+      <span><b>Surfaces</b> &nbsp;Buyer PWA · Merchant PWA</span>
+    </div>
+  </div>
+  <div class="goldstrip"></div>
+</header>
+
+<!-- ============ PHILOSOPHY ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div><div class="num">i.</div><div class="eyebrow muted" style="margin-top:14px">Foundation</div></div>
+      <div>
+        <h2>A heritage grocer, brought home</h2>
+        <p class="lede">AfriMart carries the foods of home to the African diaspora across the United States. The system dresses that promise in the language of a <span class="serif">fine provisions house</span> — editorial, confident, unhurried. Every screen should feel considered, never crowded; premium, never cold.</p>
+      </div>
+    </div>
+    <div class="principles">
+      <div class="cell"><div class="n">01</div><h4>Editorial calm</h4><p>Generous whitespace and a clear typographic hierarchy. The page breathes before it sells.</p></div>
+      <div class="cell"><div class="n">02</div><h4>Quiet luxury</h4><p>Deep green and ivory lead. Terracotta and gold appear only where they earn attention.</p></div>
+      <div class="cell"><div class="n">03</div><h4>Architectural, not bubbly</h4><p>Crisp corners, hairline borders, still-life imagery. Structure over decoration.</p></div>
+      <div class="cell"><div class="n">04</div><h4>Dignified voice</h4><p>Warm and plain-spoken. We reassure in full sentences and never raise our voice.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COLOUR ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div><div class="num">ii.</div><div class="eyebrow muted" style="margin-top:14px">Colour</div></div>
+      <div>
+        <h2>Deep green, warm ivory, a hairline of gold</h2>
+        <p class="lede">Market-green anchors the brand. Terracotta is the <span class="serif">single</span> accent for the most important action on a screen. A restrained metallic gold is reserved for moments of ceremony — seals, dividers, the Taste of Home boxes.</p>
+      </div>
+    </div>
+
+    <div class="swatch-row">
+      <div class="swatch">
+        <div class="chip" style="background:var(--green)"><span class="role" style="color:#cbab72">Primary</span></div>
+        <div class="info"><div class="nm">Market Green</div><div class="hex">#1F3D2B</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:var(--terra)"><span class="role" style="color:#fde6d6">Accent</span></div>
+        <div class="info"><div class="nm">Terracotta</div><div class="hex">#C05621</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:linear-gradient(135deg,#c7a768,#a8813f)"><span class="role" style="color:#fbf3e3">Ceremony</span></div>
+        <div class="info"><div class="nm">Antique Gold</div><div class="hex">#B0894F</div></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:var(--ivory);border-bottom:1px solid var(--line)"><span class="role" style="color:#7f7361">Ground</span></div>
+        <div class="info"><div class="nm">Warm Ivory</div><div class="hex">#FAF5EE</div></div>
+      </div>
+    </div>
+
+    <div class="eyebrow muted" style="margin:10px 0 12px">Green scale</div>
+    <div class="scale">
+      <span style="background:#eef4ef;color:#1f3d2b">50</span>
+      <span style="background:#d5e4d9;color:#1f3d2b">100</span>
+      <span style="background:#acc7b4;color:#112318">200</span>
+      <span style="background:#7ca588;color:#fff">300</span>
+      <span style="background:#4c7c60;color:#fff">400</span>
+      <span style="background:#2c5940;color:#fff">500</span>
+      <span style="background:#1f3d2b;color:#cbab72">600</span>
+      <span style="background:#183021;color:#cbab72">700</span>
+      <span style="background:#112318;color:#cbab72">800</span>
+    </div>
+    <div class="eyebrow muted" style="margin:22px 0 12px">Terracotta scale</div>
+    <div class="scale">
+      <span style="background:#fcf1ea;color:#7d3514">50</span>
+      <span style="background:#f7decf;color:#7d3514">100</span>
+      <span style="background:#eebb9e;color:#57250e">200</span>
+      <span style="background:#e1926a;color:#fff">300</span>
+      <span style="background:#d06e3e;color:#fff">400</span>
+      <span style="background:#c05621;color:#fff">500</span>
+      <span style="background:#a2461a;color:#fff">600</span>
+      <span style="background:#7d3514;color:#fff">700</span>
+      <span style="background:#57250e;color:#fff">800</span>
+    </div>
+
+    <div class="legend">
+      <span class="sw"><span class="dot" style="background:#3e9c63"></span> Fresh green · success &amp; verified</span>
+      <span class="sw"><span class="dot" style="background:#e8a44d"></span> Amber · stars &amp; freshness</span>
+      <span class="sw"><span class="dot" style="background:#c0392b"></span> Berry · danger</span>
+      <span class="sw"><span class="dot" style="background:#264653"></span> Deep teal · information</span>
+      <span class="sw"><span class="dot" style="background:#23201a"></span> Charcoal · primary text</span>
+      <span class="sw"><span class="dot" style="background:#f3ebdf"></span> Cream · sunken panels</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TYPE ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div><div class="num">iii.</div><div class="eyebrow muted" style="margin-top:14px">Typography</div></div>
+      <div>
+        <h2>A high-contrast serif, led by a humanist sans</h2>
+        <p class="lede"><span class="serif">Cormorant Garamond</span> carries display headlines and product names — elegant, editorial, timeless. <b>Hanken Grotesk</b> handles every label, control and paragraph. Small-caps, letterspaced, mark sections and eyebrows.</p>
+      </div>
+    </div>
+    <div class="type-grid">
+      <div class="spec"><div class="tag">Display<small>Cormorant · 500 · −2% tracking</small></div><div class="sample"><div class="d-display">Bringing the market home</div></div></div>
+      <div class="spec"><div class="tag">Section title<small>Cormorant · 500</small></div><div class="sample"><div class="d-title">Fresh from verified sellers</div></div></div>
+      <div class="spec"><div class="tag">Product name<small>Cormorant · 600 + Hanken alt</small></div><div class="sample"><div class="d-prod">Egusi<span class="alt">Ground melon seeds · 500g</span></div></div></div>
+      <div class="spec"><div class="tag">Editorial italic<small>Cormorant · italic · accents</small></div><div class="sample"><div class="d-italic">You stock the shelf, we handle the rest.</div></div></div>
+      <div class="spec"><div class="tag">Eyebrow / marker<small>Hanken · 600 · +24% · caps</small></div><div class="sample"><div class="d-caps">Taste of home · West Africa</div></div></div>
+      <div class="spec"><div class="tag">Body<small>Hanken · 400 · 16px</small></div><div class="sample"><div class="d-body">One order, one total — just multiple packages. We ship to your door in one to two days, and your information stays between you and your seller.</div></div></div>
+      <div class="spec"><div class="tag">UI label<small>Hanken · 600 · 14px</small></div><div class="sample"><span class="d-label">Add to cart</span> &nbsp;·&nbsp; <span class="d-label" style="color:var(--ink-3)">Ships in 1–2 days</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPONENTS ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div><div class="num">iv.</div><div class="eyebrow muted" style="margin-top:14px">Components</div></div>
+      <div>
+        <h2>Refined, architectural, understated</h2>
+        <p class="lede">Crisp radii and hairline borders. Solid deep-green primaries carry serene confidence; terracotta is spent on the one action that matters most. Seals over stickers.</p>
+      </div>
+    </div>
+
+    <div class="demo">
+      <div class="cap">Buttons — one terracotta action per screen</div>
+      <div class="row">
+        <button class="btn btn-primary">Add to cart</button>
+        <button class="btn btn-accent">Checkout securely</button>
+        <button class="btn btn-secondary">Save for later</button>
+        <button class="btn btn-ghost">Keep browsing</button>
+        <button class="btn btn-primary btn-sm">Reorder</button>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="demo" style="margin-bottom:0">
+        <div class="cap">Seals — understated marks of trust</div>
+        <div class="row" style="margin-bottom:20px">
+          <span class="seal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l2.4 1.8 3-.1 1 2.8 2.4 1.8-.9 2.9.9 2.9-2.4 1.8-1 2.8-3-.1L12 22l-2.4-1.8-3 .1-1-2.8L3.2 15.8l.9-2.9-.9-2.9 2.4-1.8 1-2.8 3 .1z"></path><path d="M8.6 12.2l2.2 2.2 4.4-4.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="lbl">Verified Seller</span></span>
+          <span class="seal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21c5-3 8-6.5 8-11a5 5 0 0 0-9-3 5 5 0 0 0-9 3c0 4.5 3 8 8 11z"></path><path d="M9 11c1.5 0 2.5 1 3 2 .5-1 1.5-2 3-2" stroke-linecap="round"></path></svg><span class="lbl">Freshness Promise</span></span>
+        </div>
+        <div class="row tight">
+          <span class="badge verified"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"></path></svg>Verified</span>
+          <span class="badge fresh">Fresh</span>
+          <span class="badge new">New</span>
+          <span class="badge sale">Save 15%</span>
+        </div>
+      </div>
+      <div class="demo" style="margin-bottom:0">
+        <div class="cap">Chips — cuisines &amp; suggestions</div>
+        <div class="row tight" style="margin-bottom:18px">
+          <span class="chip on">Nigerian</span>
+          <span class="chip">Ghanaian</span>
+          <span class="chip">Ethiopian</span>
+          <span class="chip">Somali</span>
+          <span class="chip">Kenyan</span>
+        </div>
+        <div class="cap" style="margin:0 0 14px">Recipe agent — optional, never a wall</div>
+        <div class="row tight">
+          <span class="chip suggest">Jollof rice</span>
+          <span class="chip suggest">Egusi soup</span>
+          <span class="chip suggest">Injera &amp; wot</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="two" style="margin-top:28px">
+      <div class="demo" style="margin-bottom:0">
+        <div class="cap">Search &amp; input</div>
+        <div class="field">
+          <label>Search the market</label>
+          <div class="box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4" stroke-linecap="round"></path></svg>
+            <input placeholder="Garri, egusi, palm oil…" value="">
+          </div>
+          <div class="hint">Honours every spelling — garri, gari, cassava flakes, èbà.</div>
+        </div>
+      </div>
+      <div class="demo" style="margin-bottom:0">
+        <div class="cap">Rating &amp; free-shipping progress</div>
+        <div class="rating" style="margin-bottom:26px">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.9 6.7 19.5l1.2-6L3.4 9.3l6-.7z"></path></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.9 6.7 19.5l1.2-6L3.4 9.3l6-.7z"></path></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.9 6.7 19.5l1.2-6L3.4 9.3l6-.7z"></path></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.9 6.7 19.5l1.2-6L3.4 9.3l6-.7z"></path></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.9 6.7 19.5l1.2-6L3.4 9.3l6-.7z"></path></svg>
+          <span class="cnt">4.8 · 214 reviews</span>
+        </div>
+        <div class="ship">
+          <div class="top"><div class="a">You're <b>$14</b> away from free shipping</div><div class="b">$86 / $100</div></div>
+          <div class="track"><div class="fill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:44px" class="eyebrow muted">Product cards — imagery treated as still-life</div>
+    <div class="cards" style="margin-top:18px">
+      <div class="pcard">
+        <div class="shot">
+          <span class="flag"><span class="seal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21c5-3 8-6.5 8-11a5 5 0 0 0-9-3 5 5 0 0 0-9 3c0 4.5 3 8 8 11z"></path></svg><span class="lbl">Fresh</span></span></span>
+          <span class="fav"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21c5-3 8-6.5 8-11a5 5 0 0 0-9-3 5 5 0 0 0-9 3c0 4.5 3 8 8 11z"></path></svg></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 20c-4-1-7-4-7-9 5 0 9 3 9 9M13 20c4-1 7-4 7-9-5 0-9 3-9 9M12 21V9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <div class="body">
+          <div class="nm">Egusi</div>
+          <div class="alt">Ground melon seeds · 500g</div>
+          <div class="meta"><span class="v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"></path></svg>Adunni Foods</span><span>· Ships in 1–2 days</span></div>
+          <div class="pfoot"><div class="price">$8.50 <small>/ bag</small></div><button class="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" stroke-linecap="round"></path></svg></button></div>
+        </div>
+      </div>
+      <div class="pcard">
+        <div class="shot">
+          <span class="fav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21c5-3 8-6.5 8-11a5 5 0 0 0-9-3 5 5 0 0 0-9 3c0 4.5 3 8 8 11z"></path></svg></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 20c-4-1-7-4-7-9 5 0 9 3 9 9M13 20c4-1 7-4 7-9-5 0-9 3-9 9M12 21V9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <div class="body">
+          <div class="nm">Garri</div>
+          <div class="alt">Gari · cassava flakes · èbà · 2kg</div>
+          <div class="meta"><span class="v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"></path></svg>Kwame &amp; Sons</span><span>· Ships in 1–2 days</span></div>
+          <div class="pfoot"><div class="price">$12.00 <small>/ 2kg</small></div><button class="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" stroke-linecap="round"></path></svg></button></div>
+        </div>
+      </div>
+      <div class="pcard">
+        <div class="shot">
+          <span class="flag"><span class="badge sale" style="border-radius:2px">Save 15%</span></span>
+          <span class="fav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21c5-3 8-6.5 8-11a5 5 0 0 0-9-3 5 5 0 0 0-9 3c0 4.5 3 8 8 11z"></path></svg></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M11 20c-4-1-7-4-7-9 5 0 9 3 9 9M13 20c4-1 7-4 7-9-5 0-9 3-9 9M12 21V9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <div class="body">
+          <div class="nm">Red Palm Oil</div>
+          <div class="alt">Cold-pressed · unrefined · 1L</div>
+          <div class="meta"><span class="v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"></path></svg>Mama Ngozi</span><span>· Ships in 1–2 days</span></div>
+          <div class="pfoot"><div class="price">$15.30 <small>/ litre</small></div><button class="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" stroke-linecap="round"></path></svg></button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ELEVATION / RADII / MOTION ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div><div class="num">v.</div><div class="eyebrow muted" style="margin-top:14px">Surface &amp; motion</div></div>
+      <div>
+        <h2>Crisp corners, soft shadow, gentle motion</h2>
+        <p class="lede">Radii stay subtle — architectural, never pill-shaped. Shadow appears only where something genuinely lifts. Motion is calm and quick, with no bounce.</p>
+      </div>
+    </div>
+    <div class="two">
+      <div class="demo" style="margin-bottom:0">
+        <div class="cap">Corner radii — crisp, not rounded</div>
+        <div class="radii">
+          <div class="r"><div class="sq" style="border-radius:2px"></div><div class="lb">2px · tags</div></div>
+          <div class="r"><div class="sq" style="border-radius:3px"></div><div class="lb">3px · buttons</div></div>
+          <div class="r"><div class="sq" style="border-radius:5px"></div><div class="lb">5px · inputs</div></div>
+          <div class="r"><div class="sq" style="border-radius:8px"></div><div class="lb">8px · cards</div></div>
+        </div>
+        <div class="mnote" style="margin-top:26px"><b>Borders</b> are a single warm hairline (1–1.5px, <span class="mono">#E7DCC9</span>). Focus adds a green edge with a soft terracotta ring. Gold hairlines mark ceremony only.</div>
+      </div>
+      <div class="demo" style="margin-bottom:0">
+        <div class="cap">Elevation — four soft, green-tinted steps</div>
+        <div class="elev-row">
+          <div class="elev"><div class="box e1"></div><div class="lb">xs · rest</div></div>
+          <div class="elev"><div class="box e2"></div><div class="lb">sm · card</div></div>
+          <div class="elev"><div class="box e3"></div><div class="lb">md · hover</div></div>
+          <div class="elev"><div class="box e4"></div><div class="lb">lg · sheet</div></div>
+        </div>
+        <div class="mnote" style="margin-top:26px"><b>Motion</b> — 120 / 200 / 320ms on <span class="mono">cubic-bezier(.2,.6,.2,1)</span>. Buttons nudge 1px on press; bars animate their fill; the recipe agent shows a typing indicator. No bounce, ever.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TWO APPS ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div><div class="num">vi.</div><div class="eyebrow muted" style="margin-top:14px">Two surfaces</div></div>
+      <div>
+        <h2>One system, two apps</h2>
+        <p class="lede">The buyer shops; the merchant fulfils. Both are mobile-first PWAs on a <span class="serif">430px</span> frame, drawing from this one system — fixed header, scrolling body, fixed tab bar.</p>
+      </div>
+    </div>
+    <div class="apps">
+      <div class="app">
+        <div class="k">Buyer PWA</div>
+        <h3>The shop, unhurried</h3>
+        <p>A familiar grocery app — search, browse, cart, reorder — with an optional recipe-to-cart agent. Trust signals throughout: verified sellers, the freshness promise, honest multi-parcel shipping.</p>
+        <div class="fl">
+          <span><b>01</b> Search &amp; browse cuisines</span>
+          <span><b>02</b> Product &amp; verified seller</span>
+          <span><b>03</b> Cart · multi-parcel · free shipping</span>
+          <span><b>04</b> Secure checkout</span>
+        </div>
+      </div>
+      <div class="app">
+        <div class="k">Merchant PWA</div>
+        <h3>As simple as a chat</h3>
+        <p>Three tabs, big buttons, photo-first — readable on a low-end Android in bright light. Film your shelves, accept orders, pack, print the label.</p>
+        <div class="fl">
+          <span><b>01</b> Film your shelves</span>
+          <span><b>02</b> Accept incoming orders</span>
+          <span><b>03</b> Pack with a photo checklist</span>
+          <span><b>04</b> Print the shipping label</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VOICE ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div><div class="num">vii.</div><div class="eyebrow muted" style="margin-top:14px">Voice &amp; tone</div></div>
+      <div>
+        <h2>Warm, plain-spoken, dignified</h2>
+        <p class="lede">We speak to <span class="serif">you</span>; the brand is <span class="serif">we</span>. Sentence case everywhere. Honest and concrete about shipping and trust. Never salesy, never shouting — no exclamation marks.</p>
+      </div>
+    </div>
+    <div class="voice">
+      <div class="vcol do">
+        <div class="h"><span>✦</span> We say</div>
+        <ul>
+          <li>The market from home, delivered.</li>
+          <li>One order, one total — just multiple packages.</li>
+          <li>You're $14 away from free shipping.</li>
+          <li>Tell us the dish, we'll fill your cart.</li>
+          <li>Your info stays between you and your seller.</li>
+        </ul>
+      </div>
+      <div class="vcol dont">
+        <div class="h"><span>✕</span> We never say</div>
+        <ul>
+          <li>MEGA SALE — shop now!!!</li>
+          <li>Authentic ethnic food products.</li>
+          <li>Limited time only — don't miss out!</li>
+          <li>Cheapest prices, guaranteed.</li>
+          <li>Add to cart to unlock rewards 🎉</li>
+        </ul>
+      </div>
+    </div>
+    <div style="margin:56px auto 0"><hr class="gold-rule" style="max-width:120px;margin:0 auto 40px"></div>
+    <div class="pull">Tell us the dish, <span class="b">we'll fill your cart.</span></div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="foot">
+  <div class="goldstrip"></div>
+  <div class="wrap">
+    <div class="wordmark">Afri<span class="mart on-dark">Mart</span></div>
+    <p>The market from home, delivered. A shipping-first marketplace bringing African groceries to the diaspora across the United States.</p>
+    <div class="row" style="display:flex;flex-wrap:wrap">
+      <span>Design System · Version 1.0</span>
+      <span>Premium direction</span>
+      <span>Cormorant Garamond · Hanken Grotesk</span>
+    </div>
+  </div>
+</footer>
+
+
+
+</body></html>

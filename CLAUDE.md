@@ -1,16 +1,16 @@
 # CLAUDE.md — AfriMart
 
-This file orients any Claude Code session working on this repository. Read this first, then `/docs/AfriMart_PRD.docx` for the full specification and `/docs/AfriMart_Claude_Design_Prompts.md` for the UI spec, before writing code.
+This file orients any Claude Code session working on this repository. Read this first, then `/docs/AfriMart_PRD.md` for the full specification and `/docs/AfriMart_Claude_Design_Prompts.md` for the UI spec, before writing code.
 
 ## What this project is
 
-AfriMart is a shipping-first, AI-powered marketplace for African groceries in the United States. African stores, home-based sellers, and aspiring food entrepreneurs list products; buyers anywhere in the US order and receive them by nationwide shipping. Full specification: `/docs/AfriMart_PRD.docx` (or its exported markdown if you convert it — see "Docs in this repo" below).
+AfriMart is a shipping-first, AI-powered marketplace for African groceries in the United States. African stores, home-based sellers, and aspiring food entrepreneurs list products; buyers anywhere in the US order and receive them by nationwide shipping. Full specification: `/docs/AfriMart_PRD.md`.
 
-Read `/docs/AfriMart_Brand_Guide.pdf` before writing any UI. It defines the palette, type direction, and voice — treat its values as ground truth over anything approximate elsewhere.
+Read `/docs/AfriMart_Brand_Guide.pdf` before writing any UI, if it has been added to the repo — see "Docs in this repo" below; it has not been supplied yet, so until it lands, cross-check any brand-token question directly with the person rather than guessing.
 
 ## Source of truth hierarchy
 
-1. **The PRD** (`/docs/AfriMart_PRD.docx`) — functional requirements, phase tags, architecture, data model, release plan. Governs *what* to build and *how it behaves*. If this file and a prior conversation disagree, the PRD wins.
+1. **The PRD** (`/docs/AfriMart_PRD.md`) — functional requirements, phase tags, architecture, data model, release plan. Governs *what* to build and *how it behaves*. If this file and a prior conversation disagree, the PRD wins.
 2. **The Claude Design prototypes** (`/docs/prototype/` — see "Design prompts and prototypes" below) — govern *how it looks and how screens are laid out*. Where the PRD describes a flow in prose, the exported prototype page is the actual visual spec for it: layout, hierarchy, density, and component choices. Build UI to match the prototype, not an independent interpretation of the PRD's prose.
 3. **This file (CLAUDE.md)** — conventions, structure, and standing instructions for how to build, not what to build or how it looks.
 4. **The Brand Guide** — palette, type, and voice truth; applies to every screen, prototyped or not.
@@ -44,6 +44,8 @@ Use these exactly — do not approximate or invent adjacent shades.
 | Ivory | `#FAF5EE` | Background, warm off-white, not stark white |
 | Ink | `#222222` | Body text |
 
+**⚠ Unresolved conflict with the prototype, flagged not silently fixed:** the built Design System prototype (`/docs/prototype/AfriMart Design System.html`) does not use this table. Its actual single-action accent is **Terracotta `#C05621`** ("one terracotta action per screen" — every primary CTA across all six functional prototype pages uses it); Amber `#E8A44D` appears only for star ratings, and a separate Antique Gold `#B0894F` is reserved for ceremony (seals, dividers, Taste of Home). Ink is `#23201A` (warm charcoal) rather than `#222222`. Since no Brand Guide PDF has been supplied yet to arbitrate, this file cannot say which is authoritative — resolve with the person before `packages/ui` locks in an accent color, rather than guessing.
+
 Typography direction: a classic high-contrast serif for display/headlines, a clean humanist sans for UI and body text. Aesthetic: premium and classic — "heritage grocer," not discount e-commerce or generic startup. Voice: warm, plain-spoken, dignified, never salesy, no exclamation marks.
 
 Logo files are in `/docs/brand/` (avatar, reversed mark, cover lockup). Use the avatar for small square placements (favicon, app icon); the full lockup where there's room to introduce the brand.
@@ -68,11 +70,13 @@ Both apps were designed before this build started: wireframed in Relume, then bu
 
 Folders in the same project: `Design system files/` and `assets/` — export these alongside the pages above; they likely hold the actual token definitions and image/icon assets the pages reference.
 
-**Get these into the repo before building UI.** Export all 11 pages (and the two folders) from Claude Design and place them under `/docs/prototype/`, preserving the filenames above. If they haven't been exported yet, ask the person for them, or for a shareable Claude Design link, before starting on buyer or merchant screens — building from the PRD's prose alone when a real prototype page exists for that screen will produce a mismatched UI.
+**Status: 8 of 11 pages are in the repo** under `/docs/prototype/` — the 6 functional buyer/merchant screens, the Design System, and the Merchant Onboarding flow. Missing: `AfriMart Logo Directions.html`, and the `Design system files/` and `assets/` export folders (token/asset source files referenced by the pages). The two logo/brand pages present (`Logo Downloads.html`, `Logo and Social Kit.html`) are reference only, not functional UI. Ask the person for the missing three before treating the design-system extraction below as final on assets.
+
+**These are Claude Artifact bundle exports, not plain HTML.** Each file is a self-extracting bundle (a `<script type="__bundler/template">` tag holding the real page as a JSON-escaped string, plus a manifest of base64 fonts/images) — opening the raw file in a text editor shows loader boilerplate, not the design. It renders correctly in a browser. For reading/reuse as a spec, use the already-extracted plain HTML in `/docs/prototype/extracted/` (one file per functional page, same filenames) — that's the real markup and CSS, unpacked once via a small Node script. If a prototype page is re-exported later, re-run the same extraction (read the `__bundler/template` script tag's JSON string and write it out) before using it as a build reference.
 
 Rules for using them:
 
-- **Read the actual HTML/CSS, not just a screenshot.** An exported prototype page shows real markup, spacing values, and component structure — treat it as closer to a spec than a picture of it. Match its layout, hierarchy, and component choices; adapt markup to the project's actual framework rather than copying HTML verbatim.
+- **Read the actual HTML/CSS, not just a screenshot.** Use the extracted versions in `/docs/prototype/extracted/` — they show real markup, spacing values, and component structure, closer to a spec than a picture of it. Match layout, hierarchy, and component choices; adapt markup to the project's actual framework rather than copying HTML verbatim.
 - **Start from `AfriMart Design System.html`.** It's the shared source for tokens, type, and components — build `packages/ui` from it before building individual screens, so buyer and merchant stay visually consistent by construction.
 - **Match structure and hierarchy, not pixels.** Translate layout and emphasis faithfully (e.g. "one dominant Accept button," "large tap targets," a right-rail order summary); don't feel obligated to pixel-match spacing that a proper component library will naturally handle differently.
 - **Buyer app is responsive; merchant app is mobile-only.** The prototypes reflect this deliberately. Do not design a desktop merchant experience unless explicitly asked (see Product principles: merchant simplicity).
@@ -117,12 +121,16 @@ Unless told otherwise, build in this order, matching the PRD's phase tags and th
 
 ## Docs in this repo
 
-- `/docs/AfriMart_PRD.docx` — full product requirements
-- `/docs/AfriMart_Brand_Guide.pdf` — logo, palette, type, voice
-- `/docs/brand/` — logo files (avatar, reversed mark, cover)
-- `/docs/prototype/` — the 11 exported Claude Design HTML pages plus `Design system files/` and `assets/` — the UI spec (see "Design prompts and prototypes" above)
+- `/docs/AfriMart_PRD.md` — full product requirements
 - `/docs/AfriMart_Claude_Design_Prompts.md` — the original prompts used to generate the prototype, useful for intent/rationale behind a screen
-- `/docs/AfriMart_Relume_Prompts.md` — sitemap and wireframe structure behind the prototypes
+- `/docs/AfriMart_Claude_Code_Prompts.md` — the build-prompt sequence this repo is following
 - `/docs/AfriMart_Pitch.docx` — narrative context on why the product is built this way (background reading, not spec)
+- `/docs/prototype/` — 8 of the 11 exported Claude Design HTML pages (bundle format — see "Design prompts and prototypes" above), plus `/docs/prototype/extracted/` holding the same pages unpacked to plain HTML/CSS for actual reading and reuse
 
-If you need the PRD or pitch in plain text for easier searching, convert with `pandoc -t markdown file.docx`, but treat the `.docx` as canonical if the two ever diverge after edits.
+**Not yet in the repo** (ask the person for these before treating brand/asset decisions as final):
+- `/docs/AfriMart_Brand_Guide.pdf` — logo, palette, type, voice ground truth
+- `/docs/brand/` — logo files (avatar, reversed mark, cover)
+- `/docs/AfriMart_Relume_Prompts.md` — sitemap and wireframe structure behind the prototypes
+- `/docs/prototype/AfriMart Logo Directions.html`, and the prototype project's `Design system files/` and `assets/` export folders
+
+If you need the pitch doc in plain text for easier searching, convert with `pandoc -t markdown file.docx`.

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AfriMart — Become a seller</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("aa6cd4f6-83e3-4769-b087-21f081550347") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("6d4d5143-b428-495d-b80e-3451f2e8e4cb") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("3a9affa3-395e-4932-98cd-2201c008705e") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("445c72c2-3353-47a8-bae8-3cda00f0c18c") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("5e6f155f-bf88-497c-8f37-dc4e0c9a541c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("aa6cd4f6-83e3-4769-b087-21f081550347") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("6d4d5143-b428-495d-b80e-3451f2e8e4cb") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("3a9affa3-395e-4932-98cd-2201c008705e") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("445c72c2-3353-47a8-bae8-3cda00f0c18c") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("5e6f155f-bf88-497c-8f37-dc4e0c9a541c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("aa6cd4f6-83e3-4769-b087-21f081550347") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("6d4d5143-b428-495d-b80e-3451f2e8e4cb") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("3a9affa3-395e-4932-98cd-2201c008705e") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("445c72c2-3353-47a8-bae8-3cda00f0c18c") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("5e6f155f-bf88-497c-8f37-dc4e0c9a541c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fbf78a99-9019-4639-bb67-0f7c5250d8c9") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("a4554998-b904-402a-8744-481112d3d902") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("997b7eb6-6765-4dd3-bfac-3bc79ea6c875") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("91b86a49-316d-486a-a752-61102566c236") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fbf78a99-9019-4639-bb67-0f7c5250d8c9") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("a4554998-b904-402a-8744-481112d3d902") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("997b7eb6-6765-4dd3-bfac-3bc79ea6c875") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("91b86a49-316d-486a-a752-61102566c236") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fbf78a99-9019-4639-bb67-0f7c5250d8c9") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("a4554998-b904-402a-8744-481112d3d902") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("997b7eb6-6765-4dd3-bfac-3bc79ea6c875") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("91b86a49-316d-486a-a752-61102566c236") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fbf78a99-9019-4639-bb67-0f7c5250d8c9") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("a4554998-b904-402a-8744-481112d3d902") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("997b7eb6-6765-4dd3-bfac-3bc79ea6c875") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("91b86a49-316d-486a-a752-61102566c236") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("fbf78a99-9019-4639-bb67-0f7c5250d8c9") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("a4554998-b904-402a-8744-481112d3d902") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("997b7eb6-6765-4dd3-bfac-3bc79ea6c875") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("91b86a49-316d-486a-a752-61102566c236") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+:root{
+  --green:#1f3d2b;--green-700:#183021;--green-800:#112318;--green-50:#eef4ef;--green-100:#d5e4d9;
+  --terra:#c05621;--terra-600:#a2461a;--terra-50:#fcf1ea;
+  --gold:#b0894f;--gold-soft:#cbab72;--gold-line:#d9c39b;
+  --ivory:#faf5ee;--cream:#f3ebdf;--panel:#fffdf8;--card:#ffffff;
+  --ink:#23201a;--ink-2:#574f42;--ink-3:#7f7361;
+  --line:#e7dcc9;--line-soft:#efe6d6;
+  --leaf:#3e9c63;--amber:#e8a44d;--berry:#c0392b;--teal:#264653;
+  --serif:'Cormorant Garamond',Georgia,serif;
+  --sans:'Hanken Grotesk',-apple-system,system-ui,sans-serif;
+  --r-xs:2px;--r-sm:3px;--r-md:5px;--r-lg:8px;--app:430px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:#dcd0bc;color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;display:flex;justify-content:center;align-items:center;min-height:100dvh;padding:26px 0}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:600;margin:0;letter-spacing:-.01em;color:var(--ink)}
+p{margin:0}button{font-family:inherit;cursor:pointer}
+.tnum{font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--terra)}
+
+.phone{width:var(--app);height:min(908px,94dvh);background:var(--ivory);border-radius:46px;position:relative;overflow:hidden;box-shadow:0 42px 90px -34px rgba(31,61,43,.55),0 0 0 10px #14110c,0 0 0 12px #2b2a26;display:flex;flex-direction:column}
+@media(max-width:480px){body{padding:0}.phone{width:100%;height:100dvh;border-radius:0;box-shadow:none}}
+
+.status{height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 34px;font-size:14px;font-weight:700;z-index:40}
+.status .r{display:flex;gap:7px;align-items:center}.status svg{height:13px;width:auto}
+.status.light,.status.light svg{color:#f2ecdd}
+
+.top{flex:none;display:flex;align-items:center;gap:12px;padding:4px 20px 10px;min-height:46px}
+.top .back{width:46px;height:46px;flex:none;border-radius:var(--r-md);border:1.5px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.top .back:active{transform:translateY(1px)}.top .back svg{width:23px;height:23px}
+.top .dots{display:flex;gap:6px;margin-left:auto;margin-right:auto}
+.top .dots .d{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.top .dots .d.on{background:var(--green);width:22px;border-radius:20px}
+
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;display:flex;flex-direction:column}
+.scroll::-webkit-scrollbar{display:none}
+.view{display:none;flex:1;flex-direction:column}.view.on{display:flex}
+.pad{padding:0 24px}
+
+/* welcome */
+.welcome{flex:1;display:flex;flex-direction:column;background:var(--green);color:#f2ecdd;padding:0 26px}
+.welcome .wm{font-family:var(--serif);font-weight:700;font-size:30px;letter-spacing:-.02em;padding-top:20px}
+.welcome .wm .m{color:#d98a5a}
+.welcome .hero{flex:1;display:flex;flex-direction:column;justify-content:center}
+.welcome .eyebrow{color:var(--gold-soft)}
+.welcome h1{color:#f6efe2;font-size:40px;line-height:1.04;margin:14px 0 12px;letter-spacing:-.02em;max-width:15ch}
+.welcome .sub{font-family:var(--serif);font-style:italic;font-size:19px;color:#cbbfa8;max-width:28ch;line-height:1.4}
+.welcome .form{padding-bottom:26px}
+.welcome label{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-soft);margin-bottom:10px;display:block}
+.phone-in{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.08);border:1.5px solid rgba(203,171,114,.5);border-radius:var(--r-md);height:60px;padding:0 16px;transition:.14s}
+.phone-in:focus-within{border-color:var(--gold-soft);background:rgba(255,255,255,.12)}
+.phone-in .flag{font-size:16px;font-weight:700;color:#f2ecdd}
+.phone-in input{flex:1;border:0;outline:0;background:transparent;color:#fff;font-size:20px;font-weight:600;letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.phone-in input::placeholder{color:rgba(242,236,221,.4)}
+.welcome .note{font-size:12.5px;color:#9aab9d;margin-top:12px;text-align:center}
+
+/* generic content */
+.content{flex:1;display:flex;flex-direction:column;padding:0 24px}
+.content .head{padding:12px 0 4px}
+.content .head h1{font-size:34px;line-height:1.04}
+.content .head p{font-size:16px;color:var(--ink-2);margin-top:8px;font-weight:500}
+
+/* OTP */
+.otp{display:flex;gap:12px;justify-content:center;margin:34px 0 18px}
+.otp input{width:62px;height:76px;border:2px solid var(--line);border-radius:var(--r-lg);background:var(--card);text-align:center;font-family:var(--serif);font-size:38px;font-weight:600;color:var(--ink);outline:0;transition:.14s}
+.otp input:focus{border-color:var(--green);box-shadow:0 0 0 4px rgba(192,86,33,.12)}
+.otp input.filled{border-color:var(--green)}
+.resend{text-align:center;font-size:14px;color:var(--ink-3);font-weight:600}
+.resend b{color:var(--green)}
+
+/* path cards */
+.paths{display:flex;flex-direction:column;gap:16px;margin-top:22px}
+.pathcard{width:100%;background:var(--card);border:2px solid var(--line);border-radius:var(--r-lg);padding:24px 22px;text-align:left;display:flex;align-items:center;gap:18px;transition:.16s cubic-bezier(.2,.6,.2,1)}
+.pathcard:active{transform:scale(.985)}
+.pathcard.on{border-color:var(--green);box-shadow:0 0 0 3px var(--green-50)}
+.pathcard .ic{width:74px;height:74px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;flex:none;color:#fff}
+.pathcard.film .ic{background:var(--green)}
+.pathcard.web .ic{background:var(--terra)}
+.pathcard .ic svg{width:38px;height:38px}
+.pathcard .m{flex:1}
+.pathcard .m .t{font-family:var(--serif);font-size:25px;font-weight:600;line-height:1.05}
+.pathcard .m .s{font-size:14.5px;color:var(--ink-2);margin-top:6px;line-height:1.35}
+.pathcard .m .badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--terra);margin-top:9px}
+
+/* filming */
+.filmwrap{flex:1;display:flex;flex-direction:column;padding:8px 0 0}
+.filmview{flex:1;border-radius:var(--r-lg);background:linear-gradient(160deg,#2c3a30,#14110c);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:360px}
+.filmview .corner{position:absolute;width:36px;height:36px;border:3px solid rgba(203,171,114,.85)}
+.filmview .c1{top:18px;left:18px;border-right:0;border-bottom:0}.filmview .c2{top:18px;right:18px;border-left:0;border-bottom:0}
+.filmview .c3{bottom:18px;left:18px;border-right:0;border-top:0}.filmview .c4{bottom:18px;right:18px;border-left:0;border-top:0}
+.filmview .rec{position:absolute;top:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#f2ecdd;letter-spacing:.08em}
+.filmview .rec .dot{width:9px;height:9px;border-radius:50%;background:var(--berry);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.3}}
+.filmview .found{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.14);border:1px solid rgba(203,171,114,.4);border-radius:20px;padding:6px 15px;font-size:13px;font-weight:700;color:#f6efe2}
+.filmview .found b{color:var(--gold-soft)}
+.filmview .coach{position:absolute;bottom:26px;left:24px;right:24px;text-align:center}
+.filmview .coach .t{font-family:var(--serif);font-size:24px;font-weight:600;color:#f6efe2;transition:opacity .3s}
+.filmview .scan{position:absolute;left:12%;right:12%;height:2px;background:linear-gradient(90deg,transparent,var(--gold-soft),transparent);animation:scan 2.4s ease-in-out infinite}
+@keyframes scan{0%,100%{top:26%}50%{top:70%}}
+
+/* connect */
+.gfield{margin-top:22px}
+.gfield label{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--ink-2);margin-bottom:8px}
+.gfield .in{height:58px;border:2px solid var(--line);border-radius:var(--r-md);background:var(--card);display:flex;align-items:center;padding:0 16px;transition:.14s}
+.gfield .in:focus-within{border-color:var(--green);box-shadow:0 0 0 3px rgba(192,86,33,.1)}
+.gfield .in .pre{color:var(--ink-3);font-size:16px;font-weight:600}
+.gfield input{border:0;outline:0;background:transparent;font-size:18px;width:100%;color:var(--ink);font-weight:600}
+.connect-note{margin-top:16px;display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:var(--ink-2);line-height:1.45}
+.connect-note svg{width:18px;height:18px;color:var(--green);flex:none;margin-top:1px}
+.importing{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.spin{width:56px;height:56px;border:4px solid var(--green-100);border-top-color:var(--green);border-radius:50%;animation:spin .9s linear infinite;margin-bottom:22px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.importing .t{font-family:var(--serif);font-size:26px;font-weight:600}
+.importing .s{font-size:14px;color:var(--ink-3);margin-top:6px}
+
+/* review tiles */
+.review-hint{font-size:13.5px;color:var(--ink-3);font-weight:600;margin:2px 0 16px;display:flex;align-items:center;gap:7px}
+.review-hint svg{width:15px;height:15px;color:var(--gold)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding-bottom:8px}
+.ptile{background:var(--card);border:1.5px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.ptile .pic{height:100px;background:radial-gradient(120% 120% at 50% 20%,#fbf6ec,#ece2cf);display:flex;align-items:center;justify-content:center;color:var(--gold);position:relative}
+.ptile .pic svg{width:40px;height:40px;opacity:.6}
+.ptile .pic .edit{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.8);border:1px solid var(--line);border-radius:20px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);padding:4px 8px}
+.ptile .b{padding:11px 12px 13px}
+.ptile .tname{width:100%;border:0;outline:0;background:transparent;font-family:var(--serif);font-size:20px;font-weight:600;color:var(--ink);line-height:1.05;padding:2px 4px;border-radius:4px;transition:.12s}
+.ptile .tname:focus{background:var(--green-50)}
+.ptile .prow{display:flex;align-items:center;margin-top:6px;border:1.5px solid var(--line-soft);border-radius:var(--r-sm);padding:0 4px 0 10px;height:40px}
+.ptile .prow .cur{color:var(--ink-2);font-weight:700;font-size:16px}
+.ptile .prow input{flex:1;border:0;outline:0;background:transparent;font-family:var(--serif);font-size:19px;font-weight:600;color:var(--ink);width:100%;padding:0 4px}
+.ptile .prow:focus-within{border-color:var(--green)}
+
+/* live */
+.live{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 32px;background:var(--green);color:#f2ecdd}
+.live .seal{width:110px;height:110px;position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.live .seal .ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(203,171,114,.6)}
+.live .seal .ring2{position:absolute;inset:12px;border-radius:50%;border:1px solid rgba(203,171,114,.4)}
+.live .seal .core{width:78px;height:78px;border-radius:50%;background:#f2ecdd;color:var(--green);display:flex;align-items:center;justify-content:center}
+.live .seal .core svg{width:40px;height:40px}
+.live .eyebrow{color:var(--gold-soft);margin-top:22px}
+.live h1{color:#f6efe2;font-size:42px;line-height:1.04;margin:14px 0 12px;letter-spacing:-.02em;max-width:14ch}
+.live .sub{font-family:var(--serif);font-style:italic;font-size:19px;color:#cbbfa8;max-width:26ch;line-height:1.4}
+.live .count{margin-top:26px;font-size:14px;color:#9aab9d;font-weight:600}
+.live .count b{color:var(--gold-soft)}
+
+/* action bar */
+.actionbar{flex:none;padding:14px 24px calc(18px + env(safe-area-inset-bottom));z-index:20}
+.actionbar.dark{background:transparent}
+.actionbar.on-green{background:var(--green)}
+.bigbtn{width:100%;height:66px;border:0;border-radius:var(--r-md);font-size:20px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:11px;transition:.14s}
+.bigbtn:active{transform:translateY(1px)}
+.bigbtn.terra{background:var(--terra);color:#fff}.bigbtn.terra:hover{background:var(--terra-600)}
+.bigbtn.green{background:var(--green);color:#f4ede1}.bigbtn.green:hover{background:var(--green-700)}
+.bigbtn.gold{background:#f2ecdd;color:var(--green)}
+.bigbtn.disabled{background:var(--cream);color:var(--ink-3);pointer-events:none;border:1.5px solid var(--line)}
+.bigbtn svg{width:24px;height:24px}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status" id="status"><span>9:41</span><span class="r">
+    <svg viewBox="0 0 24 16" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"></rect><rect x="5" y="4" width="3" height="8" rx="1"></rect><rect x="10" y="2" width="3" height="10" rx="1"></rect><rect x="15" y="0" width="3" height="12" rx="1"></rect></svg>
+    <svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6.5a11 11 0 0 1 16 0M4.5 9.5a7 7 0 0 1 11 0M7 12.5a3 3 0 0 1 6 0" stroke-linecap="round"></path></svg>
+    <svg viewBox="0 0 26 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="1" width="21" height="12" rx="3"></rect><rect x="3" y="3" width="15" height="8" rx="1.5" fill="currentColor" stroke="none"></rect><rect x="23.5" y="4.5" width="1.8" height="5" rx="1" fill="currentColor" stroke="none"></rect></svg>
+  </span></div>
+
+  <div class="top" id="top" style="display:none">
+    <button class="back" id="backBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+    <div class="dots" id="dots"></div>
+    <div style="width:46px"></div>
+  </div>
+
+  <div class="scroll">
+    <!-- WELCOME -->
+    <div class="view on" id="v-welcome">
+      <div class="welcome">
+        <div class="wm" style="display:flex;align-items:center;gap:9px"><svg class="leafmark" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1F3D2B" stroke-width="1.8" stroke-linecap="round" style="flex:none"><path d="M11 21c-5-1-8-5-8-11 6 0 10 4 10 11M13 21c5-1 8-5 8-11-6 0-10 4-10 11"></path><path d="M12 22V10" stroke="#C05621" stroke-width="2.1"></path></svg><span>Afri<span class="m">Mart</span></span></div>
+        <div class="hero">
+          <div class="eyebrow">Become a seller</div>
+          <h1>You stock the shelf. We handle the rest.</h1>
+          <div class="sub">Sell what you know, to everyone who misses it — across America.</div>
+        </div>
+        <div class="form">
+          <label>Your phone number</label>
+          <div class="phone-in"><span class="flag">🇺🇸 +1</span><input id="phoneNum" inputmode="numeric" maxlength="14" placeholder="(555) 123 4567"></div>
+          <div class="note">We'll text you a code. No passwords to remember.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CODE -->
+    <div class="view" id="v-code">
+      <div class="content">
+        <div class="head"><h1>Enter your code</h1><p id="codeSub">We texted a 4-digit code to your phone.</p></div>
+        <div class="otp" id="otp"><input maxlength="1" inputmode="numeric"><input maxlength="1" inputmode="numeric"><input maxlength="1" inputmode="numeric"><input maxlength="1" inputmode="numeric"></div>
+        <div class="resend">Didn't get it? <b>Resend code</b></div>
+      </div>
+    </div>
+
+    <!-- PATH -->
+    <div class="view" id="v-path">
+      <div class="content">
+        <div class="head"><h1>How would you like to start?</h1><p>Either way takes a few minutes.</p></div>
+        <div class="paths">
+          <button class="pathcard film" data-path="film">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7l1.5-2.5h5L16 7" stroke-linejoin="round"></path><circle cx="12" cy="13.5" r="3.5"></circle></svg></span>
+            <span class="m"><span class="t">Film your shelves</span><span class="s">Walk your store with the camera. We'll build your catalogue.</span><span class="badge">Most sellers start here</span></span>
+          </button>
+          <button class="pathcard web" data-path="web">
+            <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke-linecap="round"></path></svg></span>
+            <span class="m"><span class="t">Connect your website</span><span class="s">Already selling online? Import your products in one step.</span></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILMING -->
+    <div class="view" id="v-film">
+      <div class="content" style="padding-bottom:0">
+        <div class="filmwrap">
+          <div class="filmview">
+            <div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
+            <div class="scan"></div>
+            <div class="rec"><span class="dot"></span>REC</div>
+            <div class="found"><b id="foundN">0</b> products found</div>
+            <div class="coach"><div class="t" id="coachLine">Point at the first shelf tag</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECT -->
+    <div class="view" id="v-connect">
+      <div class="content" id="connectContent">
+        <div class="head"><h1>Connect your store</h1><p>Paste your website and we'll bring your products in.</p></div>
+        <div class="gfield"><label>Your website</label><div class="in"><span class="pre">https://</span><input id="siteUrl" placeholder="mamangozi.shop" autocomplete="off"></div></div>
+        <div class="connect-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke-linecap="round"></path></svg><span>We only read your product names, photos and prices. Nothing else.</span></div>
+      </div>
+    </div>
+
+    <!-- REVIEW -->
+    <div class="view" id="v-review">
+      <div class="content">
+        <div class="head"><h1>Check your catalogue</h1><p>We found these. Fix anything that looks off.</p></div>
+        <div class="review-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16l-1 4z" stroke-linejoin="round"></path></svg>Tap any name or price to correct it</div>
+        <div class="tiles" id="reviewTiles"></div>
+      </div>
+    </div>
+
+    <!-- LIVE -->
+    <div class="view" id="v-live">
+      <div class="live">
+        <div class="seal"><div class="ring"></div><div class="ring2"></div><div class="core"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"></path></svg></div></div>
+        <div class="eyebrow">You're live</div>
+        <h1>Your store is open to all of America.</h1>
+        <div class="sub">Buyers can find you now. We'll send your first order to your phone.</div>
+        <div class="count"><b id="liveCount">6</b> products listed · Mama Ngozi, Bronx</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actionbar" id="actionbar"><button class="bigbtn" id="cta"></button></div>
+</div>
+
+<script>
+const glyphs={
+  leaf:'<path d="M11 21c-5-1-8-5-8-11 6 0 10 4 10 11M13 21c5-1 8-5 8-11-6 0-10 4-10 11M12 22V10" stroke-linecap="round" stroke-linejoin="round"/>',
+  wheat:'<path d="M12 22V9M12 9c0-2 1.5-3.5 3.5-3.5 0 2-1.5 3.5-3.5 3.5zM12 9c0-2-1.5-3.5-3.5-3.5 0 2 1.5 3.5 3.5 3.5zM12 14c0-2 1.5-3.5 3.5-3.5 0 2-1.5 3.5-3.5 3.5zM12 14c0-2-1.5-3.5-3.5-3.5 0 2 1.5 3.5 3.5 3.5z" stroke-linecap="round" stroke-linejoin="round"/>',
+  jar:'<path d="M8 3h8M7 7h10v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V7zM7 7c0-2 1.5-3 2.5-3M17 7c0-2-1.5-3-2.5-3" stroke-linecap="round" stroke-linejoin="round"/>',
+  pepper:'<path d="M8 8c0-3 3-4 5-3M8 8c-2 3-1 8 3 10 5 2 8-3 6-7-1.5-3-6-4-9-3z" stroke-linecap="round" stroke-linejoin="round"/>',
+  seed:'<path d="M12 3c4 2 6 5 6 9a6 6 0 0 1-12 0c0-4 2-7 6-9zM12 8v8M9 11h6" stroke-linecap="round" stroke-linejoin="round"/>'
+};
+const products=[
+  {n:'Egusi',p:'8.50',g:'leaf'},{n:'Garri',p:'12.00',g:'wheat'},{n:'Red Palm Oil',p:'15.30',g:'jar'},
+  {n:'Ata Rodo',p:'6.75',g:'pepper'},{n:'Ground Crayfish',p:'9.60',g:'seed'},{n:'Plantain Flour',p:'10.20',g:'leaf'}
+];
+
+// order of steps with progress dots (welcome & code & path & film/connect & review & live)
+const order=['welcome','code','path','film','connect','review','live'];
+let path='film';
+const stepIndex={welcome:0,code:1,path:2,film:3,connect:3,review:4,live:5};
+const totalDots=6;
+
+function renderDots(v){
+  const dots=document.getElementById('dots');
+  dots.innerHTML=Array.from({length:totalDots},(_,i)=>`<span class="d ${i<=stepIndex[v]?'on':''}"></span>`).join('');
+}
+
+const views=['welcome','code','path','film','connect','review','live'];
+let current='welcome',filmTimer=null;
+function go(v){
+  views.forEach(x=>document.getElementById('v-'+x).classList.remove('on'));
+  document.getElementById('v-'+v).classList.add('on');
+  current=v;
+  const dark=(v==='welcome'||v==='live');
+  document.getElementById('status').classList.toggle('light',dark);
+  document.getElementById('top').style.display=(v==='welcome'||v==='live')?'none':'flex';
+  document.getElementById('actionbar').classList.toggle('dark',dark);
+  document.getElementById('actionbar').classList.toggle('on-green',dark);
+  if(v!=='welcome'&&v!=='live')renderDots(v);
+  setupCTA(v);
+  if(v==='film')startFilming();else stopFilming();
+  if(v==='review')renderTiles();
+  if(v==='live')document.getElementById('liveCount').textContent=products.length;
+}
+
+function setupCTA(v){
+  const cta=document.getElementById('cta'),bar=document.getElementById('actionbar');
+  bar.style.display='block';
+  const map={
+    welcome:['gold','Get started',()=>go('code')],
+    code:['green','Verify',()=>go('path')],
+    path:['green','Continue',()=>go(path==='film'?'film':'connect')],
+    film:['green','Done filming',()=>go('review')],
+    connect:['terra','Import my products',importSite],
+    review:['green','Open my store',()=>go('live')],
+    live:['gold','Go to my orders',()=>location.href='AfriMart Merchant.html']
+  };
+  const [cls,label,fn]=map[v];
+  cta.className='bigbtn '+cls;cta.textContent=label;cta.onclick=fn;
+  if(v==='welcome'){cta.style.background='#f2ecdd';}
+}
+
+// welcome phone formatting
+const phoneNum=document.getElementById('phoneNum');
+phoneNum.addEventListener('input',()=>{let d=phoneNum.value.replace(/\D/g,'').slice(0,10);let out=d;if(d.length>6)out=`(${d.slice(0,3)}) ${d.slice(3,6)} ${d.slice(6)}`;else if(d.length>3)out=`(${d.slice(0,3)}) ${d.slice(3)}`;else if(d.length)out=`(${d}`;phoneNum.value=out;});
+
+// OTP
+const otp=document.getElementById('otp');
+otp.querySelectorAll('input').forEach((inp,i,all)=>{
+  inp.addEventListener('input',()=>{inp.value=inp.value.replace(/\D/g,'');inp.classList.toggle('filled',!!inp.value);if(inp.value&&all[i+1])all[i+1].focus();
+    if([...all].every(x=>x.value))setTimeout(()=>go('path'),260);});
+  inp.addEventListener('keydown',e=>{if(e.key==='Backspace'&&!inp.value&&all[i-1])all[i-1].focus();});
+});
+
+// path selection
+document.querySelectorAll('[data-path]').forEach(c=>c.addEventListener('click',()=>{
+  path=c.dataset.path;document.querySelectorAll('.pathcard').forEach(p=>p.classList.remove('on'));c.classList.add('on');
+}));
+
+// filming coaching
+const coachLines=['Point at the first shelf tag','Move a little closer','Hold steady…','Got it — egusi','Pan slowly to the right','Nice — that\'s garri','Keep going, you\'re doing great','Got palm oil'];
+function startFilming(){
+  let ci=0,found=0;const line=document.getElementById('coachLine'),fn=document.getElementById('foundN');
+  fn.textContent='0';line.textContent=coachLines[0];
+  stopFilming();
+  filmTimer=setInterval(()=>{
+    ci=(ci+1)%coachLines.length;
+    line.style.opacity=0;
+    setTimeout(()=>{line.textContent=coachLines[ci];line.style.opacity=1;},280);
+    if(ci%2===0&&found<products.length){found++;fn.textContent=found;}
+  },1700);
+}
+function stopFilming(){if(filmTimer){clearInterval(filmTimer);filmTimer=null;}}
+
+// connect import
+function importSite(){
+  const c=document.getElementById('connectContent');
+  c.innerHTML=`<div class="importing"><div class="spin"></div><div class="t">Reading your store…</div><div class="s" id="impSub">Found 6 products</div></div>`;
+  document.getElementById('actionbar').style.display='none';
+  setTimeout(()=>{document.getElementById('actionbar').style.display='block';go('review');
+    c.innerHTML=`<div class="head"><h1>Connect your store</h1><p>Paste your website and we'll bring your products in.</p></div><div class="gfield"><label>Your website</label><div class="in"><span class="pre">https://</span><input id="siteUrl" placeholder="mamangozi.shop"></div></div>`;
+  },1600);
+}
+
+// review tiles
+function renderTiles(){
+  document.getElementById('reviewTiles').innerHTML=products.map((p,i)=>`
+    <div class="ptile">
+      <div class="pic"><span class="edit">Tap to fix</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">${glyphs[p.g]}</svg></div>
+      <div class="b">
+        <input class="tname" value="${p.n}" data-name="${i}" aria-label="Product name">
+        <div class="prow"><span class="cur">$</span><input value="${p.p}" data-price="${i}" inputmode="decimal" aria-label="Price"></div>
+      </div>
+    </div>`).join('');
+  document.getElementById('reviewTiles').addEventListener('input',e=>{
+    const n=e.target.closest('[data-name]'),pr=e.target.closest('[data-price]');
+    if(n)products[+n.dataset.name].n=n.value;if(pr)products[+pr.dataset.price].p=pr.value;
+  });
+}
+
+// back
+document.getElementById('backBtn').addEventListener('click',()=>{
+  const backMap={code:'welcome',path:'code',film:'path',connect:'path',review:path==='film'?'film':'connect'};
+  if(backMap[current])go(backMap[current]);
+});
+
+// init
+go('welcome');
+</script>
+
+
+</body></html>

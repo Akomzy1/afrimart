@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AfriMart — Buyer</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("3a2a4472-1c91-4da2-8713-1f8f6f2775a5") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("c78b966a-8318-43a3-a14b-da80d2ac67cc") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("4972d8f6-9417-4704-8495-45e67740c250") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("bd195e6c-5a24-46fd-bb96-97fecf013ba9") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("39092b9d-1478-4664-af5b-eb1f9e4a761b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("3a2a4472-1c91-4da2-8713-1f8f6f2775a5") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c78b966a-8318-43a3-a14b-da80d2ac67cc") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("4972d8f6-9417-4704-8495-45e67740c250") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("bd195e6c-5a24-46fd-bb96-97fecf013ba9") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("39092b9d-1478-4664-af5b-eb1f9e4a761b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("3a2a4472-1c91-4da2-8713-1f8f6f2775a5") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("c78b966a-8318-43a3-a14b-da80d2ac67cc") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("4972d8f6-9417-4704-8495-45e67740c250") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("bd195e6c-5a24-46fd-bb96-97fecf013ba9") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url("39092b9d-1478-4664-af5b-eb1f9e4a761b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("9f4cb971-63b8-4e70-873d-dca4bba4319c") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("7c8d6c90-19d5-4014-af93-245fdb68048e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("02438743-0596-48c0-9ad9-218df1409352") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("6808a71d-29ad-4273-b83f-dacee1ccf955") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("abb7e519-b9ce-4af3-bf8c-7ba70eb2ef36") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("9f4cb971-63b8-4e70-873d-dca4bba4319c") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("7c8d6c90-19d5-4014-af93-245fdb68048e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("02438743-0596-48c0-9ad9-218df1409352") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("6808a71d-29ad-4273-b83f-dacee1ccf955") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("abb7e519-b9ce-4af3-bf8c-7ba70eb2ef36") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("9f4cb971-63b8-4e70-873d-dca4bba4319c") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("7c8d6c90-19d5-4014-af93-245fdb68048e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("02438743-0596-48c0-9ad9-218df1409352") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("6808a71d-29ad-4273-b83f-dacee1ccf955") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("abb7e519-b9ce-4af3-bf8c-7ba70eb2ef36") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("9f4cb971-63b8-4e70-873d-dca4bba4319c") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("7c8d6c90-19d5-4014-af93-245fdb68048e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("02438743-0596-48c0-9ad9-218df1409352") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("6808a71d-29ad-4273-b83f-dacee1ccf955") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("abb7e519-b9ce-4af3-bf8c-7ba70eb2ef36") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("f1bbbfc3-48eb-4c8a-97ed-082732551441") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("eac17954-dfa6-4084-bfc7-33c8db0b7838") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("60d01a5d-2f26-4a25-88eb-b3eb7658096e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("519884e4-b1dd-48c2-867c-37fc1a42ff57") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("f1bbbfc3-48eb-4c8a-97ed-082732551441") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("eac17954-dfa6-4084-bfc7-33c8db0b7838") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("60d01a5d-2f26-4a25-88eb-b3eb7658096e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("519884e4-b1dd-48c2-867c-37fc1a42ff57") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("f1bbbfc3-48eb-4c8a-97ed-082732551441") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("eac17954-dfa6-4084-bfc7-33c8db0b7838") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("60d01a5d-2f26-4a25-88eb-b3eb7658096e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("519884e4-b1dd-48c2-867c-37fc1a42ff57") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("f1bbbfc3-48eb-4c8a-97ed-082732551441") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("eac17954-dfa6-4084-bfc7-33c8db0b7838") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("60d01a5d-2f26-4a25-88eb-b3eb7658096e") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("519884e4-b1dd-48c2-867c-37fc1a42ff57") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+:root{
+  --green:#1f3d2b;--green-700:#183021;--green-800:#112318;--green-50:#eef4ef;--green-100:#d5e4d9;
+  --terra:#c05621;--terra-600:#a2461a;--terra-50:#fcf1ea;
+  --gold:#b0894f;--gold-soft:#cbab72;--gold-line:#d9c39b;
+  --ivory:#faf5ee;--cream:#f3ebdf;--panel:#fffdf8;--card:#ffffff;
+  --ink:#23201a;--ink-2:#574f42;--ink-3:#7f7361;
+  --line:#e7dcc9;--line-soft:#efe6d6;
+  --leaf:#3e9c63;--amber:#e8a44d;--berry:#c0392b;--teal:#264653;
+  --serif:'Cormorant Garamond',Georgia,serif;
+  --sans:'Hanken Grotesk',-apple-system,system-ui,sans-serif;
+  --r-xs:2px;--r-sm:3px;--r-md:5px;--r-lg:8px;
+  --app:430px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:#e7ddcb;color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;display:flex;justify-content:center;align-items:center;min-height:100dvh;padding:26px 0}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:500;margin:0;letter-spacing:-.01em;color:var(--ink)}
+p{margin:0}
+button{font-family:inherit;cursor:pointer}
+.serif{font-family:var(--serif)}
+
+/* ---------- phone frame ---------- */
+.phone{width:var(--app);height:min(908px,94dvh);background:var(--ivory);border-radius:46px;position:relative;overflow:hidden;box-shadow:0 42px 90px -34px rgba(31,61,43,.55),0 0 0 10px #14110c,0 0 0 12px #2b2a26;display:flex;flex-direction:column}
+@media(max-width:480px){body{padding:0}.phone{width:100%;height:100dvh;border-radius:0;box-shadow:none}}
+
+/* status bar */
+.status{height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 34px;font-size:14px;font-weight:600;color:var(--ink);z-index:40;position:relative}
+.status .r{display:flex;gap:7px;align-items:center}
+.status svg{height:13px;width:auto;color:var(--ink)}
+
+/* header */
+.header{flex:none;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:30;position:relative}
+.wordmark{display:flex;align-items:center;gap:7px;font-family:var(--serif);font-weight:600;letter-spacing:-.02em;line-height:1}
+.header .wordmark{font-size:27px;color:var(--green)}
+.header .wordmark .m{color:var(--terra)}
+.header .loc{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em;margin-top:3px}
+.header .loc svg{width:12px;height:12px;color:var(--terra)}
+.iconbtn{width:40px;height:40px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;position:relative;color:var(--ink)}
+.iconbtn:active{transform:translateY(1px)}
+.iconbtn svg{width:20px;height:20px}
+.iconbtn .dot{position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;border-radius:20px;background:var(--terra);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:var(--sans);border:2px solid var(--ivory)}
+
+/* scroll body */
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.scroll::-webkit-scrollbar{display:none}
+.view{display:none}
+.view.on{display:block}
+.pad{padding:0 20px}
+.eyebrow{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--terra)}
+.eyebrow.q{color:var(--ink-3)}
+.sec-t{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 15px}
+.sec-t h3{font-size:25px}
+.sec-t a{font-size:12.5px;font-weight:600;color:var(--green);letter-spacing:.02em;text-decoration:none}
+.sec-t a:active{color:var(--terra)}
+
+/* ---------- HERO ---------- */
+.hero{position:relative;height:462px;overflow:hidden}
+.hero .shot{position:absolute;inset:0;background:
+  radial-gradient(120% 90% at 74% 20%,#e9c9a0 0%,rgba(233,201,160,0) 55%),
+  radial-gradient(120% 110% at 20% 84%,#4c7c60 0%,rgba(76,124,96,0) 52%),
+  linear-gradient(160deg,#2c5940 0%,#1f3d2b 46%,#183021 100%)}
+.hero .shot::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,35,24,.12) 0%,rgba(17,35,24,0) 34%,rgba(17,35,24,.62) 82%,rgba(17,35,24,.86) 100%)}
+.hero .glyph{position:absolute;right:-24px;top:60px;color:var(--gold-soft);opacity:.34}
+.hero .glyph svg{width:220px;height:220px}
+.hero .inner{position:absolute;left:0;right:0;bottom:0;padding:26px 24px 42px;z-index:2}
+.hero .eyebrow{color:var(--gold-soft)}
+.hero h1{color:#f6efe2;font-size:39px;line-height:1.03;font-weight:500;letter-spacing:-.02em;margin:12px 0 20px;max-width:12ch;text-wrap:balance}
+.hero .cta{display:inline-flex;align-items:center;gap:9px;background:var(--terra);color:#fff;border:0;border-radius:var(--r-sm);font-size:15px;font-weight:600;letter-spacing:.015em;padding:14px 26px;transition:.16s cubic-bezier(.2,.6,.2,1)}
+.hero .cta:hover{background:var(--terra-600)}
+.hero .cta:active{transform:translateY(1px)}
+.hero .cta svg{width:17px;height:17px}
+
+/* ---------- SEARCH centerpiece ---------- */
+.searchwrap{margin-top:-26px;padding:0 18px;position:relative;z-index:5}
+.search{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:0 16px 34px -20px rgba(31,61,43,.4);padding:0 8px 0 16px;height:58px;display:flex;align-items:center;gap:12px;transition:.16s}
+.search:focus-within{border-color:var(--green);box-shadow:0 16px 34px -20px rgba(31,61,43,.4),0 0 0 3px rgba(192,86,33,.14)}
+.search .mag{width:20px;height:20px;color:var(--green);flex:none}
+.search .fieldbox{position:relative;flex:1;min-width:0;height:100%;display:flex;align-items:center}
+.search input{border:0;outline:0;background:transparent;font-family:var(--sans);font-size:15.5px;color:var(--ink);width:100%;height:100%}
+.search .ph{position:absolute;left:0;top:50%;transform:translateY(-50%);pointer-events:none;font-size:15.5px;color:var(--ink-3);white-space:nowrap;display:flex;gap:5px}
+.search .ph .w{color:var(--ink-2);font-weight:500;transition:opacity .32s ease}
+.search .voice{width:42px;height:42px;border-radius:var(--r-sm);background:var(--green-50);border:0;display:flex;align-items:center;justify-content:center;color:var(--green);flex:none}
+.search .voice:active{transform:translateY(1px)}
+.search .voice svg{width:19px;height:19px}
+
+/* ---------- CUISINES ---------- */
+.section{padding:34px 0 0}
+.hscroll{display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;scrollbar-width:none}
+.hscroll::-webkit-scrollbar{display:none}
+.ctile{flex:none;width:138px;height:186px;border-radius:var(--r-lg);position:relative;overflow:hidden;border:1px solid rgba(0,0,0,.06)}
+.ctile .bg{position:absolute;inset:0}
+.ctile .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,35,24,0) 30%,rgba(17,35,24,.7) 100%)}
+.ctile .cg{position:absolute;top:14px;right:12px;color:#fff;opacity:.5}
+.ctile .cg svg{width:34px;height:34px}
+.ctile .lbl{position:absolute;left:14px;bottom:13px;z-index:2;color:#f6efe2}
+.ctile .lbl .n{font-family:var(--serif);font-weight:600;font-size:21px;line-height:1.05}
+.ctile .lbl .c{font-size:10.5px;letter-spacing:.06em;color:rgba(246,239,226,.72);margin-top:2px}
+.ctile:active{transform:translateY(1px)}
+
+/* ---------- HOW IT WORKS ---------- */
+.how{margin:36px 20px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:24px 22px}
+.how .steps{display:flex;flex-direction:column;gap:2px}
+.hstep{display:grid;grid-template-columns:34px 1fr;gap:15px;padding:13px 0;align-items:start}
+.hstep+.hstep{border-top:1px solid var(--line-soft)}
+.hstep .n{font-family:var(--serif);font-style:italic;font-size:17px;color:var(--gold);padding-top:2px}
+.hstep .ic{display:none}
+.hstep h4{font-size:19px;margin-bottom:2px}
+.hstep p{font-size:13px;color:var(--ink-2);line-height:1.5}
+
+/* ---------- PRODUCT GRID ---------- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;transition:.18s cubic-bezier(.2,.6,.2,1)}
+.pcard:active{transform:translateY(1px)}
+.pcard .shot{aspect-ratio:1/1;position:relative;display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 120% at 50% 22%,#fbf6ec 0%,#efe6d5 80%)}
+.pcard .shot .g{color:var(--gold);opacity:.5}
+.pcard .shot .g svg{width:40px;height:40px}
+.pcard .shot .fav{position:absolute;top:9px;right:9px;width:31px;height:31px;border-radius:50%;background:rgba(255,255,255,.85);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--terra)}
+.pcard .shot .fav svg{width:15px;height:15px}
+.pcard .shot .fav.on svg{fill:var(--terra)}
+.pcard .shot .flag{position:absolute;top:9px;left:9px;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--gold-line);border-radius:var(--r-xs);padding:4px 8px;background:linear-gradient(180deg,#fffdf8,#fbf5ea)}
+.pcard .shot .flag svg{width:11px;height:11px;color:var(--gold)}
+.pcard .shot .flag span{font-size:8.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--green)}
+.pcard .body{padding:12px 13px 14px}
+.pcard .nm{font-family:var(--serif);font-weight:600;font-size:19px;line-height:1.1;color:var(--ink)}
+.pcard .alt{font-size:11px;color:var(--ink-3);margin-top:2px;line-height:1.35}
+.pcard .v{display:inline-flex;align-items:center;gap:4px;color:var(--leaf);font-size:10.5px;margin:8px 0 10px}
+.pcard .v svg{width:12px;height:12px}
+.pcard .foot{display:flex;align-items:center;justify-content:space-between}
+.pcard .price{font-family:var(--serif);font-weight:600;font-size:19px;color:var(--ink)}
+.pcard .price small{font-family:var(--sans);font-size:10px;font-weight:400;color:var(--ink-3)}
+.pcard .add{width:34px;height:34px;border-radius:var(--r-sm);background:var(--green);border:0;color:#f4ede1;display:flex;align-items:center;justify-content:center;transition:.16s}
+.pcard .add:hover{background:var(--green-700)}
+.pcard .add:active{transform:translateY(1px)}
+.pcard .add svg{width:17px;height:17px}
+
+/* ---------- TASTE OF HOME promo ---------- */
+.promo{margin:38px 20px 0;background:linear-gradient(155deg,#20402d,#183021);border-radius:var(--r-lg);padding:2px;position:relative}
+.promo .in{border:1px solid rgba(203,171,114,.42);border-radius:7px;padding:26px 24px;position:relative;overflow:hidden}
+.promo .seal{position:absolute;right:-18px;top:-14px;color:var(--gold-soft);opacity:.28}
+.promo .seal svg{width:130px;height:130px}
+.promo .eyebrow{color:var(--gold-soft)}
+.promo h3{color:#f6efe2;font-size:27px;line-height:1.06;margin:11px 0 9px;max-width:15ch}
+.promo p{color:#cbbfa8;font-size:13px;line-height:1.5;max-width:34ch;margin-bottom:20px}
+.promo .btn{display:inline-flex;align-items:center;gap:8px;background:transparent;border:1.5px solid var(--gold-soft);color:#f6efe2;border-radius:var(--r-sm);padding:11px 20px;font-size:13.5px;font-weight:600;letter-spacing:.02em}
+.promo .btn:hover{background:rgba(203,171,114,.14)}
+.promo .btn svg{width:15px;height:15px;color:var(--gold-soft)}
+
+/* ---------- SELLER band ---------- */
+.seller{margin:22px 20px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:24px 22px;display:flex;flex-direction:column;gap:16px}
+.seller .eyebrow{color:var(--ink-3)}
+.seller h3{font-size:23px;line-height:1.1;margin-top:9px;max-width:18ch}
+.seller p{font-size:12.5px;color:var(--ink-2);margin-top:7px}
+.seller .btn{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:transparent;border:1.5px solid var(--green);color:var(--green);border-radius:var(--r-sm);padding:11px 20px;font-size:13.5px;font-weight:600}
+.seller .btn:hover{background:var(--green-50)}
+.seller .btn svg{width:15px;height:15px}
+
+.footline{text-align:center;padding:34px 20px 26px;color:var(--ink-3)}
+.footline hr{border:0;border-top:1px solid var(--gold-line);max-width:60px;margin:0 auto 18px}
+.footline .wordmark{font-size:26px;color:var(--green)}
+.footline .wordmark .m{color:var(--terra)}
+.footline p{font-size:11px;letter-spacing:.06em;color:var(--ink-3);margin-top:8px}
+.spacer{height:22px}
+
+/* ---------- placeholder views ---------- */
+.stub{height:100%;min-height:520px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 40px}
+.stub .ic{width:64px;height:64px;border-radius:50%;border:1px solid var(--gold-line);display:flex;align-items:center;justify-content:center;color:var(--gold);margin-bottom:22px;background:var(--panel)}
+.stub .ic svg{width:28px;height:28px}
+.stub h2{font-size:32px;margin-bottom:10px}
+.stub p{font-size:14px;color:var(--ink-2);max-width:30ch;line-height:1.55}
+.stub .eyebrow{margin-top:20px}
+
+/* ---------- TAB BAR ---------- */
+.tabbar{flex:none;height:74px;background:var(--panel);border-top:1px solid var(--line);display:flex;padding:8px 6px calc(8px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px -14px rgba(31,61,43,.3);z-index:30}
+.tab{flex:1;background:transparent;border:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--ink-3);position:relative;padding-top:4px}
+.tab svg{width:23px;height:23px;stroke-width:1.5}
+.tab .t{font-size:10.5px;font-weight:600;letter-spacing:.02em}
+.tab .pip{position:absolute;top:0;width:5px;height:5px;border-radius:50%;background:var(--gold);opacity:0;transition:.16s}
+.tab.on{color:var(--green)}
+.tab.on .pip{opacity:1}
+.tab:active{transform:translateY(1px)}
+
+/* toast */
+.toast{position:absolute;left:20px;right:20px;bottom:88px;background:var(--green);color:#f4ede1;border-radius:var(--r-md);padding:13px 17px;display:flex;align-items:center;gap:11px;font-size:13.5px;font-weight:500;box-shadow:0 16px 34px -16px rgba(17,35,24,.7);z-index:50;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(140%);transition:transform .34s cubic-bezier(.2,.6,.2,1),opacity .24s ease,visibility .34s}
+.toast.show{transform:translateY(0);opacity:1;visibility:visible}
+.toast svg{width:18px;height:18px;color:var(--gold-soft);flex:none}
+.toast b{font-weight:600}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- status bar -->
+  <div class="status">
+    <span>9:41</span>
+    <span class="r">
+      <svg viewBox="0 0 24 16" fill="currentColor"><rect x="0" y="6" width="3" height="6" rx="1"></rect><rect x="5" y="4" width="3" height="8" rx="1"></rect><rect x="10" y="2" width="3" height="10" rx="1"></rect><rect x="15" y="0" width="3" height="12" rx="1"></rect></svg>
+      <svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6.5a11 11 0 0 1 16 0M4.5 9.5a7 7 0 0 1 11 0M7 12.5a3 3 0 0 1 6 0" stroke-linecap="round"></path></svg>
+      <svg viewBox="0 0 26 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="1" width="21" height="12" rx="3"></rect><rect x="3" y="3" width="15" height="8" rx="1.5" fill="currentColor" stroke="none"></rect><rect x="23.5" y="4.5" width="1.8" height="5" rx="1" fill="currentColor" stroke="none"></rect></svg>
+    </span>
+  </div>
+
+  <!-- header -->
+  <div class="header">
+    <div>
+      <div class="wordmark"><svg class="leafmark" width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#1F3D2B" stroke-width="1.9" stroke-linecap="round" style="flex:none"><path d="M11 21c-5-1-8-5-8-11 6 0 10 4 10 11M13 21c5-1 8-5 8-11-6 0-10 4-10 11"></path><path d="M12 22V10" stroke="#C05621" stroke-width="2.2"></path></svg><span>Afri<span class="m">Mart</span></span></div>
+      <div class="loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21c5-5 8-8.4 8-12a8 8 0 1 0-16 0c0 3.6 3 7 8 12z"></path><circle cx="12" cy="9" r="2.6"></circle></svg> Deliver to · Houston, TX</div>
+    </div>
+    <button class="iconbtn" id="cartBtn" aria-label="Cart">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5h2l1.6 10.2a1.5 1.5 0 0 0 1.5 1.3h8a1.5 1.5 0 0 0 1.5-1.2L20.5 8H7" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="10" cy="20" r="1.2" fill="currentColor"></circle><circle cx="18" cy="20" r="1.2" fill="currentColor"></circle></svg>
+      <span class="dot" id="cartCount">2</span>
+    </button>
+  </div>
+
+  <div class="scroll" id="scroll">
+
+    <!-- ============ HOME ============ -->
+    <div class="view on" id="v-home">
+      <section class="hero">
+        <div class="shot"></div>
+        <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M11 21c-5-1-8-5-8-11 6 0 10 4 10 11M13 21c5-1 8-5 8-11-6 0-10 4-10 11M12 22V10" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+        <div class="inner">
+          <div class="eyebrow">The market from home</div>
+          <h1>The market from home, delivered anywhere in America</h1>
+          <button class="cta" data-nav="shop">Start shopping <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+      </section>
+
+      <div class="searchwrap">
+        <div class="search">
+          <svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4" stroke-linecap="round"></path></svg>
+          <div class="fieldbox">
+            <input id="search" aria-label="Search the market" autocomplete="off">
+            <div class="ph" id="ph"><span>Search the market —</span><span class="w" id="phWord">egusi</span></div>
+          </div>
+          <button class="voice" aria-label="Voice search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v4" stroke-linecap="round"></path></svg></button>
+        </div>
+      </div>
+
+      <!-- cuisines -->
+      <section class="section">
+        <div class="pad sec-t"><h3>Shop by cuisine</h3><a href="#" data-nav="shop">See all</a></div>
+        <div class="hscroll" id="cuisines"></div>
+      </section>
+
+      <!-- how it works -->
+      <div class="how">
+        <div class="pad" style="padding:0 0 6px"><div class="eyebrow q">How it works</div></div>
+        <div class="steps">
+          <div class="hstep"><div class="n">01</div><div><h4>Choose your market</h4><p>Browse verified sellers and homes cooks across the diaspora.</p></div></div>
+          <div class="hstep"><div class="n">02</div><div><h4>We pack with care</h4><p>Each seller packs your order fresh. One total, even across sellers.</p></div></div>
+          <div class="hstep"><div class="n">03</div><div><h4>Delivered to your door</h4><p>Ships in one to two days. Track every parcel to your doorstep.</p></div></div>
+        </div>
+      </div>
+
+      <!-- featured staples -->
+      <section class="section">
+        <div class="pad sec-t"><h3>Featured staples</h3><a href="#" data-nav="shop">See all</a></div>
+        <div class="pad grid" id="grid"></div>
+      </section>
+
+      <!-- taste of home promo -->
+      <div class="promo">
+        <div class="in">
+          <div class="seal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 2l2.4 1.8 3-.1 1 2.8 2.4 1.8-.9 2.9.9 2.9-2.4 1.8-1 2.8-3-.1L12 22l-2.4-1.8-3 .1-1-2.8L3.2 15.8l.9-2.9-.9-2.9 2.4-1.8 1-2.8 3 .1z"></path></svg></div>
+          <div class="eyebrow">A curated gift</div>
+          <h3>Taste of Home boxes</h3>
+          <p>A hand-picked selection of staples and treats, sealed and sent to someone you love.</p>
+          <button class="btn" data-nav="shop">Explore the boxes <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        </div>
+      </div>
+
+      <!-- seller invitation -->
+      <div class="seller">
+        <div>
+          <div class="eyebrow">Become a seller</div>
+          <h3>Own a store or cook from home? Sell on AfriMart.</h3>
+          <p>You stock the shelf, we handle the rest — payments, shipping and support.</p>
+        </div>
+        <button class="btn" data-nav="account">Start selling <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+      </div>
+
+      <div class="footline">
+        <hr>
+        <div class="wordmark" style="justify-content:center"><svg class="leafmark" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F3D2B" stroke-width="1.9" stroke-linecap="round" style="flex:none"><path d="M11 21c-5-1-8-5-8-11 6 0 10 4 10 11M13 21c5-1 8-5 8-11-6 0-10 4-10 11"></path><path d="M12 22V10" stroke="#C05621" stroke-width="2.2"></path></svg><span>Afri<span class="m">Mart</span></span></div>
+        <p>The market from home, delivered.</p>
+      </div>
+      <div class="spacer"></div>
+    </div>
+
+    <!-- ============ STUB VIEWS ============ -->
+    <div class="view" id="v-shop"><div class="stub"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8h16l-1 11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1L4 8zM8 8V6a4 4 0 0 1 8 0v2" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><h2>The full shop</h2><p>Browse every seller, aisle and cuisine — organised and searchable.</p><div class="eyebrow q">Next to build</div></div></div>
+
+    <div class="view" id="v-cook"><div class="stub"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 21h10M6 11a6 6 0 0 1 12 0v6H6v-6z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M15 5l.7 1.6L17.3 7l-1.6.7L15 9.3 14.3 7.7 12.7 7l1.6-.4z" fill="currentColor" stroke="none"></path></svg></div><h2>Cook</h2><p>Tell us the dish, we'll fill your cart. The recipe agent is a faster option — the full shop is always one tap away.</p><div class="eyebrow q">Next to build</div></div></div>
+
+    <div class="view" id="v-orders"><div class="stub"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3h12l1 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7l1-4z" stroke-linejoin="round"></path><path d="M9 11h6M9 15h4" stroke-linecap="round"></path></svg></div><h2>Your orders</h2><p>Track each parcel and reorder your staples in a tap.</p><div class="eyebrow q">Next to build</div></div></div>
+
+    <div class="view" id="v-account"><div class="stub"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8.5" r="3.5"></circle><path d="M5 20c1.4-4 4-6 7-6s5.6 2 7 6" stroke-linecap="round"></path></svg></div><h2>Account</h2><p>Addresses, payment and your seller profile, all in one place.</p><div class="eyebrow q">Next to build</div></div></div>
+
+  </div>
+
+  <!-- tab bar -->
+  <nav class="tabbar" id="tabbar">
+    <button class="tab on" data-tab="home"><span class="pip"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 11l8-7 8 7M6 10v9h4v-6h4v6h4v-9" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="t">Home</span></button>
+    <button class="tab" data-tab="shop"><span class="pip"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 8h16l-1 11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1L4 8zM8 8V6a4 4 0 0 1 8 0v2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="t">Shop</span></button>
+    <button class="tab" data-tab="cook"><span class="pip"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 21h10M6 11a6 6 0 0 1 12 0v6H6v-6z" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="t">Cook</span></button>
+    <button class="tab" data-tab="orders"><span class="pip"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 3h12l1 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7l1-4z" stroke-linejoin="round"></path><path d="M9 11h6M9 15h4" stroke-linecap="round"></path></svg><span class="t">Orders</span></button>
+    <button class="tab" data-tab="account"><span class="pip"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8.5" r="3.5"></circle><path d="M5 20c1.4-4 4-6 7-6s5.6 2 7 6" stroke-linecap="round"></path></svg><span class="t">Account</span></button>
+  </nav>
+
+  <div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"></path></svg><span id="toastMsg">Added to cart</span></div>
+
+</div>
+
+<script>
+// ----- data -----
+const cuisines=[
+  {n:'Nigerian',c:'West Africa',bg:'linear-gradient(165deg,#2c5940,#1f3d2b)'},
+  {n:'Ghanaian',c:'West Africa',bg:'linear-gradient(165deg,#c0662f,#8a4419)'},
+  {n:'Ethiopian',c:'Horn of Africa',bg:'linear-gradient(165deg,#7a3b2e,#4a2018)'},
+  {n:'Somali',c:'Horn of Africa',bg:'linear-gradient(165deg,#3f6d63,#254a44)'},
+  {n:'Kenyan',c:'East Africa',bg:'linear-gradient(165deg,#4c7c60,#274b39)'},
+  {n:'Cameroonian',c:'Central Africa',bg:'linear-gradient(165deg,#a2461a,#5f2810)'}
+];
+const glyphs={
+  leaf:'<path d="M11 21c-5-1-8-5-8-11 6 0 10 4 10 11M13 21c5-1 8-5 8-11-6 0-10 4-10 11M12 22V10" stroke-linecap="round" stroke-linejoin="round"/>',
+  wheat:'<path d="M12 22V9M12 9c0-2 1.5-3.5 3.5-3.5 0 2-1.5 3.5-3.5 3.5zM12 9c0-2-1.5-3.5-3.5-3.5 0 2 1.5 3.5 3.5 3.5zM12 14c0-2 1.5-3.5 3.5-3.5 0 2-1.5 3.5-3.5 3.5zM12 14c0-2-1.5-3.5-3.5-3.5 0 2 1.5 3.5 3.5 3.5z" stroke-linecap="round" stroke-linejoin="round"/>',
+  pepper:'<path d="M8 8c0-3 3-4 5-3M8 8c-2 3-1 8 3 10 5 2 8-3 6-7-1.5-3-6-4-9-3z" stroke-linecap="round" stroke-linejoin="round"/>',
+  jar:'<path d="M8 3h8M7 7h10v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V7zM7 7c0-2 1.5-3 2.5-3M17 7c0-2-1.5-3-2.5-3" stroke-linecap="round" stroke-linejoin="round"/>'
+};
+const products=[
+  {n:'Egusi',a:'Ground melon seeds · 500g',s:'Adunni Foods',p:'$8.50',u:'/ bag',g:'leaf',fresh:true},
+  {n:'Garri',a:'Gari · cassava flakes · èbà · 2kg',s:'Kwame & Sons',p:'$12.00',u:'/ 2kg',g:'wheat',fresh:false},
+  {n:'Red Palm Oil',a:'Cold-pressed · unrefined · 1L',s:'Mama Ngozi',p:'$15.30',u:'/ litre',g:'jar',fresh:false},
+  {n:'Ata Rodo',a:'Scotch bonnet peppers · 250g',s:'Lagos Fresh',p:'$6.75',u:'/ pack',g:'pepper',fresh:true}
+];
+const checkIc='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const heartIc='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21c5-3 8-6.5 8-11a5 5 0 0 0-9-3 5 5 0 0 0-9 3c0 4.5 3 8 8 11z"/></svg>';
+const plusIc='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>';
+const freshIc='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21c5-3 8-6.5 8-11a5 5 0 0 0-9-3 5 5 0 0 0-9 3c0 4.5 3 8 8 11z"/></svg>';
+
+// ----- render cuisines -----
+document.getElementById('cuisines').innerHTML=cuisines.map(c=>`
+  <button class="ctile" data-nav="shop">
+    <div class="bg" style="background:${c.bg}"></div>
+    <div class="cg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">${glyphs.leaf}</svg></div>
+    <div class="lbl"><div class="n">${c.n}</div><div class="c">${c.c}</div></div>
+  </button>`).join('');
+
+// ----- render products -----
+document.getElementById('grid').innerHTML=products.map((p,i)=>`
+  <article class="pcard">
+    <div class="shot">
+      ${p.fresh?`<span class="flag">${freshIc}<span>Fresh</span></span>`:''}
+      <button class="fav" data-fav="${i}" aria-label="Save">${heartIc}</button>
+      <span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">${glyphs[p.g]}</svg></span>
+    </div>
+    <div class="body">
+      <div class="nm">${p.n}</div>
+      <div class="alt">${p.a}</div>
+      <div class="v">${checkIc.replace('stroke-width="2.4"','stroke-width="2"')} ${p.s}</div>
+      <div class="foot"><div class="price">${p.p} <small>${p.u}</small></div><button class="add" data-add="${i}" aria-label="Add to cart">${plusIc}</button></div>
+    </div>
+  </article>`).join('');
+
+// ----- rotating search placeholder -----
+const words=['egusi','gari','ata rodo','berbere','suya spice'];
+let wi=0;const phWord=document.getElementById('phWord');
+setInterval(()=>{if(document.activeElement===document.getElementById('search'))return;
+  phWord.style.opacity=0;
+  setTimeout(()=>{wi=(wi+1)%words.length;phWord.textContent=words[wi];phWord.style.opacity=1;},320);
+},2400);
+const searchEl=document.getElementById('search'),phEl=document.getElementById('ph');
+const syncPh=()=>{phEl.style.display=searchEl.value?'none':'flex';};
+searchEl.addEventListener('input',syncPh);
+searchEl.addEventListener('focus',()=>{phEl.style.opacity=.5;});
+searchEl.addEventListener('blur',()=>{phEl.style.opacity=1;});
+
+// ----- cart + toast -----
+let cart=2;const cartCount=document.getElementById('cartCount');
+const toast=document.getElementById('toast'),toastMsg=document.getElementById('toastMsg');
+let toastT;
+function showToast(msg){toastMsg.textContent=msg;toast.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toast.classList.remove('show'),2100);}
+document.getElementById('grid').addEventListener('click',e=>{
+  const add=e.target.closest('[data-add]');const fav=e.target.closest('[data-fav]');
+  if(add){cart++;cartCount.textContent=cart;showToast(`${products[+add.dataset.add].n} added to cart`);}
+  if(fav){fav.classList.toggle('on');fav.querySelector('path').setAttribute('fill',fav.classList.contains('on')?'currentColor':'none');}
+});
+document.getElementById('cartBtn').addEventListener('click',()=>showToast(`${cart} items in your cart`));
+
+// ----- navigation -----
+const views={home:'v-home',shop:'v-shop',cook:'v-cook',orders:'v-orders',account:'v-account'};
+const scroll=document.getElementById('scroll');
+function go(tab){
+  Object.values(views).forEach(id=>document.getElementById(id).classList.remove('on'));
+  document.getElementById(views[tab]).classList.add('on');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
+  scroll.scrollTop=0;
+}
+document.getElementById('tabbar').addEventListener('click',e=>{const t=e.target.closest('.tab');if(t)go(t.dataset.tab);});
+document.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();go(el.dataset.nav);}));
+</script>
+
+
+</body></html>
