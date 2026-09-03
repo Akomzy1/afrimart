@@ -39,12 +39,13 @@ Use these exactly — do not approximate or invent adjacent shades.
 | Token | Hex | Use |
 |---|---|---|
 | Market Green | `#1F3D2B` | Primary brand color, dominant surface/ground |
-| Harvest Amber | `#E8A44D` | Accent — sparingly, for the single most important action per screen |
-| Amber (text/heading-safe) | `#9C6B2E` | Darkened amber for readable text/headings on light backgrounds (raw `#E8A44D` is too pale for text) |
+| Terracotta | `#C05621` | Accent — sparingly, one terracotta action per screen |
+| Antique Gold | `#B0894F` | Ceremony only — seals, dividers, Taste of Home boxes. Never a call-to-action color |
+| Amber | `#E8A44D` | Star ratings and freshness marks only — not an accent, not for buttons |
 | Ivory | `#FAF5EE` | Background, warm off-white, not stark white |
-| Ink | `#222222` | Body text |
+| Ink | `#23201A` | Body text (warm charcoal, not neutral gray) |
 
-**⚠ Unresolved conflict with the prototype, flagged not silently fixed:** the built Design System prototype (`/docs/prototype/AfriMart Design System.html`) does not use this table. Its actual single-action accent is **Terracotta `#C05621`** ("one terracotta action per screen" — every primary CTA across all six functional prototype pages uses it); Amber `#E8A44D` appears only for star ratings, and a separate Antique Gold `#B0894F` is reserved for ceremony (seals, dividers, Taste of Home). Ink is `#23201A` (warm charcoal) rather than `#222222`. Since no Brand Guide PDF has been supplied yet to arbitrate, this file cannot say which is authoritative — resolve with the person before `packages/ui` locks in an accent color, rather than guessing.
+**Resolved 2026-09-03:** this table previously named Harvest Amber as the accent, which conflicted with the built Design System prototype (every primary CTA across all six functional prototype pages uses Terracotta). Confirmed with the person: Terracotta is the accent, matching the prototype exactly. This table has been corrected to match; no Brand Guide PDF has been supplied yet, so re-check against it when it arrives.
 
 Typography direction: a classic high-contrast serif for display/headlines, a clean humanist sans for UI and body text. Aesthetic: premium and classic — "heritage grocer," not discount e-commerce or generic startup. Voice: warm, plain-spoken, dignified, never salesy, no exclamation marks.
 
@@ -103,6 +104,21 @@ afrimart/
 ```
 
 One backend, one design-system package, two thin frontend apps. Buyer and merchant never talk to each other directly — both go through the backend. Do not duplicate order/catalogue/routing logic between the two apps.
+
+## Tech stack (confirmed 2026-09-03)
+
+| Part | Choice | Notes |
+|---|---|---|
+| `apps/buyer`, `apps/merchant` | Next.js (App Router), TypeScript | One framework for both so `packages/ui` stays truly shared; buyer benefits from SSR/ISR on browse/product pages, merchant runs mostly client-rendered |
+| `services/backend` | Node.js/TypeScript, Fastify + tRPC | End-to-end typed API into `packages/api-client` without codegen |
+| Database | PostgreSQL + Prisma | Prisma's generated types back `packages/shared` |
+| Payments | Stripe Connect | Per PRD INT-2 — marketplace collection/splitting/payouts |
+| Shipping | EasyPost | Per PRD INT-1 — rates, labels, tracking, address validation across carriers |
+| SMS | Twilio, A2P 10DLC registered | Per PRD INT-3 — merchant alerts (MCH-7) and buyer notifications (NTF-2) |
+| AI (vision cataloguing, Cook agent, embeddings/search) | Claude (Anthropic API) + Voyage embeddings | ONB-2 vision cataloguing, AGT-2/AGT-6 conversational agent and cooking guidance, CAT-2/CAT-3 knowledge-graph matching |
+| Sales tax | Stripe Tax | Per PRD PAY-5/INT-6, integrates directly with Stripe Connect |
+| Hosting | Vercel (both PWAs), Railway (backend + Postgres) | Low-ops for MVP stage |
+| Package manager / monorepo tool | npm workspaces + Turborepo | Cross-platform, no extra global install required |
 
 ## Build sequencing
 
