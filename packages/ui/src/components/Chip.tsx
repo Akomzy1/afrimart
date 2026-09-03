@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 
 export interface ChipProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  /** `on` = selected cuisine/filter. `suggest` = dashed, terracotta — Cook agent suggestions only. */
+  /** `on` = selected cuisine/filter. `suggest` = dashed, amber — Cook agent suggestions only. */
   variant?: "default" | "on" | "suggest";
 }
 

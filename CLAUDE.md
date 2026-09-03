@@ -39,13 +39,15 @@ Use these exactly — do not approximate or invent adjacent shades.
 | Token | Hex | Use |
 |---|---|---|
 | Market Green | `#1F3D2B` | Primary brand color, dominant surface/ground |
-| Terracotta | `#C05621` | Accent — sparingly, one terracotta action per screen |
-| Antique Gold | `#B0894F` | Ceremony only — seals, dividers, Taste of Home boxes. Never a call-to-action color |
-| Amber | `#E8A44D` | Star ratings and freshness marks only — not an accent, not for buttons |
+| Harvest Amber | `#E8A44D` | Accent — sparingly, for the single most important action per screen. Use dark Ink text on solid amber, never white (raw amber fails contrast with white text) |
 | Ivory | `#FAF5EE` | Background, warm off-white, not stark white |
-| Ink | `#23201A` | Body text (warm charcoal, not neutral gray) |
+| Ink | `#222222` | Body text |
 
-**Resolved 2026-09-03:** this table previously named Harvest Amber as the accent, which conflicted with the built Design System prototype (every primary CTA across all six functional prototype pages uses Terracotta). Confirmed with the person: Terracotta is the accent, matching the prototype exactly. This table has been corrected to match; no Brand Guide PDF has been supplied yet, so re-check against it when it arrives.
+**Resolved 2026-09-03, superseding the same-day note above:** `/docs/AfriMart_Brand_Guide.pdf` has now been supplied and is unambiguous — Harvest Amber is the accent; the guide never mentions terracotta at all. This reverses the earlier same-day decision, which was made only from the prototype's apparent usage, before the actual guide existed in the repo.
+
+**Standing conflict, now permanent, not a TODO:** every prototype page under `/docs/prototype/`, including the dedicated `AfriMart Logo and Social Kit.html`, was built from a brief that swapped the two roles — that file's own CSS header literally reads "terracotta accent" and defines `--terracotta-500: #C05621 /* BRAND ACCENT */` with amber demoted to "freshness, stars, warning." The prototypes will never be edited to match (they're a historical export), so when building UI: wherever a prototype page uses `#C05621`/terracotta as the one accent action, render it in Harvest Amber `#E8A44D` instead — same layout, same "one accent action per screen" placement, corrected color. Do not silently keep terracotta because "that's what the prototype shows"; that was exactly the mistake the same-day resolution made.
+
+The logo mark's leaf-and-stem geometry is identical across every prototype page (same SVG path data) and matches the Brand Guide's description (two-leaf seedling, one upright stem) — only the stem's color needs correcting from terracotta to amber. `packages/ui` ships this as the `LogoMark`/`Logo` components (see below); no raw exported logo files exist in the repo yet (`/docs/brand/` is still empty), so treat the component as the source of truth for the mark until real exported assets (SVG/PNG at the sizes the Logo and Social Kit page lists) are supplied.
 
 Typography direction: a classic high-contrast serif for display/headlines, a clean humanist sans for UI and body text. Aesthetic: premium and classic — "heritage grocer," not discount e-commerce or generic startup. Voice: warm, plain-spoken, dignified, never salesy, no exclamation marks.
 

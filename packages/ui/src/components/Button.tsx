@@ -9,7 +9,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * One terracotta (`accent`) action per screen — see CLAUDE.md brand tokens.
+ * One amber (`accent`) action per screen — see CLAUDE.md brand tokens.
  * `primary` (deep green) is the default confident action; `secondary`/`ghost`
  * are lower-emphasis alternatives, matching the Design System's button demo.
  */
