@@ -13,8 +13,8 @@
     "./global.css": "./src/global.css"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --external react",
-    "dev": "tsup src/index.ts --format esm --dts --external react --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {

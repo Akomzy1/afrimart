@@ -1,1 +1,33 @@
 /* App-specific overrides only — shared tokens and component styles live in @afrimart/ui/global.css. */
+
+/*
+ * The prototypes present every screen inside a 430px phone-frame mockup —
+ * that bezel is presentational scaffolding for the design file, not part of
+ * the UI itself. CLAUDE.md calls the buyer app responsive, but every
+ * screen prototyped so far only shows the mobile layout, so absent a
+ * desktop-specific design, this renders that same mobile layout in a
+ * centered column on wider viewports rather than inventing a new desktop
+ * arrangement — flagged in the Prompt 3 summary as a deviation to confirm.
+ */
+html, body {
+  height: 100%;
+}
+.app-shell {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ivory);
+  position: relative;
+}
+@media (min-width: 481px) {
+  .app-shell {
+    box-shadow: 0 0 0 1px var(--line);
+    min-height: 100vh;
+  }
+}
+.app-scroll {
+  flex: 1;
+  min-height: 0;
+}

@@ -90,6 +90,10 @@ model Store {
 model CanonicalProduct {
   id                String            @id @default(cuid())
   canonicalName     String
+  /// Short plain-English gloss, e.g. "melon seeds" -- composed with canonicalName/packSize for card subtitles.
+  shortDescription  String
+  /// AGT-6 grounding text and the product page's "How it's used" copy.
+  usedDescription   String
   category          String
   cuisine           String
   packSize          String
@@ -125,9 +129,25 @@ model Listing {
   batchQuantityCap   Int?
   temperatureClass   TemperatureClass
   shippingWeightOz   Float
+  /// PRD QC-5 -- the buyer-facing freshness/quality-guarantee badge, distinct from temperatureClass.
+  freshnessGuarantee Boolean          @default(false)
   cartItems          CartItem[]
+  reviews            Review[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+}
+
+/// Star rating + written review. Not explicitly named as its own entity in PRD
+/// section 9, but implied as an input to QC-4's seller quality score -- modeled
+/// here to support SRCH-3's product-detail review list.
+model Review {
+  id        String   @id @default(cuid())
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  listingId String
+  buyerName String
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
 }
 
 model Buyer {

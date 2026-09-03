@@ -18,4 +18,16 @@ export interface Listing extends Timestamps {
   /** Overrides the canonical product's default, if this store's fulfilment differs. */
   temperatureClass: TemperatureClass;
   shippingWeightOz: number;
+  /** PRD QC-5 — the buyer-facing freshness/quality-guarantee badge, distinct from temperatureClass. */
+  freshnessGuarantee: boolean;
+}
+
+/** Star rating + written review, an input to QC-4's seller quality score. */
+export interface Review {
+  id: ID;
+  listingId: ID;
+  buyerName: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
 }

@@ -15,6 +15,10 @@ export type AliasLanguage =
 export interface CanonicalProduct extends Timestamps {
   id: ID;
   canonicalName: string;
+  /** Short plain-English gloss, e.g. "melon seeds" — composed with canonicalName/packSize for card subtitles. */
+  shortDescription: string;
+  /** AGT-6 grounding text and the product page's "How it's used" copy. */
+  usedDescription: string;
   category: string;
   cuisine: string;
   packSize: string;

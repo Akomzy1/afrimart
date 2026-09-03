@@ -9,3 +9,4 @@ export * from "./types/shipment";
 export * from "./types/payment";
 export * from "./types/subscription";
 export * from "./types/quality";
+export * from "./types/catalogue";
