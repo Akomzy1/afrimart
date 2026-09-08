@@ -78,6 +78,8 @@ Pay particular attention to fidelity on these PRD-critical behaviours, and confi
 - One total shown to the buyer, never two shipping fees, with the multi-parcel arrival clearly disclosed (CART-5, CART-6)
 - The Cook agent is reachable and usable, but never blocks or gates standard cart/checkout (Product principles: "Cook is optional, never a gate")
 
+**Do not build Plan an Event in this pass.** The Cook agent has a Phase 2 extension — Plan an Event (PRD AGT-8 through AGT-13) — that turns the same conversational surface into menu-based, catering-scale event planning with bulk seller matching. It is Phase 2, out of scope here, and no prototype page exists for its specific screens yet (the consolidated multi-dish list, the event-date field, and the share/approve action). Build only the Phase 1 recipe-to-cart behaviour shown in the current prototype; when Plan an Event is scheduled, the Cook prototype will need to be extended first, then this screen revisited.
+
 ---
 
 ## Prompt 5 — Buyer app: boxes, tracking, and account

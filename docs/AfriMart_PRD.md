@@ -43,6 +43,8 @@ Local same-day delivery is out of scope — it competes with Instacart in the on
 
 **The occasion cook and gifter** shops for a specific event or sends food to a student or relative. Primary user of recipe-to-cart and curated boxes.
 
+**The professional event planner** sources food on behalf of a client's event rather than their own household, often running several events at once. Primary user of Plan an Event's saved-events and propose-then-approve sharing (AGT-12, AGT-13); a natural candidate for a light professional account profile as the feature matures.
+
 **Sellers**
 
 **The cash-based store owner** runs a family business with no POS, no catalogue, and low digital comfort. Onboarded by filming shelves; operates entirely through the chat-simple merchant app. The majority of supply.
@@ -120,6 +122,9 @@ The cultural knowledge graph and entity resolution are a core moat: they make a 
 | **CAT-4** | Store listing model: canonical SKU plus store-specific price, stock status, and fulfilment attributes.                                                         | 1         |
 | **CAT-5** | Temperature and handling classification (ambient / refrigerated / frozen) and shipping weight per product, to drive routing and feasibility.                   | 1         |
 | **CAT-6** | Confidence thresholds that route uncertain vision- or extraction-derived items to manual confirmation before publishing.                                       | 1         |
+| **CAT-7** | Bulk/wholesale seller flag: a store or seller can opt in to fulfil catering-scale quantities, used by the routing engine to match Plan an Event orders (see AGT-11). | 2         |
+| **CAT-8** | Authenticity and provenance badging: products and sellers carry a visible trust signal — diaspora-owned, imported-direct, or made-in-USA-by-an-African-brand — surfaced on listing and product pages. | 1 |
+| **CAT-9** | Vendor and product storytelling: an optional short origin story (the farm, the family recipe, the founder) attachable to a seller profile or hero product, surfaced on product and seller pages. | 2 |
 
 ### 6.4 Discovery and Search
 
@@ -162,6 +167,13 @@ An optional layer for jobs a product grid cannot do — never a gate in front of
 | **AGT-5** | Agent obeys the same routing, feasibility, and threshold logic as standard checkout.                                                                                                                                                                                      | 1         |
 | **AGT-6** | Cooking guidance: on request, the agent provides step-by-step instructions for the named dish, scaled to the buyer's headcount and grounded in the items they ordered, drawing on a curated, authenticity-reviewed recipe library that the AI adapts rather than invents. | 1         |
 | **AGT-7** | Cook-along and delivery follow-up: when a recipe order is delivered, the agent offers to guide the cooking session (“your ingredients have arrived — ready to cook?”), closing the loop from recipe to basket to delivery to a successful meal.                           | 2         |
+| **AGT-8** | Plan an Event: menu-based input for an occasion — event type, guest count, and either the buyer's own list of dishes or a request for an AI-suggested menu by occasion (e.g. naming ceremony, wedding, Eid, graduation). | 2 |
+| **AGT-9** | Ingredient consolidation and catering-scale quantities: merge overlapping ingredients across every dish in the menu into one deduplicated list, scaled using catering ratios rather than simple per-recipe multiplication. | 2 |
+| **AGT-10** | Event-date-anchored feasibility: check the full order against the buyer's stated event date with a built-in safety buffer, proactively flagging or substituting any item that risks arriving late. | 2 |
+| **AGT-11** | Bulk/wholesale seller matching: route catering-scale quantities to sellers who opt in to bulk fulfilment (see CAT-7), splitting or consolidating across sellers as the routing engine requires. | 2 |
+| **AGT-12** | Shareable event list in two modes: collaborative editing for a family or co-host planning together, and propose-then-approve for a professional planner sourcing on behalf of a client. | 2 |
+| **AGT-13** | Saved, named events: a buyer can maintain several in-progress events at once (e.g. by client or occasion) rather than starting over each time — primarily for the professional planner persona. | 2 |
+| **AGT-14** | Cuisine and dietary personalization: the agent and discovery surface remember a household's regional and cuisine preferences (e.g. Nigerian, Ethiopian, Ghanaian, Senegalese) and dietary needs, tailoring recommendations, Cook, and Plan an Event suggestions accordingly. | 2 |
 
 ### 6.7 Payments
 
@@ -214,6 +226,7 @@ Later-phase revenue and retention mechanics, specified at low resolution here.
 | **SUB-2** | Recurring box subscriptions with management and pause/cancel.                     | 2         |
 | **SUB-3** | Free-shipping membership tier.                                                    | 3         |
 | **SUB-4** | Brand advertising and sponsored placement for African food brands.                | 3         |
+| **SUB-5** | Send-to-family gifting: any order, not only Taste of Home boxes, can ship to a recipient other than the buyer, with a gift note and optional gift packaging — letting a buyer stock a relative or student's pantry from afar. | 2 |
 
 ### 6.11 Operations Console
 
@@ -257,6 +270,17 @@ Quality on AfriMart is a layered system rather than an assumption: standards at 
 | **QC-5** | Buyer-facing freshness and quality guarantee: a clear money-back promise on items that arrive damaged, expired, or not as described.                              | 1         |
 | **QC-6** | Enforcement ladder: automated thresholds moving a seller from warning, to listing suspension, to delisting, administered through the operations console.          | 1         |
 | **QC-7** | Operations sampling: periodic test orders placed by the platform to spot-check quality, packaging, and accuracy across sellers.                                   | 2         |
+
+### 6.14 Community and Social Discovery
+
+AfriMart adds a light social layer on top of transactions — not a general social network, but the specific mechanics that let buyers discover through each other and let trusted voices amplify sellers, which no incumbent in the category offers.
+
+| **ID**    | **Requirement**                                                                                                                                                   | **Phase** |
+|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| **COM-1** | Recipe sharing: a buyer can save, publish, and share a recipe or Plan an Event menu (see AGT-8) as a reusable template other buyers can view and shop from directly. | 2 |
+| **COM-2** | Authenticity ratings: buyers who purchase a badged-authentic product (see CAT-8) can leave a specific authenticity rating, separate from the general quality rating in 6.13, surfaced alongside the badge. | 2 |
+| **COM-3** | Creator and cook-along content: a lightweight surface for community or creator-submitted cook-along videos and posts linked to specific products and recipes, discoverable from product and recipe pages. | 3 |
+| **COM-4** | Follow a seller or creator: a buyer can follow a favourite home seller, store, or content creator and receive updates on new listings or content. | 3 |
 
 ## 7. Non-Functional Requirements
 
@@ -317,8 +341,8 @@ Requirements above are tagged to the phase in which they are expected to ship. T
 | **Phase**   | **Scope**                                                                                                                                                                                                                                                                                                                                                          | **Exit criteria**                                                       |
 |-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------|
 | **Phase 1** | MVP: filming + structured-import onboarding, merchant app with SMS rail, canonical catalogue and search, cart and single-store-preferring routing, recipe-to-cart, marketplace payments, ambient nationwide shipping, tracking, and the operations console. One supply metro. Includes home-based sellers of shelf-stable goods under a seller-verification layer. | First 1,000 nationwide orders; positive contribution on ambient orders  |
-| **Phase 2** | Cold-chain and perishables; second supply metro; anchor-store consolidation; auto-replenishment; curated boxes; AI extraction fallback and two-way sync; fresh and prepared home food; the aspiring-entrepreneur on-ramp with demand-testing and AI seller guidance; Canada expansion groundwork.                                                                  | Repeat-purchase rate above 40%; perishable damage rate within tolerance |
-| **Phase 3** | Free-shipping membership tier; brand advertising platform; negotiated carrier contracts; native iOS and Android apps (success-gated); expansion across remaining supply metros.                                                                                                                                                                                    | Membership-driven margin; advertising revenue live                      |
+| **Phase 2** | Cold-chain and perishables; second supply metro; anchor-store consolidation; auto-replenishment; curated boxes; AI extraction fallback and two-way sync; fresh and prepared home food; the aspiring-entrepreneur on-ramp with demand-testing and AI seller guidance; Plan an Event menu-based catering and bulk seller matching; Canada expansion groundwork.                                                                  | Repeat-purchase rate above 40%; perishable damage rate within tolerance |
+| **Phase 3** | Free-shipping membership tier; brand advertising platform; negotiated carrier contracts; native iOS and Android apps (success-gated); vertical/direct import on hero staples; exploratory adjacent categories (e.g. beauty and haircare); expansion across remaining supply metros.                                                                                                                                                                                    | Membership-driven margin; advertising revenue live                      |
 
 ## 11. Risks and Mitigations
 
