@@ -22,7 +22,7 @@ export function AlsoAvailable({ items, glyph, unitLabel }: AlsoAvailableProps) {
           <div className="m">
             <div className="n">
               {a.sellerName}
-              {a.sellerVerified && <SealIcon className="seal" />}
+              {a.sellerVerified && <SealIcon className="sealmark" />}
             </div>
             <div className="s">{a.metro} · ships in 1–2 days</div>
           </div>

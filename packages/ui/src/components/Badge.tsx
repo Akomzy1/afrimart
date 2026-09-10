@@ -26,7 +26,7 @@ export interface SealProps {
 /** The understated "mark of trust" seal — e.g. Verified Seller, Freshness Promise. */
 export function Seal({ icon, label }: SealProps) {
   return (
-    <span className="seal">
+    <span className="am-seal">
       {icon}
       <span className="lbl">{label}</span>
     </span>

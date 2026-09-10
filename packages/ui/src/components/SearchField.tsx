@@ -9,7 +9,7 @@ export interface SearchFieldProps extends InputHTMLAttributes<HTMLInputElement> 
 /** SRCH-1 — the multilingual, multi-spelling search field. */
 export function SearchField({ label, hint, ...props }: SearchFieldProps) {
   return (
-    <div className="field">
+    <div className="am-field">
       <label>{label}</label>
       <div className="box">
         <SearchIcon />

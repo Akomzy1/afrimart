@@ -1,19 +1,41 @@
 /* App-specific overrides only — shared tokens and component styles live in @afrimart/ui/global.css. */
 
 /*
- * The prototypes present every screen inside a 430px phone-frame mockup —
- * that bezel is presentational scaffolding for the design file, not part of
- * the UI itself. CLAUDE.md calls the buyer app responsive, but every
- * screen prototyped so far only shows the mobile layout, so absent a
- * desktop-specific design, this renders that same mobile layout in a
- * centered column on wider viewports rather than inventing a new desktop
- * arrangement — flagged in the Prompt 3 summary as a deviation to confirm.
+ * Three-tier responsive frame, from the re-exported prototypes.
+ *
+ * The prototypes present each screen inside a phone-frame mockup; that bezel
+ * is presentational scaffolding for the design file, not part of the UI. What
+ * is real is the tier system it sits in:
+ *
+ *   mobile  (<=700px)         the app column, mobile header + bottom tab bar
+ *   tablet  (701-1199.98px)   column widens to 680px, mobile chrome retained
+ *   desktop (>=1200px)        frame dissolves to full width; .dnav replaces
+ *                             the mobile header and tab bar (both hidden),
+ *                             and page content sits in a 1320px container
+ *                             with 56px gutters
+ *
+ * Screens opt into the desktop container with .container; converting Home,
+ * Shop, Search, and Product detail to use it is a later pass.
  */
 html, body {
   height: 100%;
 }
+
+/* Reserve the scrollbar track even on pages too short to scroll, so moving
+   between a scrolling screen and a short one doesn't shift content sideways. */
+html {
+  scrollbar-gutter: stable;
+}
+
+:root {
+  --app: 480px;
+  --container: 1320px;
+  --gutter: 56px;
+}
+
 .app-shell {
-  max-width: 480px;
+  width: 100%;
+  max-width: var(--app);
   margin: 0 auto;
   min-height: 100dvh;
   display: flex;
@@ -21,13 +43,371 @@ html, body {
   background: var(--ivory);
   position: relative;
 }
+
 @media (min-width: 481px) {
   .app-shell {
     box-shadow: 0 0 0 1px var(--line);
     min-height: 100vh;
   }
 }
+
+@media (min-width: 701px) and (max-width: 1199.98px) {
+  :root {
+    --app: 680px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-shell {
+    max-width: none;
+    box-shadow: none;
+  }
+}
+
 .app-scroll {
   flex: 1;
   min-height: 0;
+}
+
+/* Desktop content container. No-op below 1200px, where the app column already
+   constrains width. */
+.container {
+  width: 100%;
+}
+
+@media (min-width: 1200px) {
+  .container {
+    max-width: var(--container);
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: var(--gutter);
+    padding-right: var(--gutter);
+  }
+}
+
+/* ---------- prototype layout utilities ----------
+   These are referenced by the screens but were never defined, so the elements
+   using them rendered unstyled: section headings sat flush against the shell
+   edge and the product/chip rows stacked instead of forming rows. Values are
+   the prototype's. (.pad is 0 20px on the home page and 0 18px on browse; 20px
+   is used here for both.) */
+.pad { padding: 0 20px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 16px 20px; }
+
+/* Mobile chrome the desktop nav replaces at >=1200px. */
+@media (min-width: 1200px) {
+  .mobile-chrome {
+    display: none !important;
+  }
+  /* .pad sits inside .container at this tier, which already supplies the
+     gutter — keeping both would double the inset. */
+  .pad {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* ============================================================
+   Home screen — AfriMart Buyer App.html
+   Base values below are the mobile layout as previously built, moved out of
+   inline styles unchanged so the tiers above them have something to override.
+   Section order is fixed and matches the prototype; only sizing and flow
+   change per tier.
+   ============================================================ */
+
+.home-hero {
+  position: relative;
+  padding: 40px 20px 44px;
+  background: linear-gradient(160deg, #2c5940 0%, #1f3d2b 46%, #183021 100%);
+  overflow: hidden;
+}
+.home-hero-glyph { position: absolute; right: -24px; top: 20px; opacity: 0.34; }
+.home-hero-inner { position: relative; }
+.home-hero h1 {
+  color: #f6efe2;
+  font-size: 36px;
+  line-height: 1.05;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 12px 0 22px;
+  max-width: 12ch;
+}
+
+.home-searchwrap { margin: -26px 18px 0; position: relative; z-index: 5; }
+
+/* Padding-top only: a shorthand here would clobber .container's gutters, since
+   both selectors have equal specificity and this rule comes later. */
+.home-section { padding-top: 34px; }
+
+.home-cuisines { display: flex; gap: 14px; overflow-x: auto; padding: 0 20px 4px; }
+.home-ctile {
+  flex: none;
+  width: 138px;
+  height: 186px;
+  border-radius: var(--r-lg);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  display: block;
+}
+
+.home-how {
+  margin: 36px 20px 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 24px 22px;
+}
+.home-steps { display: flex; flex-direction: column; gap: 2px; }
+.home-hstep { display: grid; grid-template-columns: 34px 1fr; gap: 15px; padding: 13px 0; align-items: start; }
+.home-hstep + .home-hstep { border-top: 1px solid var(--line-soft); }
+.home-hstep .n { font-style: italic; font-size: 17px; color: var(--gold); padding-top: 2px; }
+
+.home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+
+.home-promo { margin: 38px 20px 0; background: linear-gradient(155deg, #20402d, #183021); border-radius: var(--r-lg); padding: 2px; }
+.home-promo-in { border: 1px solid rgba(203, 171, 114, 0.42); border-radius: 7px; padding: 26px 24px; position: relative; overflow: hidden; }
+.home-promo h3 { color: #f6efe2; font-size: 27px; line-height: 1.06; margin: 11px 0 9px; max-width: 15ch; }
+
+.home-seller {
+  margin: 22px 20px 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.home-footline { text-align: center; padding: 34px 20px 26px; }
+
+/* ---------- Home: tablet (701-1199.98px) ----------
+   Widened frame, mobile chrome retained. Cuisine strip stops scrolling and
+   wraps; product grid goes to three columns. */
+@media (min-width: 701px) and (max-width: 1199.98px) {
+  .home-cuisines { overflow: visible; flex-wrap: wrap; }
+  .home-ctile { width: calc(33.33% - 10px); }
+  .home-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---------- Home: desktop (>=1200px) ----------
+   The mobile header, tab bar, and the home search centrepiece are all hidden
+   here — DesktopNav carries navigation and search (the prototype hides
+   .searchwrap at this tier for the same reason). */
+@media (min-width: 1200px) {
+  .home-searchwrap { display: none; }
+
+  .home-hero { height: 580px; padding: 0; display: flex; align-items: flex-end; }
+  .home-hero-inner { width: 100%; padding-bottom: 72px; }
+  .home-hero h1 { font-size: 58px; max-width: 16ch; margin: 16px 0 26px; }
+  .home-hero .btn { padding: 16px 30px; font-size: 16px; }
+  .home-hero-glyph { top: 60px; }
+  .home-hero-glyph svg { width: 220px; height: 220px; }
+
+  .home-cuisines { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; overflow: visible; padding: 0; }
+  .home-ctile { width: 100%; height: 230px; }
+
+  .home-grid { grid-template-columns: repeat(4, 1fr); gap: 24px; }
+
+  /* Steps run horizontally rather than stacking, so the rule between them goes. */
+  .home-steps { flex-direction: row; gap: 28px; }
+  .home-hstep { grid-template-columns: 1fr; gap: 10px; flex: 1; padding: 0; }
+  .home-hstep + .home-hstep { border-top: 0; }
+  .home-hstep .n { padding-top: 0; }
+
+  /* The banded blocks sit inside a .container wrapper, so their own horizontal
+     margins give way to the container's gutters. */
+  .home-how { margin: 56px 0 0; padding-top: 40px; padding-bottom: 40px; }
+  .home-promo { margin: 56px 0 0; }
+  .home-promo-in { padding: 44px 52px; }
+  .home-promo h3 { font-size: 34px; }
+  .home-seller { margin: 56px 0 0; padding: 44px 52px; }
+  .home-footline { padding-top: 56px; padding-bottom: 40px; }
+}
+
+/* ============================================================
+   Shop / Browse and Search — AfriMart Buyer - Browse and Product.html
+   The grid is shared by both screens. At the desktop tier Shop gains a
+   permanent 300px filter sidebar; Search has no sidebar there, matching the
+   prototype, which hides the panel on its search view.
+   ============================================================ */
+
+/* ---------- tablet (701-1199.98px) ---------- */
+@media (min-width: 701px) and (max-width: 1199.98px) {
+  .grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---------- desktop (>=1200px) ---------- */
+@media (min-width: 1200px) {
+  .shop-layout { display: grid; grid-template-columns: 300px 1fr; }
+  /* Without this the grid's content-based minimum lets wide cards push the
+     column past its track. */
+  .shop-main { min-width: 0; }
+
+  /* .filterbtn, .searchrow, .chips, .countline and .resolved are owned by
+     @afrimart/ui, whose stylesheet is concatenated after this one — equal
+     specificity there would win on source order, so their desktop rules live
+     beside their base definitions in packages/ui/src/global.css. */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px; padding: 0 40px 40px; }
+}
+
+/* ============================================================
+   Product detail — AfriMart Buyer - Browse and Product.html
+   Rules are scoped under .pd-layout so they outrank the same class names in
+   @afrimart/ui, whose stylesheet is concatenated after this one.
+
+   Mobile/tablet: .pd-layout is a flex column and the two column wrappers are
+   display:contents, so `order` reproduces the single-column reading order this
+   screen already had. The prototype's tablet tier adds no product rules at
+   all, so tablet is the mobile layout in the widened 680px frame.
+   ============================================================ */
+
+.pd-layout { display: flex; flex-direction: column; }
+.pd-layout .pdMain,
+.pd-layout .pdRail { display: contents; }
+
+.pd-layout .pdMain > .gallery,
+.pd-layout .pdMain > .thumbs { order: 1; }
+.pd-layout .pdRail > * { order: 2; }
+.pd-layout .pdMain > .pd-used,
+.pd-layout .pdMain > .pd-rev { order: 3; }
+
+.pd-layout .gallery { margin: 0 16px; }
+.pd-layout .pdhead { padding: 12px 20px 0; }
+.pd-layout .priceline { padding: 18px 20px 0; }
+.pd-layout .pd-footnote { margin: 10px 20px 0; }
+.pd-layout .pd-seller { margin: 22px 16px 0; }
+.pd-layout .pd-also { margin: 16px 0 0; }
+.pd-layout .pd-est { margin: 16px 16px 0; }
+.pd-layout .pd-used { margin: 22px 20px 0; }
+.pd-layout .pd-rev { margin: 22px 16px 0; }
+
+/* ---------- Product detail: desktop (>=1200px) ---------- */
+@media (min-width: 1200px) {
+  .pd-layout {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    column-gap: 64px;
+    align-items: start;
+    padding: 32px 40px 40px;
+  }
+  .pd-layout .pdMain,
+  .pd-layout .pdRail { display: block; }
+  /* The rail is shorter than the gallery column; stretching it gives the
+     sticky estimator room to travel, which align-items:start alone does not. */
+  .pd-layout .pdRail { align-self: stretch; }
+
+  .pd-layout .gallery { margin: 0; }
+  .pd-layout .gallery .g svg { width: 130px; height: 130px; }
+
+  .pd-layout .pdhead { padding: 0; }
+  .pd-layout .pdhead h1 { font-size: 42px; }
+  .pd-layout .priceline { padding: 0; }
+  .pd-layout .pd-footnote { margin: 10px 0 0; }
+
+  .pd-layout .pd-seller,
+  .pd-layout .pd-also,
+  .pd-layout .pd-est,
+  .pd-layout .pd-used,
+  .pd-layout .pd-rev { margin: 0 0 22px; }
+
+  .pd-layout .pd-est { position: sticky; top: 20px; }
+
+  .addbar.pd-addbar { padding: 16px 40px calc(16px + env(safe-area-inset-bottom)); }
+}
+
+/* ============================================================
+   Cart / Checkout — AfriMart Buyer - Cart and Checkout.html
+   Same wrapper technique as product detail: the column wrappers are
+   display:contents below the desktop tier, so mobile is a single flow.
+   The prototype's tablet block adds only --app:680px, so tablet is the
+   mobile layout in the widened frame.
+   ============================================================ */
+
+.cart-layout { display: block; }
+.cart-layout .cartMain,
+.cart-layout .cartRail,
+.cart-layout .checkoutMain,
+.cart-layout .checkoutRail { display: contents; }
+
+.cart-layout .cart-freebar { margin: 14px 18px 0; }
+.cart-layout .parcelnote {
+  margin: 16px 18px 0;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(155deg, #20402d, #183021);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+}
+.cart-layout .parcelnote p {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.4;
+  color: #f2ecdd;
+  position: relative;
+  margin: 0;
+}
+.cart-layout .cart-parcels { margin: 18px 18px 0; display: flex; flex-direction: column; gap: 18px; }
+.cart-layout .cart-summary {
+  margin: 18px 18px 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+}
+.cart-layout .cart-cook { margin: 16px 18px 0; }
+.cart-layout .cart-cook button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--amber-50);
+  border: 1px solid #f0dcae;
+  border-radius: var(--r-md);
+  padding: 13px 16px;
+  color: var(--amber-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+}
+.cart-layout .cart-cook svg { width: 17px; height: 17px; flex: none; }
+.cart-layout .csec { margin: 18px 18px 0; }
+.cart-layout .confirm-note { margin: 24px 18px 0; text-align: center; }
+.cart-layout .confirm-note h2 { font-size: 30px; margin-bottom: 10px; }
+.cart-layout .confirm-note p { font-size: 14px; color: var(--ink-2); line-height: 1.55; margin-bottom: 20px; }
+/* Desktop-only rail actions; the mobile action bar carries these below 1200px. */
+.cart-layout .dRailActions { display: none; }
+.cart-spacer { height: 16px; }
+
+/* ---------- Cart / Checkout: desktop (>=1200px) ---------- */
+@media (min-width: 1200px) {
+  .cart-layout {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    column-gap: 56px;
+    align-items: start;
+    padding: 32px 48px 48px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  .cart-layout .cartMain,
+  .cart-layout .cartRail,
+  .cart-layout .checkoutMain,
+  .cart-layout .checkoutRail { display: block; }
+  .cart-layout .cartRail,
+  .cart-layout .checkoutRail { position: sticky; top: 24px; }
+
+  .cart-layout .cart-freebar,
+  .cart-layout .parcelnote,
+  .cart-layout .cart-parcels,
+  .cart-layout .cart-cook,
+  .cart-layout .csec { margin-left: 0; margin-right: 0; }
+  .cart-layout .cart-freebar { margin-top: 0; }
+  .cart-layout .cart-summary { margin: 0; }
+  .cart-layout .dRailActions { display: block; margin-top: 16px; }
+
+  /* The rail carries the action at this tier, so the sticky bar goes. */
+  .actionbar { display: none !important; }
+  .cart-spacer { display: none; }
 }

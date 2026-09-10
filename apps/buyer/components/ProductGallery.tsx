@@ -13,7 +13,8 @@ export function ProductGallery({ glyph, fresh }: ProductGalleryProps) {
   const [favorited, setFavorited] = useState(false);
   return (
     <>
-      <div className="gallery" style={{ margin: "0 16px" }}>
+      {/* Inset comes from .pd-layout .gallery so the desktop tier can drop it. */}
+      <div className="gallery">
         {fresh && (
           <span className="flag">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ width: 13, height: 13 }}>
@@ -26,10 +27,11 @@ export function ProductGallery({ glyph, fresh }: ProductGalleryProps) {
           <HeartIcon fill={favorited ? "currentColor" : "none"} stroke={favorited ? "none" : "currentColor"} />
         </button>
         <span className="g">
-          <ProductGlyph kind={glyph} style={{ width: 96, height: 96 }} />
+          {/* Sized by .gallery .g svg so the desktop tier can enlarge it. */}
+          <ProductGlyph kind={glyph} />
         </span>
       </div>
-      <div className="thumbs">
+      <div className="am-thumbs">
         {[0, 1, 2].map((i) => (
           <div key={i} className={`t${i === 0 ? " on" : ""}`}>
             <ProductGlyph kind={glyph} />

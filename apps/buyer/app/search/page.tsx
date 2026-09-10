@@ -19,7 +19,12 @@ export default function SearchPage() {
 
   return (
     <>
-      <PageHeader back="/shop" eyebrow="Search" title="The market" />
+      {/* Hidden at desktop like every other screen's page header — the
+          prototype's search view carries none, and DesktopNav supplies both
+          navigation and search there. */}
+      <div className="mobile-chrome">
+        <PageHeader back="/shop" eyebrow="Search" title="The market" />
+      </div>
       <div className="searchrow" style={{ paddingTop: 2 }}>
         <div className="sbar">
           <SearchIcon />

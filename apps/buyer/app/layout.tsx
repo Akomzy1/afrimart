@@ -4,7 +4,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { ToastProvider } from "@afrimart/ui";
 import { CartProvider } from "./cart-context";
-import { BuyerChrome } from "./buyer-chrome";
+import { BuyerChrome, BuyerDesktopNav } from "./buyer-chrome";
 
 export const metadata: Metadata = {
   title: "AfriMart — The market from home, delivered",
@@ -25,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ToastProvider>
             <CartProvider>
               <div className="app-shell">
+                <BuyerDesktopNav />
                 <div className="app-scroll">{children}</div>
                 <BuyerChrome />
               </div>

@@ -24,7 +24,7 @@ export function HomeSearchBar() {
   }, []);
 
   return (
-    <div style={{ margin: "-26px 18px 0", position: "relative", zIndex: 5 }}>
+    <div className="home-searchwrap">
       <button
         type="button"
         onClick={() => router.push("/search")}

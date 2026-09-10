@@ -17,7 +17,7 @@ export function SellerBlock({ sellerName, verified, rating, metro }: SellerBlock
         <div className="m">
           <div className="nm">
             {sellerName}
-            {verified && <SealIcon className="seal" />}
+            {verified && <SealIcon className="sealmark" />}
           </div>
           <div className="sub">
             <Stars value={rating} /> {rating.toFixed(1)} · {metro}

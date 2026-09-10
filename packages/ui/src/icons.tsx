@@ -182,7 +182,7 @@ export function ShipCheckIcon(props: SVGProps<SVGSVGElement>) {
 
 /** Product placeholder art — no real photography yet, so listings render one of
  * these glyphs on a warm radial-gradient shot, matching every prototype page. */
-export type ProductGlyphKind = "leaf" | "wheat" | "pepper" | "jar" | "seed";
+export type ProductGlyphKind = "leaf" | "wheat" | "pepper" | "jar" | "seed" | "onion" | "fish" | "butter";
 
 export function ProductGlyph({ kind, ...props }: { kind: ProductGlyphKind } & SVGProps<SVGSVGElement>) {
   const paths: Record<ProductGlyphKind, string> = {
@@ -192,10 +192,49 @@ export function ProductGlyph({ kind, ...props }: { kind: ProductGlyphKind } & SV
     pepper: "M8 8c0-3 3-4 5-3M8 8c-2 3-1 8 3 10 5 2 8-3 6-7-1.5-3-6-4-9-3z",
     jar: "M8 3h8M7 7h10v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V7zM7 7c0-2 1.5-3 2.5-3M17 7c0-2-1.5-3-2.5-3",
     seed: "M12 3c4 2 6 5 6 9a6 6 0 0 1-12 0c0-4 2-7 6-9zM12 8v8M9 11h6",
+    onion: "M12 3c1.5 2 2 3 2 4M12 21c-4 0-7-3-7-7 0-3.5 3-8 7-8s7 4.5 7 8c0 4-3 7-7 7zM9 8c-1 2-1 5 0 8M15 8c1 2 1 5 0 8",
+    fish: "M3 12c3-4 8-5 12-5 3 0 5 2 6 5-1 3-3 5-6 5-4 0-9-1-12-5zM3 12l-1-3M3 12l-1 3",
+    butter: "M4 9h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9zM4 9l3-4h10l3 4",
   };
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d={paths[kind]} />
+    </svg>
+  );
+}
+
+export function TruckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
+      <path d="M2 8h12v8H2zM14 11h4l3 3v2h-7z" strokeLinejoin="round" />
+      <circle cx="6" cy="18" r="1.4" />
+      <circle cx="18" cy="18" r="1.4" />
+    </svg>
+  );
+}
+
+export function LockIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function ClockIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
+      <path d="M12 8v4l3 2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

@@ -7,7 +7,7 @@ import { useCart } from "../app/cart-context";
 export function HomeHeader() {
   const { count } = useCart();
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px 4px" }}>
+    <div className="mobile-chrome" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px 4px" }}>
       <div>
         <Logo tone="on-light" size={24} />
         <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "11.5px", color: "var(--ink-3)", marginTop: 3 }}>

@@ -69,7 +69,7 @@ export function ProductCard({
 
   if (variant === "browse") {
     return (
-      <button type="button" className="pcard browse" onClick={onOpen}>
+      <article className="pcard browse">
         {shot}
         <div className="body">
           <div className="nm">{name}</div>
@@ -79,7 +79,7 @@ export function ProductCard({
           </div>
           <div className="seller">
             {sellerName}
-            {verified && <SealIcon className="seal" />}
+            {verified && <SealIcon className="sealmark" />}
           </div>
           {shippingNote && (
             <div className="ships">
@@ -87,7 +87,10 @@ export function ProductCard({
             </div>
           )}
         </div>
-      </button>
+        {/* Stretched over the card rather than wrapping it, so the favourite
+            button stays a sibling instead of a nested child. */}
+        <button type="button" className="open" onClick={onOpen} aria-label={`View ${name}`} />
+      </article>
     );
   }
 

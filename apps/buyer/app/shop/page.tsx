@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@afrimart/api-client";
-import { PageHeader, CartButton, FiltersIcon, ProductCard, ProductGlyph, Badge } from "@afrimart/ui";
+import { PageHeader, CartButton, FiltersIcon, ProductCard, ProductGlyph, Badge, useMediaQuery, DESKTOP_QUERY } from "@afrimart/ui";
 import { glyphForCategory } from "../../lib/glyph";
 import { useCart } from "../cart-context";
 import { FiltersSheet } from "../../components/FiltersSheet";
@@ -26,6 +26,22 @@ function ShopScreen() {
   const [selectedCuisines, setSelectedCuisines] = useState<Set<string>>(new Set());
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  /**
+   * At the desktop tier the filter panel is a permanent sidebar, so "open" has
+   * no meaning there. The state is made genuinely unsettable rather than merely
+   * hidden: openFilters is a no-op at desktop, and the flag is dropped on
+   * entering desktop. Without the first guard, anything that reached the
+   * hidden trigger would leave a stale `true` behind that sprang open as a
+   * drawer the moment the viewport narrowed again.
+   */
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  useEffect(() => {
+    if (isDesktop) setFiltersOpen(false);
+  }, [isDesktop]);
+  const openFilters = () => {
+    if (!isDesktop) setFiltersOpen(true);
+  };
 
   useEffect(() => {
     const cuisine = searchParams.get("cuisine");
@@ -51,8 +67,34 @@ function ShopScreen() {
   }
 
   return (
-    <>
-      <PageHeader eyebrow="Shop" title="Everyday staples" right={<CartButton count={count} />} />
+    <div className="shop-layout">
+      {/* Sidebar first so it lands in column 1 of the desktop grid; below that
+          tier it is a fixed-position drawer, where DOM order does not matter. */}
+      <FiltersSheet
+        pinned={isDesktop}
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        cuisines={facets.data?.cuisines ?? []}
+        categories={facets.data?.categories ?? []}
+        selectedCuisines={selectedCuisines}
+        selectedCategories={new Set(activeChip === "All" ? [] : [activeChip])}
+        verifiedOnly={verifiedOnly}
+        onToggleCuisine={toggleCuisine}
+        onToggleCategory={(name) => setActiveChip((prev) => (prev === name ? "All" : name))}
+        onToggleVerified={() => setVerifiedOnly((v) => !v)}
+        onClear={() => {
+          setSelectedCuisines(new Set());
+          setVerifiedOnly(false);
+          setActiveChip("All");
+        }}
+        onApply={() => {}}
+      />
+
+      <div className="shop-main">
+      {/* The prototype's browse view carries no page header at the desktop tier. */}
+      <div className="mobile-chrome">
+        <PageHeader eyebrow="Shop" title="Everyday staples" right={<CartButton count={count} />} />
+      </div>
 
       <div className="searchrow">
         <button type="button" className="sbar" style={{ textAlign: "left" }} onClick={() => router.push("/search")}>
@@ -62,7 +104,8 @@ function ShopScreen() {
           </svg>
           <span style={{ color: "var(--ink-3)" }}>Search garri, egusi, palm oil…</span>
         </button>
-        <button type="button" className="filterbtn" onClick={() => setFiltersOpen(true)}>
+        {/* Hidden at the desktop tier, where the panel is always on screen. */}
+        <button type="button" className="filterbtn" onClick={openFilters}>
           <FiltersIcon /> Filters
           {filterCount > 0 && <span className="fc">{filterCount}</span>}
         </button>
@@ -104,25 +147,7 @@ function ShopScreen() {
         ))}
       </div>
       <div style={{ height: 16 }} />
-
-      <FiltersSheet
-        open={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        cuisines={facets.data?.cuisines ?? []}
-        categories={facets.data?.categories ?? []}
-        selectedCuisines={selectedCuisines}
-        selectedCategories={new Set(activeChip === "All" ? [] : [activeChip])}
-        verifiedOnly={verifiedOnly}
-        onToggleCuisine={toggleCuisine}
-        onToggleCategory={(name) => setActiveChip((prev) => (prev === name ? "All" : name))}
-        onToggleVerified={() => setVerifiedOnly((v) => !v)}
-        onClear={() => {
-          setSelectedCuisines(new Set());
-          setVerifiedOnly(false);
-          setActiveChip("All");
-        }}
-        onApply={() => {}}
-      />
-    </>
+      </div>
+    </div>
   );
 }

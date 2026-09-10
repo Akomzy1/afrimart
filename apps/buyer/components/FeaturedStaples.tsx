@@ -14,7 +14,7 @@ export function FeaturedStaples() {
   const { show } = useToast();
 
   return (
-    <section style={{ padding: "34px 0 0" }}>
+    <section className="home-section container">
       <div className="pad" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 15 }}>
         <h3 className="serif" style={{ fontSize: 25 }}>
           Featured staples
@@ -23,7 +23,7 @@ export function FeaturedStaples() {
           See all
         </Link>
       </div>
-      <div className="pad" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 15 }}>
+      <div className="pad home-grid">
         {isLoading && <p style={{ color: "var(--ink-3)", fontFamily: "var(--serif)", fontStyle: "italic" }}>Loading the market…</p>}
         {data?.map((p) => (
           <ProductCard

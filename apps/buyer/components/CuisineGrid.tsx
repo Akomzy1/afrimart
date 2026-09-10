@@ -13,7 +13,7 @@ const cuisines = [
 /** "Shop by cuisine" horizontal scroll (AfriMart Buyer App.html). */
 export function CuisineGrid() {
   return (
-    <section style={{ padding: "34px 0 0" }}>
+    <section className="home-section container">
       <div className="pad" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 15 }}>
         <h3 className="serif" style={{ fontSize: 25 }}>
           Shop by cuisine
@@ -22,22 +22,9 @@ export function CuisineGrid() {
           See all
         </Link>
       </div>
-      <div style={{ display: "flex", gap: 14, overflowX: "auto", padding: "0 20px 4px" }}>
+      <div className="home-cuisines">
         {cuisines.map((c) => (
-          <Link
-            key={c.name}
-            href={`/shop?cuisine=${encodeURIComponent(c.name)}`}
-            style={{
-              flex: "none",
-              width: 138,
-              height: 186,
-              borderRadius: "var(--r-lg)",
-              position: "relative",
-              overflow: "hidden",
-              border: "1px solid rgba(0,0,0,.06)",
-              display: "block",
-            }}
-          >
+          <Link key={c.name} href={`/shop?cuisine=${encodeURIComponent(c.name)}`} className="home-ctile">
             <div style={{ position: "absolute", inset: 0, background: c.gradient }} />
             <div
               style={{

@@ -20,6 +20,8 @@ export interface FiltersSheetProps {
   onToggleVerified: () => void;
   onClear: () => void;
   onApply: () => void;
+  /** Render as the persistent desktop sidebar rather than a drawer. */
+  pinned?: boolean;
 }
 
 /** The filters slide-over on the shop screen (AfriMart Buyer - Browse and Product.html). */
@@ -36,9 +38,11 @@ export function FiltersSheet({
   onToggleVerified,
   onClear,
   onApply,
+  pinned,
 }: FiltersSheetProps) {
   return (
     <SlideOver
+      pinned={pinned}
       open={open}
       title="Filters"
       onClose={onClose}
