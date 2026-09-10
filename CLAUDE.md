@@ -44,7 +44,9 @@ Use these exactly — do not approximate or invent adjacent shades.
 | Ivory | `#FAF5EE` | Background, warm off-white, not stark white |
 | Ink | `#222222` | Body text |
 
-**Terracotta bug — fixed in the buyer pages and Design System as of the 2026-09-06 re-export, still present elsewhere.** Every prototype page was originally built from a brief that swapped the accent roles — CSS headers defined `--terracotta-500: #C05621 /* BRAND ACCENT */` with amber demoted to "freshness, stars, warning," contradicting the Brand Guide (Harvest Amber is the accent; the guide never mentions terracotta). The 2026-09-06 re-export of `AfriMart Design System.html` and the five buyer screens (`AfriMart Buyer App.html`, `Browse and Product`, `Cart and Checkout`, `Cook`, `Boxes Tracking and Account`) corrected this — they now use Harvest Amber only. **`AfriMart Merchant.html`, `AfriMart Merchant - Onboarding.html`, `AfriMart Logo Downloads.html`, and `AfriMart Logo and Social Kit.html` have not been re-exported and still contain the terracotta bug.** Until fresh exports of those land: if you build from one of those four files, render any `#C05621`/terracotta accent usage in Harvest Amber `#E8A44D` instead — same layout, same "one accent action per screen" placement, corrected color. Do not silently keep terracotta because "that's what the prototype shows."
+**Terracotta bug — fixed in the buyer pages and Design System as of the 2026-09-06 re-export, still present elsewhere.** Every prototype page was originally built from a brief that swapped the accent roles — CSS headers defined `--terracotta-500: #C05621 /* BRAND ACCENT */` with amber demoted to "freshness, stars, warning," contradicting the Brand Guide (Harvest Amber is the accent; the guide never mentions terracotta). The 2026-09-06 re-export of `AfriMart Design System.html` and the five buyer screens (`AfriMart Buyer App.html`, `Browse and Product`, `Cart and Checkout`, `Cook`, `Boxes Tracking and Account`) corrected this — they now use Harvest Amber only. **As of the 2026-09-10 re-export the merchant pages are fixed too** — `AfriMart Merchant.html` (previously 31 terracotta references) and `AfriMart Merchant - Onboarding.html` now measure zero, as does the refreshed `Browse and Product`. **Only `AfriMart Logo Downloads.html` and `AfriMart Logo and Social Kit.html` still carry it.** If you build from either, render any `#C05621`/terracotta accent usage in Harvest Amber `#E8A44D` instead — same layout, same "one accent action per screen" placement, corrected color. Do not silently keep terracotta because "that's what the prototype shows."
+
+**Where terracotta does still appear, it is a prototype regression, not a build defect — don't "fix" the build.** The merchant app was built from the pre-fix export and already rendered zero terracotta (measured across every element at both mobile widths), which is why the re-export required no code change. If a future session sees terracotta in a prototype file and amber in the app, that is the rule working, not a mismatch to reconcile.
 
 The logo mark's leaf-and-stem geometry is identical across every prototype page (same SVG path data) and matches the Brand Guide's description (two-leaf seedling, one upright stem) — only the stem's color needs correcting from terracotta to amber on the four not-yet-re-exported pages above. `packages/ui` ships this as the `LogoMark`/`Logo` components; no raw exported logo files exist in the repo yet (`/docs/brand/` is still empty), so treat the component as the source of truth for the mark until real exported assets (SVG/PNG at the sizes the Logo and Social Kit page lists) are supplied.
 
@@ -129,6 +131,31 @@ Unless told otherwise, build in this order, matching the PRD's phase tags and th
 1. **Phase 0 (if requested separately):** a standalone waitlist/landing site — not part of the main monorepo's apps, a simple static site with a buyer/seller fork and email capture. Treat this as its own small project if asked for; don't conflate it with the Phase 1 PWA build.
 2. **Phase 1 MVP**, in the order the PRD's functional requirements are grouped: seller onboarding → merchant app → catalogue/canonical resolution → discovery/search → cart/checkout/routing → Cook agent → payments → fulfilment → notifications → operations console.
 3. Do not start Phase 2/3-tagged requirements (cold-chain, consolidation, membership, native apps, Canada) without being asked.
+
+## Verifying UI work
+
+Verify by rendering and measuring, not by reading the diff. There is no browser
+automation package installed, but Chrome is on the machine and can be driven
+headless over the DevTools Protocol (`--remote-debugging-port` plus Node's global
+`WebSocket`) to read computed styles and geometry at each breakpoint.
+
+- **Screenshot through CDP (`Page.captureScreenshot`) under the same
+  `Emulation.setDeviceMetricsOverride` used for measuring — never Chrome's
+  standalone `--screenshot` flag.** That flag has twice produced badly clipped
+  images while the DOM measured completely correct: once on the buyer Home pass
+  (a contained layout looked overflowing) and once on the merchant inbox (cards
+  and the third tab looked cut off, while the DOM reported a 350px card inside a
+  390px viewport with zero overflow). Both cost real time chasing a layout bug
+  that did not exist. Same emulation for the picture as for the numbers.
+- **Measure overflow against the viewport, not the body**: use
+  `document.documentElement.scrollWidth - window.innerWidth`. Comparing
+  `scrollWidth` to the body's width reports 0 even when the body itself is wider
+  than the screen.
+- **Drive interactive flows, don't just render them.** Clicking through the
+  merchant fulfilment flow surfaced two real bugs that no static render or code
+  review would have shown: a stale-closure state update that dropped every
+  second rapid tap, and an action disabled only by `pointer-events: none`, which
+  stops a mouse but not the keyboard or a script.
 
 ## Working conventions
 
