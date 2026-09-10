@@ -7,5 +7,7 @@
     "moduleResolution": "NodeNext",
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "//": "Tests run through tsx and must not be emitted into dist; tsconfig.typecheck.json still type-checks them.",
+  "exclude": ["src/**/*.test.ts"]
 }
