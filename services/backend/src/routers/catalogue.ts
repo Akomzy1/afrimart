@@ -65,6 +65,35 @@ export const catalogueRouter = router({
     return listings.map(toCardData);
   }),
 
+  /**
+   * Resolve canonical product names to a listing id each, so a client can build
+   * a basket without hardcoding ids the seed generates fresh every run. Which
+   * store's listing comes back barely matters: checkout routes the basket in
+   * canonical terms and is free to move any line to another store (CART-2).
+   */
+  listingsForProducts: publicProcedure
+    .input(z.object({ names: z.array(z.string()).min(1).max(20) }))
+    .query(async ({ input }: { input: { names: string[] } }) => {
+      const listings = await prisma.listing.findMany({
+        where: { canonicalProduct: { is: { canonicalName: { in: input.names } } } },
+        include: listingWithRelations,
+        orderBy: { priceCents: "asc" },
+      });
+
+      const seen = new Set<string>();
+      const picked: ProductCardData[] = [];
+      for (const name of input.names) {
+        const match = listings.find(
+          (l) => l.canonicalProduct.canonicalName === name && !seen.has(l.canonicalProductId),
+        );
+        if (match) {
+          seen.add(match.canonicalProductId);
+          picked.push(toCardData(match));
+        }
+      }
+      return picked;
+    }),
+
   /** SRCH-2 — browse by category/cuisine, with the shop screen's filter set. */
   browse: publicProcedure.input(browseInput).query(async ({ input }: { input: BrowseInput }) => {
     const where: Prisma.ListingWhereInput = {};

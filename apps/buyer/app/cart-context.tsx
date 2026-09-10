@@ -1,35 +1,31 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { trpc } from "@afrimart/api-client";
 import type { ProductGlyphKind } from "@afrimart/ui";
 
 /**
- * Client-side cart for the cart/checkout screens. There is no cart or order
- * router on the backend yet (only catalogue and health), so nothing here is
- * persisted — the prototype models the same way. Swapping this for real
- * Cart/CartItem mutations is a backend task, not a layout one.
+ * The cart's basket is local state; its *routing and pricing are not*.
  *
- * Routing rules this encodes, per PRD:
- * - CART-2 single-store-preferring: lines already sourced from one seller stay
- *   together; parcels are grouped by origin metro, so one origin means one parcel.
- * - CART-3 temperature is a *mandatory* split: `temperature` is carried on every
- *   line and grouped on before origin. Every seeded line is currently `ambient`,
- *   so it does not visibly split — see the note in the cart screen.
- * - CART-5/CART-6 one total: shipping is charged once for the whole order, never
- *   per parcel or per seller.
+ * This used to group parcels and apply the free-shipping threshold itself,
+ * which duplicated the routing engine in the client — the one thing CLAUDE.md's
+ * repository rules forbid ("do not duplicate order/catalogue/routing logic
+ * between the two apps"). Two implementations of CART-2/3/5 drift, and the
+ * client's was the naive one: it grouped by origin metro, so it could never
+ * have produced the store-level parcels the engine actually returns.
+ *
+ * Now the basket holds listing ids and quantities, and every derived number —
+ * parcels, subtotal, shipping, total — comes from `checkout.quote`. The
+ * backend is the only place those rules exist.
  */
-export type Temperature = "ambient" | "perishable";
 
 export interface CartLine {
-  id: string;
+  listingId: string;
+  canonicalProductId: string;
   name: string;
   altNames: string;
   sellerName: string;
   sellerVerified: boolean;
-  originMetro: string;
-  /** Days until this parcel arrives. */
-  arrivesInDays: number;
-  temperature: Temperature;
   unitLabel: string;
   priceCents: number;
   qty: number;
@@ -39,45 +35,42 @@ export interface CartLine {
 export interface Parcel {
   key: string;
   originMetro: string;
-  temperature: Temperature;
+  storeName: string;
+  temperature: string;
   arrivesInDays: number;
+  estimatedDelivery: string;
+  reason: string;
   lines: CartLine[];
 }
 
+/** Mirrors the backend's CART-5 threshold, for the progress bar only. */
 export const FREE_SHIPPING_THRESHOLD_CENTS = 10000;
-export const FLAT_SHIPPING_CENTS = 750;
 
-const SEED: CartLine[] = [
-  { id: "egusi", name: "Egusi", altNames: "Egusi — melon seeds", sellerName: "Adunni Foods", sellerVerified: true,
-    originMetro: "Houston, TX", arrivesInDays: 2, temperature: "ambient", unitLabel: "500g bag", priceCents: 850, qty: 2, glyph: "leaf" },
-  { id: "ata", name: "Ata Rodo", altNames: "Ata rodo — scotch bonnet", sellerName: "Lagos Fresh", sellerVerified: true,
-    originMetro: "Houston, TX", arrivesInDays: 2, temperature: "ambient", unitLabel: "250g pack", priceCents: 675, qty: 2, glyph: "pepper" },
-  { id: "palm", name: "Red Palm Oil", altNames: "Palm oil — cold-pressed", sellerName: "Mama Ngozi", sellerVerified: true,
-    originMetro: "Bronx, NY", arrivesInDays: 3, temperature: "ambient", unitLabel: "1L", priceCents: 1530, qty: 2, glyph: "jar" },
-  { id: "plantain", name: "Plantain Flour", altNames: "Plantain — unripe flour", sellerName: "Mama Ngozi", sellerVerified: true,
-    originMetro: "Bronx, NY", arrivesInDays: 3, temperature: "ambient", unitLabel: "1kg", priceCents: 1020, qty: 3, glyph: "leaf" },
+/** The demo basket, by canonical name — resolved to real listings on mount. */
+const DEMO_BASKET: { name: string; qty: number }[] = [
+  { name: "Egusi", qty: 2 },
+  { name: "Ata Rodo", qty: 2 },
+  { name: "Red Palm Oil", qty: 2 },
+  { name: "Plantain Flour", qty: 3 },
 ];
 
-/** CART-3 before CART-2: temperature splits first, then origin. */
-function groupIntoParcels(lines: CartLine[]): Parcel[] {
-  const byKey = new Map<string, Parcel>();
-  for (const line of lines) {
-    const key = `${line.temperature}|${line.originMetro}`;
-    const existing = byKey.get(key);
-    if (existing) {
-      existing.lines.push(line);
-      existing.arrivesInDays = Math.max(existing.arrivesInDays, line.arrivesInDays);
-    } else {
-      byKey.set(key, {
-        key,
-        originMetro: line.originMetro,
-        temperature: line.temperature,
-        arrivesInDays: line.arrivesInDays,
-        lines: [line],
-      });
-    }
-  }
-  return [...byKey.values()];
+/** Ships to the prototype's address, so quotes are stable across reloads. */
+const DESTINATION = { street: "1200 Heritage Lane", city: "Houston", state: "TX", zip: "77002" };
+
+const GLYPH_BY_CATEGORY: Record<string, ProductGlyphKind> = {
+  "Legumes & seeds": "leaf",
+  "Spices & seasonings": "pepper",
+  Oils: "jar",
+  "Flours & grains": "wheat",
+};
+
+function glyphFor(category: string): ProductGlyphKind {
+  return GLYPH_BY_CATEGORY[category] ?? "leaf";
+}
+
+interface BasketItem {
+  listingId: string;
+  qty: number;
 }
 
 interface CartContextValue {
@@ -88,38 +81,124 @@ interface CartContextValue {
   subtotalCents: number;
   shippingCents: number;
   totalCents: number;
-  add: (quantity?: number) => void;
-  setQty: (id: string, qty: number) => void;
-  remove: (id: string) => void;
+  taxCents: number;
+  /** True while a quote is in flight — totals shown are the previous ones. */
+  pricing: boolean;
+  /** Set when the backend could not be reached; screens show it rather than wrong numbers. */
+  error: string | null;
+  add: (listingId: string, quantity?: number) => void;
+  /**
+   * Add by canonical product name, for surfaces that know what they want but
+   * not which listing — Cook's recipe lines and the account "usuals". Anything
+   * the catalogue doesn't carry is skipped and reported back, so callers can
+   * tell the buyer honestly rather than silently dropping it.
+   */
+  addByNames: (names: string[], qtyByName?: Record<string, number>) => Promise<{ added: number; missing: string[] }>;
+  setQty: (listingId: string, qty: number) => void;
+  remove: (listingId: string) => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [lines, setLines] = useState<CartLine[]>(SEED);
+  const [items, setItems] = useState<BasketItem[]>([]);
+  const [seeded, setSeeded] = useState(false);
+
+  const demo = trpc.catalogue.listingsForProducts.useQuery(
+    { names: DEMO_BASKET.map((d) => d.name) },
+    { enabled: !seeded, retry: false, refetchOnWindowFocus: false },
+  );
+
+  useEffect(() => {
+    if (seeded || !demo.data) return;
+    const qtyByName = new Map(DEMO_BASKET.map((d) => [d.name, d.qty]));
+    setItems(demo.data.map((card) => ({ listingId: card.listingId, qty: qtyByName.get(card.name) ?? 1 })));
+    setSeeded(true);
+  }, [demo.data, seeded]);
+
+  const quote = trpc.checkout.quote.useMutation();
+  const { mutate: requestQuote } = quote;
+  const utils = trpc.useUtils();
+
+  // Re-quote whenever the basket changes. The engine is the only thing that
+  // decides how this basket splits and what it costs.
+  const basketKey = items.map((i) => `${i.listingId}:${i.qty}`).join(",");
+  useEffect(() => {
+    if (!items.length) return;
+    requestQuote({ items: items.map((i) => ({ listingId: i.listingId, quantity: i.qty })), destination: DESTINATION });
+  }, [basketKey, requestQuote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = useMemo<CartContextValue>(() => {
-    const subtotalCents = lines.reduce((sum, l) => sum + l.priceCents * l.qty, 0);
-    // CART-5: one shipping fee for the order, never one per parcel or seller.
-    const shippingCents = subtotalCents >= FREE_SHIPPING_THRESHOLD_CENTS ? 0 : FLAT_SHIPPING_CENTS;
+    const data = quote.data;
+
+    const parcels: Parcel[] = (data?.parcels ?? []).map((p, index) => ({
+      key: `${p.storeId}|${p.temperatureClass}`,
+      originMetro: p.metro,
+      storeName: p.storeName,
+      temperature: p.temperatureClass,
+      arrivesInDays: p.transitDays,
+      estimatedDelivery: String(p.estimatedDelivery),
+      reason: p.reason,
+      lines: p.lines.map((l) => ({
+        listingId: l.listingId,
+        canonicalProductId: l.canonicalProductId,
+        name: l.name,
+        altNames: l.altNames,
+        sellerName: l.sellerName,
+        sellerVerified: l.sellerVerified,
+        unitLabel: l.unitLabel,
+        priceCents: l.priceCents,
+        qty: l.quantity,
+        glyph: glyphFor(l.category),
+      })),
+    }));
+
+    const lines = parcels.flatMap((p) => p.lines);
+    const pricing = data?.pricing;
+
+    const demoFailed = demo.isError;
+    const quoteFailed = quote.isError;
+
     return {
       lines,
-      parcels: groupIntoParcels(lines),
+      parcels,
       count: lines.reduce((n, l) => n + l.qty, 0),
       sellerCount: new Set(lines.map((l) => l.sellerName)).size,
-      subtotalCents,
-      shippingCents,
-      totalCents: subtotalCents + shippingCents,
-      add: (quantity = 1) =>
-        setLines((prev) =>
-          prev.length
-            ? prev.map((l, i) => (i === 0 ? { ...l, qty: l.qty + quantity } : l))
-            : prev,
+      subtotalCents: pricing?.itemsSubtotalCents ?? 0,
+      shippingCents: pricing?.shippingCents ?? 0,
+      totalCents: pricing?.totalCents ?? 0,
+      taxCents: pricing?.taxCents ?? 0,
+      pricing: quote.isPending || demo.isLoading,
+      error:
+        demoFailed || quoteFailed
+          ? "We couldn't reach the market just now. Your basket is safe — try again in a moment."
+          : null,
+      add: (listingId, quantity = 1) =>
+        setItems((prev) =>
+          prev.some((i) => i.listingId === listingId)
+            ? prev.map((i) => (i.listingId === listingId ? { ...i, qty: i.qty + quantity } : i))
+            : [...prev, { listingId, qty: quantity }],
         ),
-      setQty: (id, qty) => setLines((prev) => prev.map((l) => (l.id === id ? { ...l, qty: Math.max(1, qty) } : l))),
-      remove: (id) => setLines((prev) => prev.filter((l) => l.id !== id)),
+      addByNames: async (names, qtyByName) => {
+        const found = await utils.catalogue.listingsForProducts.fetch({ names });
+        const foundNames = new Set(found.map((f) => f.name));
+        setItems((prev) => {
+          const next = [...prev];
+          for (const card of found) {
+            const qty = qtyByName?.[card.name] ?? 1;
+            const existing = next.findIndex((i) => i.listingId === card.listingId);
+            if (existing >= 0) next[existing] = { ...next[existing], qty: next[existing].qty + qty };
+            else next.push({ listingId: card.listingId, qty });
+          }
+          return next;
+        });
+        return { added: found.length, missing: names.filter((n) => !foundNames.has(n)) };
+      },
+      setQty: (listingId, qty) =>
+        setItems((prev) => prev.map((i) => (i.listingId === listingId ? { ...i, qty: Math.max(1, qty) } : i))),
+      remove: (listingId) => setItems((prev) => prev.filter((i) => i.listingId !== listingId)),
     };
-  }, [lines]);
+  }, [quote.data, quote.isPending, quote.isError, demo.isError, demo.isLoading, utils]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

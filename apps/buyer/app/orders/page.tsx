@@ -105,7 +105,7 @@ export default function OrdersPage() {
 
               <div className="trk-items">
                 {parcel.lines.map((line) => (
-                  <div className="ti" key={line.id} title={line.name}>
+                  <div className="ti" key={line.listingId} title={line.name}>
                     <ProductGlyph kind={line.glyph as ProductGlyphKind} />
                   </div>
                 ))}

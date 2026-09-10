@@ -48,13 +48,20 @@ export default function CartPage() {
     );
   }
 
+  // CART-6 disclosure. Parcels are store-and-temperature, so two of them can
+  // legitimately land on the same day — listing "Tuesday and Tuesday" reads as
+  // a bug even though the routing is right, so collapse repeated days.
   const arrivals = parcels.map((p) => dayName(p.arrivesInDays));
+  const uniqueArrivals = [...new Set(arrivals)];
+  const countWord = parcels.length === 2 ? "two" : String(parcels.length);
   const parcelSentence =
     parcels.length === 1
       ? `Your order arrives in one parcel — ${arrivals[0]}. One order, one total.`
-      : `Your order arrives in ${parcels.length === 2 ? "two" : String(parcels.length)} parcels — ${arrivals
-          .slice(0, -1)
-          .join(", ")} and ${arrivals[arrivals.length - 1]}. One order, one total.`;
+      : uniqueArrivals.length === 1
+        ? `Your order arrives in ${countWord} parcels, ${parcels.length === 2 ? "both" : "all"} ${uniqueArrivals[0]}. One order, one total.`
+        : `Your order arrives in ${countWord} parcels — ${uniqueArrivals
+            .slice(0, -1)
+            .join(", ")} and ${uniqueArrivals[uniqueArrivals.length - 1]}. One order, one total.`;
 
   return (
     <>
@@ -83,7 +90,7 @@ export default function CartPage() {
               >
                 {parcel.lines.map((line) => (
                   <CartLineItem
-                    key={line.id}
+                    key={line.listingId}
                     name={line.name}
                     altNames={line.altNames}
                     sellerName={line.sellerName}
@@ -92,8 +99,8 @@ export default function CartPage() {
                     priceLabel={money(line.priceCents * line.qty)}
                     qty={line.qty}
                     image={<ProductGlyph kind={line.glyph} />}
-                    onQtyChange={(q) => setQty(line.id, q)}
-                    onRemove={() => remove(line.id)}
+                    onQtyChange={(q) => setQty(line.listingId, q)}
+                    onRemove={() => remove(line.listingId)}
                   />
                 ))}
               </ParcelGroup>

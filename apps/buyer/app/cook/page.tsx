@@ -35,7 +35,7 @@ interface Turn {
  */
 export default function CookPage() {
   const router = useRouter();
-  const { add } = useCart();
+  const { addByNames } = useCart();
   const { show } = useToast();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
@@ -116,10 +116,21 @@ export default function CookPage() {
           <button
             type="button"
             className="addall"
-            onClick={() => {
-              add(recipe.items.reduce((n, i) => n + i.qty, 0));
-              show(`${recipe.title} added to cart`);
-              router.push("/cart");
+            onClick={async () => {
+              // AGT-4 — the recipe knows what it wants by name; the catalogue
+              // resolves each to a listing and routing places it. Ingredients
+              // the market doesn't carry are reported, not silently dropped.
+              const qtyByName = Object.fromEntries(recipe.items.map((i) => [i.name, i.qty]));
+              const { added, missing } = await addByNames(
+                recipe.items.map((i) => i.name),
+                qtyByName,
+              );
+              show(
+                missing.length
+                  ? `${added} of ${recipe.items.length} added — we don't carry ${missing.slice(0, 2).join(" or ")} yet`
+                  : `${recipe.title} added to cart`,
+              );
+              if (added) router.push("/cart");
             }}
           >
             <CartIcon /> Add all to cart

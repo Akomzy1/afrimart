@@ -14,8 +14,6 @@ import {
   useToast,
   type ProductGlyphKind,
 } from "@afrimart/ui";
-import { useCart } from "../cart-context";
-
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 /** "Buy it again" — the buyer's usuals, from the prototype's demo set. */
@@ -49,14 +47,19 @@ const HISTORY: HistoryOrder[] = [
  * row links nowhere on purpose: boxes are PRD SUB-1, Phase 2, unbuilt.
  */
 export default function AccountPage() {
-  const { add } = useCart();
   const { show } = useToast();
   const [added, setAdded] = useState<string | null>(null);
 
+  /**
+   * SRCH-4 one-tap reorder, as far as it can honestly go today: HISTORY is
+   * local demo data carrying only glyphs and a count, and the backend exposes
+   * no orders router, so there is nothing to resolve a past order's actual
+   * lines from. Rather than fake an add, this tells the buyer plainly. Wire it
+   * to real order lines once an orders API exists.
+   */
   function reorder(order: HistoryOrder) {
-    add(order.itemCount);
     setAdded(order.id);
-    show(`${order.itemCount} items from ${order.id} added to cart`);
+    show(`Reordering ${order.id} needs your order history — that's coming soon`);
     window.setTimeout(() => setAdded(null), 2000);
   }
 

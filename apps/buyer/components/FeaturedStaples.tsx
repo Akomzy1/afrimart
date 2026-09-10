@@ -36,7 +36,7 @@ export function FeaturedStaples() {
             flag={p.freshnessGuarantee ? <Badge kind="fresh">Fresh</Badge> : undefined}
             image={<ProductGlyph kind={glyphForCategory(p.category)} />}
             onAdd={() => {
-              add();
+              add(p.listingId);
               show(`${p.name} added to cart`);
             }}
           />

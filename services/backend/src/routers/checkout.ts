@@ -96,8 +96,48 @@ export const checkoutRouter = router({
     const plan = await route(lines, pool, carrier, { toZip: input.destination.zip });
     const pricing = priceOrder(plan, input.destination.state);
 
+    // The cart screen renders items grouped under their parcel, so the quote
+    // carries the routed assignment with enough product detail to draw a line
+    // item. Names are joined here rather than in the pricing module, which
+    // stays pure and display-agnostic.
+    const productIds = plan.assignment.map((a) => a.canonicalProductId);
+    const products = await prisma.canonicalProduct.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, canonicalName: true, shortDescription: true, packSize: true, category: true },
+    });
+    const byId = new Map(products.map((p) => [p.id, p]));
+
+    const stores = await prisma.store.findMany({
+      where: { id: { in: plan.parcels.map((p) => p.storeId) } },
+      select: { id: true, verificationStatus: true },
+    });
+    const verifiedById = new Map(stores.map((s) => [s.id, s.verificationStatus === "verified"]));
+
+    const parcels = plan.parcels.map((p, index) => ({
+      ...pricing.parcels[index],
+      storeId: p.storeId,
+      transitDays: p.transitDays,
+      lines: p.lines.map((l) => {
+        const product = byId.get(l.canonicalProductId);
+        return {
+          listingId: l.listing.listingId,
+          canonicalProductId: l.canonicalProductId,
+          name: product?.canonicalName ?? "",
+          altNames: product ? `${product.canonicalName} — ${product.shortDescription}` : "",
+          category: product?.category ?? "",
+          unitLabel: product?.packSize ?? "",
+          sellerName: l.listing.storeName,
+          sellerVerified: verifiedById.get(l.listing.storeId) ?? false,
+          priceCents: l.listing.priceCents,
+          quantity: l.quantity,
+          lineTotalCents: l.lineTotalCents,
+        };
+      }),
+    }));
+
     return {
       pricing,
+      parcels,
       singleStore: plan.singleStore,
       storeCount: plan.storeCount,
       unfulfillable: plan.unfulfillable,

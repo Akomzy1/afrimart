@@ -116,7 +116,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ listin
           type="button"
           className="add"
           onClick={() => {
-            add(qty);
+            add(listingId, qty);
             show(`${qty} × ${data.name} added to cart`);
           }}
         >
