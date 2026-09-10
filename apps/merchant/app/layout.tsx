@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@afrimart/ui/global.css";
 import "./globals.css";
+import "./merchant.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
