@@ -27,6 +27,14 @@ export function CheckIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function RedoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} {...props}>
+      <path d="M4 12a8 8 0 1 1 3 6.2M4 12V6M4 12h6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function PlusIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>

@@ -12,6 +12,7 @@ import {
   CookPotIcon,
   ShipCheckIcon,
   SealIcon,
+  RedoIcon,
   type ProductGlyphKind,
 } from "@afrimart/ui";
 import {
@@ -598,15 +599,14 @@ export default function OnboardingPage() {
   );
 }
 
-function RedoIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}>
-      <path d="M4 12a8 8 0 1 1 3 6.2M4 12V6M4 12h6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** One glyph per capture verdict — the frame's tone colour carries the rest. */
+/**
+ * One glyph per capture verdict — the frame's tone colour carries the rest.
+ *
+ * Stays local rather than moving to `packages/ui`: it switches on
+ * `CaptureState`, a type that only means anything inside this flow, so sharing
+ * it would drag the onboarding state machine into the design system. The
+ * generic icons it would otherwise duplicate (check, redo) come from there.
+ */
 function CaptureIcon({ state }: { state: CaptureState }) {
   const common = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9 } as const;
   if (state === "good" || state === "done") {
