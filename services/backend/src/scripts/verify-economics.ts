@@ -21,8 +21,8 @@ const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 const carrier = new LocalCarrierGateway();
 
 // Pick products that cannot come from one store.
-const WANT = ["Egusi", "Red Palm Oil", "Plantain Flour", "Berbere", "Suya Spice"];
-const QTY: Record<string, number> = { Egusi: 2, "Red Palm Oil": 1, "Plantain Flour": 3, Berbere: 2, "Suya Spice": 1 };
+const WANT = ["Egusi", "Red Palm Oil", "Plantain Flour", "Berbere", "Suya Spice", "Smoked Catfish"];
+const QTY: Record<string, number> = { Egusi: 2, "Red Palm Oil": 1, "Plantain Flour": 3, Berbere: 2, "Suya Spice": 1, "Smoked Catfish": 1 };
 
 const products = await prisma.canonicalProduct.findMany({ where: { canonicalName: { in: WANT } } });
 const lines: BasketLine[] = products.map((p) => ({ canonicalProductId: p.id, quantity: QTY[p.canonicalName] ?? 1 }));
@@ -37,6 +37,7 @@ const pool: CandidateListing[] = rows
     listingId: r.id, storeId: r.storeId, storeName: r.store.name, metro: r.store.hubMetro.name,
     canonicalProductId: r.canonicalProductId, priceCents: r.priceCents, stockStatus: r.stockStatus,
     batchQuantityCap: r.batchQuantityCap, temperatureClass: r.temperatureClass, shippingWeightOz: r.shippingWeightOz,
+    sellerType: r.store.sellerType, verificationStatus: r.store.verificationStatus,
   }));
 
 const plan = await route(lines, pool, carrier, { toZip: "77002" });
@@ -44,7 +45,8 @@ const pricing = priceOrder(plan, "TX");
 const split = splitPayment(plan, pricing.totalCents, pricing.taxCents);
 
 console.log(`basket: ${products.length} products, ${lines.reduce((n, l) => n + l.quantity, 0)} units`);
-console.log(`routing: singleStore=${plan.singleStore} stores=${plan.storeCount} parcels=${plan.parcels.length}`);
+console.log(`routing: singleStore=${plan.singleStore} stores=${plan.storeCount} parcels=${plan.parcels.length} exceptional=${pricing.exceptionalSplit}`);
+console.log(`  premium paid to stay together: ${money(plan.singleStorePremiumCents)}; blocked by verification: ${plan.blockedByVerification.length}`);
 for (const p of plan.parcels) {
   console.log(`  ${p.storeName} (${p.metro}) ${p.temperatureClass}: ${p.lines.length} lines, true cost ${money(p.carrierCostCents)}`);
 }

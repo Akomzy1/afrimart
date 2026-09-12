@@ -1,4 +1,4 @@
-import { BLENDED_SHIPPING_CENTS, FREE_SHIPPING_THRESHOLD_CENTS } from "../config.js";
+import { blendedShippingCents, EXCEPTIONAL_SPLIT_PARCELS, FREE_SHIPPING_THRESHOLD_CENTS } from "../config.js";
 import { estimateTaxCents } from "../tax.js";
 import type { Parcel, RoutingPlan } from "./types.js";
 
@@ -32,6 +32,12 @@ export interface OrderPricing {
   /** Platform-side only: what we pay carriers versus what we charged. */
   shippingMarginCents: number;
   parcelCount: number;
+  /**
+   * True when the engine could only satisfy this basket with three or more
+   * parcels. Reported, never blocked — we want the frequency before deciding
+   * whether to cap it.
+   */
+  exceptionalSplit: boolean;
   parcels: ParcelDisclosure[];
 }
 
@@ -51,10 +57,10 @@ export function priceOrder(plan: RoutingPlan, destinationState: string): OrderPr
   const itemsSubtotalCents = plan.itemsSubtotalCents;
 
   // CART-5: above the threshold the platform absorbs the true multi-parcel
-  // cost entirely; below it the buyer sees one blended charge regardless of
-  // how many parcels the plan produced.
+  // cost entirely; below it the buyer sees ONE blended charge — a single
+  // figure, but one that reflects how many parcels this basket actually needs.
   const freeShippingApplied = itemsSubtotalCents >= FREE_SHIPPING_THRESHOLD_CENTS;
-  const shippingCents = freeShippingApplied ? 0 : BLENDED_SHIPPING_CENTS;
+  const shippingCents = freeShippingApplied ? 0 : blendedShippingCents(plan.parcels.length);
 
   const taxCents = estimateTaxCents(itemsSubtotalCents + shippingCents, destinationState);
 
@@ -67,6 +73,7 @@ export function priceOrder(plan: RoutingPlan, destinationState: string): OrderPr
     centsToFreeShipping: Math.max(0, FREE_SHIPPING_THRESHOLD_CENTS - itemsSubtotalCents),
     shippingMarginCents: shippingCents - plan.trueShippingCostCents,
     parcelCount: plan.parcels.length,
+    exceptionalSplit: plan.parcels.length >= EXCEPTIONAL_SPLIT_PARCELS,
     // CART-6: disclose parcel count and estimated dates, never hide the split.
     parcels: plan.parcels.map((p) => ({
       storeName: p.storeName,

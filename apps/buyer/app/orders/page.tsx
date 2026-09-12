@@ -86,7 +86,7 @@ export default function OrdersPage() {
                   <TruckIcon />
                 </div>
                 <div className="m">
-                  <div className="t">From {parcel.originMetro.split(",")[0]}</div>
+                  <div className="t">From {parcel.storeName}</div>
                   <div className="s">
                     {parcel.lines[0]?.sellerName}
                     {parcel.lines.length > 1 ? ` +${parcel.lines.length - 1} more` : ""} · arrives {dayName(parcel.arrivesInDays)}

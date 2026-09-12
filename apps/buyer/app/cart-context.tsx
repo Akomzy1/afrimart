@@ -36,7 +36,10 @@ export interface Parcel {
   key: string;
   originMetro: string;
   storeName: string;
+  /** "ambient" | "refrigerated" | "frozen", straight from the backend. */
   temperature: string;
+  /** CART-3 — anything not ambient travels cold and says so. */
+  chilled: boolean;
   arrivesInDays: number;
   estimatedDelivery: string;
   reason: string;
@@ -55,6 +58,8 @@ const DEMO_BASKET: { name: string; qty: number }[] = [
   { name: "Ata Rodo", qty: 2 },
   { name: "Red Palm Oil", qty: 2 },
   { name: "Plantain Flour", qty: 3 },
+  // Perishable on purpose: forces CART-3 to split the basket on temperature.
+  { name: "Smoked Catfish", qty: 1 },
 ];
 
 /** Ships to the prototype's address, so quotes are stable across reloads. */
@@ -65,6 +70,7 @@ const GLYPH_BY_CATEGORY: Record<string, ProductGlyphKind> = {
   "Spices & seasonings": "pepper",
   Oils: "jar",
   "Flours & grains": "wheat",
+  "Fish & seafood": "fish",
 };
 
 function glyphFor(category: string): ProductGlyphKind {
@@ -139,6 +145,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       originMetro: p.metro,
       storeName: p.storeName,
       temperature: p.temperatureClass,
+      chilled: p.temperatureClass !== "ambient",
       arrivesInDays: p.transitDays,
       estimatedDelivery: String(p.estimatedDelivery),
       reason: p.reason,

@@ -150,6 +150,32 @@ const products: SeedProduct[] = [
     reviews: [],
   },
   {
+    // The catalogue's only perishable. Without one, CART-3's mandatory
+    // temperature split never executes against real data — it stayed a rule
+    // that only unit tests had ever exercised. Kept ambient-adjacent in every
+    // other respect so it slots into normal baskets and forces the split.
+    name: "Smoked Catfish",
+    shortDescription: "Whole, cold-smoked",
+    category: "Fish & seafood",
+    cuisine: "Nigerian",
+    packSize: "400g",
+    temperatureClass: "refrigerated",
+    shippingWeightOz: 22,
+    freshnessGuarantee: true,
+    usedDescription:
+      "The backbone of pepper soup and egusi. Flakes apart into the pot and leaves a deep, smoky stock behind.",
+    langs: [
+      { language: "Yoruba", name: "Eja gbigbe" },
+      { language: "Igbo", name: "Azụ okpuru" },
+    ],
+    searchAliases: ["catfish", "smoked fish", "eja", "azu"],
+    listings: [
+      { seller: "Mama Ngozi", metro: "Bronx", state: "NY", verified: true, price: 1780 },
+      { seller: "Lagos Fresh", metro: "Houston", state: "TX", verified: true, price: 1690 },
+    ],
+    reviews: [{ buyerName: "Amara O.", rating: 5, comment: "Arrived cold and packed properly. Smelled like home." }],
+  },
+  {
     name: "Suya Spice",
     shortDescription: "Yaji spice",
     category: "Spices & seasonings",

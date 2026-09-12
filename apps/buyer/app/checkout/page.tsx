@@ -104,8 +104,8 @@ export default function CheckoutPage() {
             {parcels.map((parcel) => (
               <div className="step" key={parcel.key}>
                 <div className="lbl">
-                  Parcel from {parcel.originMetro.split(",")[0]}
-                  {parcel.temperature === "perishable" ? " · chilled" : ""}
+                  Parcel from {parcel.storeName}
+                  {parcel.chilled ? " · chilled" : ""}
                 </div>
                 <div className="sub">
                   Arrives <b>{dayShort(parcel.arrivesInDays)}</b>
@@ -181,8 +181,8 @@ export default function CheckoutPage() {
                   </div>
                   <div className="m">
                     <div className="t">
-                      From {parcel.originMetro.split(",")[0]}
-                      {parcel.temperature === "perishable" ? " · chilled" : ""}
+                      From {parcel.storeName}
+                      {parcel.chilled ? " · chilled" : ""}
                     </div>
                     <div className="s">
                       {parcel.lines.length} {parcel.lines.length === 1 ? "item" : "items"} · one blended shipping rate

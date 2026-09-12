@@ -63,6 +63,9 @@ async function resolveBasket(input: BasketInput) {
     include: { store: { include: { hubMetro: true } } },
   });
 
+  // Only onboarding is filtered here. Seller eligibility (SEL-2/SEL-4) is
+  // deliberately left to the routing engine, so the rule holds for every caller
+  // rather than depending on each query remembering to apply it.
   const pool: CandidateListing[] = rows
     .filter((r) => r.store.onboardingStatus === "live")
     .map((r) => ({
@@ -76,6 +79,8 @@ async function resolveBasket(input: BasketInput) {
       batchQuantityCap: r.batchQuantityCap,
       temperatureClass: r.temperatureClass,
       shippingWeightOz: r.shippingWeightOz,
+      sellerType: r.store.sellerType,
+      verificationStatus: r.store.verificationStatus,
     }));
 
   return { lines, pool };
@@ -141,6 +146,7 @@ export const checkoutRouter = router({
       singleStore: plan.singleStore,
       storeCount: plan.storeCount,
       unfulfillable: plan.unfulfillable,
+      blockedByVerification: plan.blockedByVerification,
       /** Ops-facing, not for display: see RoutingPlan.singleStorePremiumCents. */
       singleStorePremiumCents: plan.singleStorePremiumCents,
     };
@@ -157,7 +163,7 @@ export const checkoutRouter = router({
       const { lines, pool } = await resolveBasket(input);
       const plan = await route(lines, pool, carrier, { toZip: input.destination.zip });
 
-      if (plan.unfulfillable.length) {
+      if (plan.unfulfillable.length || plan.blockedByVerification.length) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Some items are no longer available from any store.",

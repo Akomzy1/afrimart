@@ -95,5 +95,6 @@ export async function route(
     storeCount,
     singleStorePremiumCents: Math.max(0, itemsSubtotalCents - selection.cheapestPossibleCents),
     unfulfillable: selection.unfulfillable,
+    blockedByVerification: selection.blockedByVerification,
   };
 }

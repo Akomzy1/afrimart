@@ -1,4 +1,4 @@
-import type { StockStatus, TemperatureClass } from "@prisma/client";
+import type { SellerType, StockStatus, TemperatureClass } from "@prisma/client";
 
 /** One thing the buyer wants, in canonical terms — not tied to a store yet. */
 export interface BasketLine {
@@ -18,6 +18,9 @@ export interface CandidateListing {
   batchQuantityCap: number | null;
   temperatureClass: TemperatureClass;
   shippingWeightOz: number;
+  /** SEL-2/SEL-4 — routing must not hand an order to a seller that hasn't passed the trust gate. */
+  sellerType: SellerType;
+  verificationStatus: string;
 }
 
 /** One basket line resolved to a specific store's listing. */
@@ -65,4 +68,10 @@ export interface RoutingPlan {
   singleStorePremiumCents: number;
   /** Lines no store could supply at the requested quantity. */
   unfulfillable: BasketLine[];
+  /**
+   * Lines that only an ineligible (unverified) seller stocks. Distinct from
+   * `unfulfillable`: the market has these, the trust gate is what removed them,
+   * and that is worth seeing rather than reading as "out of stock".
+   */
+  blockedByVerification: BasketLine[];
 }

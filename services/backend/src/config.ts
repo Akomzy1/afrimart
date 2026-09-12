@@ -19,12 +19,46 @@ export const FULFILMENT_FEE_CENTS = Number(process.env.FULFILMENT_FEE_CENTS ?? 1
 export const FREE_SHIPPING_THRESHOLD_CENTS = Number(process.env.FREE_SHIPPING_THRESHOLD_CENTS ?? 10000);
 
 /**
- * The single blended shipping charge shown below the threshold. Deliberately a
- * flat buyer-facing price rather than a pass-through of true carrier cost: the
- * buyer must never be able to infer a per-parcel fee from the number, which is
- * exactly what CART-5 forbids.
+ * CART-5's blended charge. The requirement is about *presentation* — one
+ * shipping figure, never a per-seller breakdown — not about that figure being
+ * the same for every basket. A flat constant made multi-parcel orders
+ * structurally loss-making: a four-way split cost $46.90 to ship and recovered
+ * $7.50.
+ *
+ * So the figure scales with parcel count while staying a single number. The
+ * buyer still sees one order, one total, and cannot infer a per-seller fee from
+ * it: the increment is not any parcel's real cost, and the schedule is
+ * deliberately sub-linear so the platform keeps absorbing part of a split
+ * rather than passing it through.
  */
-export const BLENDED_SHIPPING_CENTS = Number(process.env.BLENDED_SHIPPING_CENTS ?? 750);
+export const BLENDED_SHIPPING_BASE_CENTS = Number(process.env.BLENDED_SHIPPING_BASE_CENTS ?? 750);
+export const BLENDED_SHIPPING_PER_EXTRA_PARCEL_CENTS = Number(
+  process.env.BLENDED_SHIPPING_PER_EXTRA_PARCEL_CENTS ?? 450,
+);
+
+/**
+ * Parcel count at or above which an order is reported as an exceptional split.
+ * Not a cap — nothing is blocked. We want to see how often the engine can only
+ * satisfy an order this way before deciding whether to cap it.
+ */
+export const EXCEPTIONAL_SPLIT_PARCELS = Number(process.env.EXCEPTIONAL_SPLIT_PARCELS ?? 3);
+
+/**
+ * SEL-2/SEL-4 seller eligibility for routing.
+ *
+ * SEL-2 as written gates *non-store* sellers: verification is "required before
+ * a non-store seller can list to the public", which leaves an unverified
+ * `store` free to sell. `REQUIRE_VERIFIED_ALL` is the stricter stance — no
+ * unverified seller of any type may receive a routed order. It is the default
+ * because an order landing with an unverified seller is where SEL-2 and SEL-4
+ * are supposed to bite; set it false to fall back to SEL-2's literal reading.
+ */
+export const REQUIRE_VERIFIED_ALL = process.env.REQUIRE_VERIFIED_ALL !== "false";
+
+export function blendedShippingCents(parcelCount: number): number {
+  if (parcelCount <= 0) return 0;
+  return BLENDED_SHIPPING_BASE_CENTS + (parcelCount - 1) * BLENDED_SHIPPING_PER_EXTRA_PARCEL_CENTS;
+}
 
 if (TAKE_RATE_BPS < TAKE_RATE_MIN_BPS || TAKE_RATE_BPS > TAKE_RATE_MAX_BPS) {
   throw new Error(

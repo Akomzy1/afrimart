@@ -84,9 +84,9 @@ export default function CartPage() {
             {parcels.map((parcel) => (
               <ParcelGroup
                 key={parcel.key}
-                originLabel={parcel.originMetro.split(",")[0]}
+                originLabel={parcel.storeName}
                 arrivesLabel={dayName(parcel.arrivesInDays)}
-                temperatureLabel={parcel.temperature === "perishable" ? "chilled" : undefined}
+                temperatureLabel={parcel.chilled ? "chilled" : undefined}
               >
                 {parcel.lines.map((line) => (
                   <CartLineItem

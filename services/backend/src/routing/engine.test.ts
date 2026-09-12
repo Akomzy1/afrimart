@@ -6,7 +6,7 @@ import { selectCarrier } from "../shipping/select.js";
 import { route } from "./engine.js";
 import { priceOrder } from "./pricing.js";
 import { splitPayment } from "../payments/split.js";
-import { BLENDED_SHIPPING_CENTS, FREE_SHIPPING_THRESHOLD_CENTS } from "../config.js";
+import { blendedShippingCents, FREE_SHIPPING_THRESHOLD_CENTS } from "../config.js";
 import type { BasketLine, CandidateListing } from "./types.js";
 
 const carrier = new LocalCarrierGateway();
@@ -18,6 +18,8 @@ function listing(over: Partial<CandidateListing> & { storeId: string; canonicalP
     storeName: `Store ${over.storeId}`,
     metro: "Houston",
     stockStatus: "in_stock",
+    sellerType: "store",
+    verificationStatus: "verified",
     batchQuantityCap: null,
     temperatureClass: "ambient",
     shippingWeightOz: 16,
@@ -145,8 +147,9 @@ describe("CART-5 one shipping charge, never one per parcel", () => {
     const pricing = priceOrder(plan, "TX");
 
     assert.equal(pricing.parcelCount, 2);
-    assert.equal(pricing.shippingCents, BLENDED_SHIPPING_CENTS);
-    assert.notEqual(pricing.shippingCents, BLENDED_SHIPPING_CENTS * 2);
+    // One figure, scaled to the split — and emphatically not two fees.
+    assert.equal(pricing.shippingCents, blendedShippingCents(2));
+    assert.notEqual(pricing.shippingCents, blendedShippingCents(1) * 2);
   });
 
   test("above the threshold the platform absorbs shipping entirely", async () => {
@@ -160,7 +163,7 @@ describe("CART-5 one shipping charge, never one per parcel", () => {
     assert.ok(pricing.shippingMarginCents < 0);
   });
 
-  test("shipping charged is independent of how many parcels routing produced", async () => {
+  test("a bigger split costs the buyer more, as one figure not several", async () => {
     const onePool = [listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 })];
     const threePool = [
       listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 }),
@@ -174,7 +177,50 @@ describe("CART-5 one shipping charge, never one per parcel", () => {
     );
 
     assert.equal(three.parcelCount, 3);
-    assert.equal(one.shippingCents, three.shippingCents);
+    assert.ok(three.shippingCents > one.shippingCents, "a three-way split must not cost the same as one parcel");
+    // Still a single charge: sub-linear, so the platform keeps absorbing part.
+    assert.ok(three.shippingCents < one.shippingCents * 3);
+  });
+
+  test("a three-way split is reported as an exception to look at", async () => {
+    const pool = [
+      listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 }),
+      listing({ storeId: "B", canonicalProductId: "garri", priceCents: 900, metro: "Bronx" }),
+      listing({ storeId: "C", canonicalProductId: "oil", priceCents: 900, metro: "Chicago" }),
+    ];
+    const three = priceOrder(
+      await route([line("egusi"), line("garri"), line("oil")], pool, carrier, { toZip: ZIP }),
+      "TX",
+    );
+    assert.equal(three.exceptionalSplit, true);
+
+    const onePool = [listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 })];
+    const one = priceOrder(await route([line("egusi")], onePool, carrier, { toZip: ZIP }), "TX");
+    assert.equal(one.exceptionalSplit, false);
+  });
+});
+
+describe("SEL-2/SEL-4 seller eligibility", () => {
+  test("an unverified seller is never assigned an order", async () => {
+    const pool = [
+      listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 500, verificationStatus: "pending" }),
+      listing({ storeId: "B", canonicalProductId: "egusi", priceCents: 900 }),
+    ];
+    const plan = await route([line("egusi")], pool, carrier, { toZip: ZIP });
+
+    assert.equal(plan.assignment[0].listing.storeId, "B", "cheaper unverified seller must not win");
+  });
+
+  test("a line only an unverified seller stocks is reported separately from out-of-stock", async () => {
+    const pool = [
+      listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 }),
+      listing({ storeId: "B", canonicalProductId: "rare", priceCents: 700, verificationStatus: "pending" }),
+    ];
+    const plan = await route([line("egusi"), line("rare")], pool, carrier, { toZip: ZIP });
+
+    assert.equal(plan.blockedByVerification.length, 1);
+    assert.equal(plan.blockedByVerification[0].canonicalProductId, "rare");
+    assert.equal(plan.unfulfillable.length, 0, "it is not out of stock — the trust gate removed it");
   });
 });
 
