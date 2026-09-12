@@ -37,6 +37,27 @@ export const BLENDED_SHIPPING_PER_EXTRA_PARCEL_CENTS = Number(
 );
 
 /**
+ * Cold chain is not shipping, and must never be absorbed by a basket-size
+ * threshold. A perishable box runs $37-67 all-in, so no threshold we would
+ * realistically set can swallow one — raising the threshold only moves the
+ * cliff. Chilled and frozen parcels therefore always carry this fee, whatever
+ * the basket is worth, and it covers their transport as well as the insulated
+ * packaging and refrigerant. The ambient side keeps the free-shipping mechanic,
+ * which is where absorption is affordable.
+ *
+ * PROVISIONAL NUMBERS. These are placed to sit inside the quoted $37-67 all-in
+ * band once carrier and packaging quotes exist; they are not derived from real
+ * ones yet and should be replaced when EasyPost cold-chain pricing lands.
+ */
+export const COLD_PACK_BASE_CENTS = Number(process.env.COLD_PACK_BASE_CENTS ?? 1900);
+export const COLD_PACK_PER_EXTRA_PARCEL_CENTS = Number(process.env.COLD_PACK_PER_EXTRA_PARCEL_CENTS ?? 1400);
+
+export function coldPackCents(coldParcelCount: number): number {
+  if (coldParcelCount <= 0) return 0;
+  return COLD_PACK_BASE_CENTS + (coldParcelCount - 1) * COLD_PACK_PER_EXTRA_PARCEL_CENTS;
+}
+
+/**
  * Parcel count at or above which an order is reported as an exceptional split.
  * Not a cap — nothing is blocked. We want to see how often the engine can only
  * satisfy an order this way before deciding whether to cap it.

@@ -42,7 +42,7 @@ const pool: CandidateListing[] = rows
 
 const plan = await route(lines, pool, carrier, { toZip: "77002" });
 const pricing = priceOrder(plan, "TX");
-const split = splitPayment(plan, pricing.totalCents, pricing.taxCents);
+const split = splitPayment(plan, pricing.totalCents, pricing.taxCents, pricing.shippingCents + pricing.coldPackCents);
 
 console.log(`basket: ${products.length} products, ${lines.reduce((n, l) => n + l.quantity, 0)} units`);
 console.log(`routing: singleStore=${plan.singleStore} stores=${plan.storeCount} parcels=${plan.parcels.length} exceptional=${pricing.exceptionalSplit}`);
@@ -50,10 +50,11 @@ console.log(`  premium paid to stay together: ${money(plan.singleStorePremiumCen
 for (const p of plan.parcels) {
   console.log(`  ${p.storeName} (${p.metro}) ${p.temperatureClass}: ${p.lines.length} lines, true cost ${money(p.carrierCostCents)}`);
 }
-console.log(`buyer pays: items ${money(pricing.itemsSubtotalCents)} + shipping ${money(pricing.shippingCents)} + tax ${money(pricing.taxCents)} = ${money(pricing.totalCents)}`);
+console.log(`buyer pays: items ${money(pricing.itemsSubtotalCents)} + shipping ${money(pricing.shippingCents)} + cold pack ${money(pricing.coldPackCents)} + tax ${money(pricing.taxCents)} = ${money(pricing.totalCents)}`);
+console.log(`  ambient subtotal ${money(pricing.ambientSubtotalCents)} (threshold ${money(10000)}), chilled subtotal ${money(pricing.chilledSubtotalCents)}, freeShipping=${pricing.freeShippingApplied}`);
 
 console.log(`\n--- CART-5: one shipping figure across ${plan.parcels.length} parcels ---`);
-console.log(`  charged ${money(pricing.shippingCents)}; carriers actually cost ${money(plan.trueShippingCostCents)}; platform margin ${money(pricing.shippingMarginCents)}`);
+console.log(`  charged ${money(pricing.shippingCents + pricing.coldPackCents)} across shipping+cold; carriers actually cost ${money(plan.trueShippingCostCents)}; margin ${money(pricing.shippingMarginCents)}`);
 
 console.log(`\n--- PAY-2/PAY-3: per-seller remittance (take ${TAKE_RATE_BPS / 100}%, order fee ${money(FULFILMENT_FEE_CENTS)}) ---`);
 let netSum = 0, feeSum = 0, grossSum = 0;
@@ -65,7 +66,7 @@ for (const s of split.stores) {
 }
 console.log(`  store gross total ${money(grossSum)} vs basket ${money(plan.itemsSubtotalCents)} -> ${grossSum === plan.itemsSubtotalCents ? "reconciles" : "MISMATCH"}`);
 console.log(`  order fee charged once: ${money(feeSum)} vs ${money(FULFILMENT_FEE_CENTS)} -> ${feeSum === FULFILMENT_FEE_CENTS ? "OK" : "MISMATCH"}`);
-console.log(`  platform gross ${money(split.platformGrossCents)}  carrier cost ${money(split.carrierCostCents)}  platform net ${money(split.platformNetCents)}`);
+console.log(`  platform: commission+fee ${money(split.platformGrossCents)} + logistics charged ${money(split.logisticsRevenueCents)} - carrier ${money(split.carrierCostCents)} = net ${money(split.platformNetCents)}`);
 console.log(`  sellers net ${money(netSum)} + platform gross ${money(split.platformGrossCents)} = ${money(netSum + split.platformGrossCents)} vs items ${money(plan.itemsSubtotalCents)} -> ${netSum + split.platformGrossCents === plan.itemsSubtotalCents ? "reconciles" : "MISMATCH"}`);
 
 await prisma.$disconnect();

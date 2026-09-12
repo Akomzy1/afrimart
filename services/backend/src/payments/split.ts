@@ -34,6 +34,8 @@ export interface PaymentSplit {
   stores: StoreSplit[];
   /** Commission plus the order fee, before carrier costs. */
   platformGrossCents: number;
+  /** Shipping and cold-pack the buyer paid; the platform's, not a store's. */
+  logisticsRevenueCents: number;
   carrierCostCents: number;
   /** What the platform keeps once it has paid the carriers. */
   platformNetCents: number;
@@ -44,6 +46,13 @@ export function splitPayment(
   plan: RoutingPlan,
   buyerChargeCents: number,
   taxCents: number,
+  /**
+   * Shipping plus cold pack. Counted here because the platform buys the labels
+   * and the refrigerant — leaving it out made every multi-parcel order look far
+   * more loss-making than it is, by charging the carrier cost against
+   * commission alone while the buyer's contribution went unrecorded.
+   */
+  logisticsRevenueCents = 0,
 ): PaymentSplit {
   const grossByStore = new Map<string, { name: string; gross: number }>();
   for (const line of plan.assignment) {
@@ -86,8 +95,9 @@ export function splitPayment(
     buyerChargeCents,
     stores,
     platformGrossCents,
+    logisticsRevenueCents,
     carrierCostCents: plan.trueShippingCostCents,
-    platformNetCents: platformGrossCents - plan.trueShippingCostCents,
+    platformNetCents: platformGrossCents + logisticsRevenueCents - plan.trueShippingCostCents,
     taxCollectedCents: taxCents,
   };
 }

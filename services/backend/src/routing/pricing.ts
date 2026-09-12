@@ -1,4 +1,9 @@
-import { blendedShippingCents, EXCEPTIONAL_SPLIT_PARCELS, FREE_SHIPPING_THRESHOLD_CENTS } from "../config.js";
+import {
+  blendedShippingCents,
+  coldPackCents,
+  EXCEPTIONAL_SPLIT_PARCELS,
+  FREE_SHIPPING_THRESHOLD_CENTS,
+} from "../config.js";
 import { estimateTaxCents } from "../tax.js";
 import type { Parcel, RoutingPlan } from "./types.js";
 
@@ -23,10 +28,21 @@ export interface ParcelDisclosure {
 
 export interface OrderPricing {
   itemsSubtotalCents: number;
-  /** The single blended figure. Never per-parcel, never per-seller. */
+  /**
+   * The single blended figure for the ambient side. Never per-parcel, never
+   * per-seller. Cold parcels are not in here — see coldPackCents.
+   */
   shippingCents: number;
+  /**
+   * One cold-chain line for the whole order, charged whatever the basket is
+   * worth. Covers the cold parcels' transport, packaging and refrigerant.
+   */
+  coldPackCents: number;
   taxCents: number;
   totalCents: number;
+  /** The ambient subtotal only — cold goods never count toward the threshold. */
+  ambientSubtotalCents: number;
+  chilledSubtotalCents: number;
   freeShippingApplied: boolean;
   centsToFreeShipping: number;
   /** Platform-side only: what we pay carriers versus what we charged. */
@@ -56,22 +72,38 @@ function reasonFor(parcel: Parcel, allParcels: Parcel[]): string {
 export function priceOrder(plan: RoutingPlan, destinationState: string): OrderPricing {
   const itemsSubtotalCents = plan.itemsSubtotalCents;
 
-  // CART-5: above the threshold the platform absorbs the true multi-parcel
-  // cost entirely; below it the buyer sees ONE blended charge — a single
-  // figure, but one that reflects how many parcels this basket actually needs.
-  const freeShippingApplied = itemsSubtotalCents >= FREE_SHIPPING_THRESHOLD_CENTS;
-  const shippingCents = freeShippingApplied ? 0 : blendedShippingCents(plan.parcels.length);
+  // Two cost categories, not five sellers. Shipping covers the ambient side and
+  // can be absorbed above the threshold; cold chain is its own line and never
+  // is, because a perishable box costs more than any sane threshold can hide.
+  const ambientParcels = plan.parcels.filter((p) => p.temperatureClass === "ambient");
+  const coldParcels = plan.parcels.filter((p) => p.temperatureClass !== "ambient");
 
-  const taxCents = estimateTaxCents(itemsSubtotalCents + shippingCents, destinationState);
+  const subtotalOf = (parcels: Parcel[]) =>
+    parcels.reduce((sum, p) => sum + p.lines.reduce((s, l) => s + l.lineTotalCents, 0), 0);
+  const ambientSubtotalCents = subtotalOf(ambientParcels);
+  const chilledSubtotalCents = subtotalOf(coldParcels);
+
+  // CART-5: the threshold reads the ambient subtotal alone. Cold goods must not
+  // buy their way past it — that was the hole that made a $105 basket with a
+  // chilled parcel ship for nothing against $64 of carrier cost.
+  const freeShippingApplied = ambientSubtotalCents >= FREE_SHIPPING_THRESHOLD_CENTS;
+  const shippingCents =
+    ambientParcels.length === 0 || freeShippingApplied ? 0 : blendedShippingCents(ambientParcels.length);
+  const coldPack = coldPackCents(coldParcels.length);
+
+  const taxCents = estimateTaxCents(itemsSubtotalCents + shippingCents + coldPack, destinationState);
 
   return {
     itemsSubtotalCents,
     shippingCents,
+    coldPackCents: coldPack,
     taxCents,
-    totalCents: itemsSubtotalCents + shippingCents + taxCents,
+    totalCents: itemsSubtotalCents + shippingCents + coldPack + taxCents,
+    ambientSubtotalCents,
+    chilledSubtotalCents,
     freeShippingApplied,
-    centsToFreeShipping: Math.max(0, FREE_SHIPPING_THRESHOLD_CENTS - itemsSubtotalCents),
-    shippingMarginCents: shippingCents - plan.trueShippingCostCents,
+    centsToFreeShipping: Math.max(0, FREE_SHIPPING_THRESHOLD_CENTS - ambientSubtotalCents),
+    shippingMarginCents: shippingCents + coldPack - plan.trueShippingCostCents,
     parcelCount: plan.parcels.length,
     exceptionalSplit: plan.parcels.length >= EXCEPTIONAL_SPLIT_PARCELS,
     // CART-6: disclose parcel count and estimated dates, never hide the split.

@@ -24,7 +24,7 @@ const dayName = (offset: number) =>
 /** AfriMart Buyer - Cart and Checkout.html — cart view. CART-2/3/5/6. */
 export default function CartPage() {
   const router = useRouter();
-  const { parcels, lines, count, sellerCount, subtotalCents, shippingCents, totalCents, setQty, remove } = useCart();
+  const { parcels, lines, count, sellerCount, subtotalCents, shippingCents, totalCents, coldPackCents, coldParcelCount, ambientSubtotalCents, setQty, remove } = useCart();
 
   if (!lines.length) {
     return (
@@ -72,7 +72,10 @@ export default function CartPage() {
       <div className="cart-layout">
         <div className="cartMain">
           <div className="cart-freebar">
-            <ShippingProgress subtotalCents={subtotalCents} thresholdCents={FREE_SHIPPING_THRESHOLD_CENTS} />
+            {/* Ambient goods only — chilled items never count toward free
+                shipping, so showing the whole subtotal here would promise a
+                threshold the cold side can't reach. */}
+            <ShippingProgress subtotalCents={ambientSubtotalCents} thresholdCents={FREE_SHIPPING_THRESHOLD_CENTS} />
           </div>
 
           {/* CART-6 — multi-parcel arrival disclosed up front, never hidden. */}
@@ -123,6 +126,8 @@ export default function CartPage() {
               parcelCount={parcels.length}
               subtotalLabel={money(subtotalCents)}
               shippingLabel={shippingCents === 0 ? "Free" : money(shippingCents)}
+              coldPackLabel={coldPackCents > 0 ? money(coldPackCents) : undefined}
+              coldParcelCount={coldParcelCount}
               totalLabel={money(totalCents)}
             />
           </div>

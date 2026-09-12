@@ -99,16 +99,25 @@ export interface OrderSummaryProps {
   subtotalLabel: string;
   shippingLabel: string;
   totalLabel: string;
+  /** Set when the order contains chilled or frozen goods. CART-5. */
+  coldPackLabel?: string;
+  coldParcelCount?: number;
 }
 
 /**
- * CART-5/CART-6 — one subtotal, one shipping line for the whole order however
- * many parcels it lands in, one total, and the promise stated in words.
+ * CART-5/CART-6 — one subtotal, one total, and at most two cost lines:
+ * shipping and cold chain. Two *categories*, never a line per seller or per
+ * parcel. Cold chain is separate because it is not shipping and is never
+ * absorbed by the free-shipping threshold — and it appears here, in the cart,
+ * so it is never a surprise introduced at the payment step.
  */
 export function OrderSummary({
   itemCount, sellerCount, parcelCount, subtotalLabel, shippingLabel, totalLabel,
+  coldPackLabel, coldParcelCount = 0,
 }: OrderSummaryProps) {
-  const parcelWord = parcelCount === 1 ? "1 parcel" : `${parcelCount} parcels`;
+  const ambientParcels = Math.max(0, parcelCount - coldParcelCount);
+  const parcelWord = ambientParcels === 1 ? "1 parcel" : `${ambientParcels} parcels`;
+  const coldWord = coldParcelCount === 1 ? "1 chilled parcel" : `${coldParcelCount} chilled parcels`;
   return (
     <div className="summary">
       <div className="row">
@@ -120,12 +129,22 @@ export function OrderSummary({
         </span>
         <span className="v tnum">{subtotalLabel}</span>
       </div>
-      <div className="row">
-        <span>
-          Shipping <span className="sub">{parcelWord} · one blended rate</span>
-        </span>
-        <span className="v tnum">{shippingLabel}</span>
-      </div>
+      {ambientParcels > 0 && (
+        <div className="row">
+          <span>
+            Shipping <span className="sub">{parcelWord} · one blended rate</span>
+          </span>
+          <span className="v tnum">{shippingLabel}</span>
+        </div>
+      )}
+      {coldPackLabel && (
+        <div className="row">
+          <span>
+            Cold pack <span className="sub">{coldWord} · packed with ice</span>
+          </span>
+          <span className="v tnum">{coldPackLabel}</span>
+        </div>
+      )}
       <div className="divider" />
       <div className="total">
         <span className="l">Total</span>
@@ -133,7 +152,11 @@ export function OrderSummary({
       </div>
       <div className="note">
         <SealIcon />
-        <span>One order, one total — never a separate fee per seller.</span>
+        <span>
+          {coldPackLabel
+            ? "One order, one total — never a separate fee per seller. Cold pack keeps the chilled items cold in transit."
+            : "One order, one total — never a separate fee per seller."}
+        </span>
       </div>
     </div>
   );

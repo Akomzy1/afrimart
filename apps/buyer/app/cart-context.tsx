@@ -91,6 +91,11 @@ interface CartContextValue {
   shippingCents: number;
   totalCents: number;
   taxCents: number;
+  /** CART-5 — the cold-chain line, shown in the cart not sprung at payment. */
+  coldPackCents: number;
+  coldParcelCount: number;
+  /** Threshold progress counts ambient goods only; cold never buys past it. */
+  ambientSubtotalCents: number;
   /** True while a quote is in flight — totals shown are the previous ones. */
   pricing: boolean;
   /** Set when the backend could not be reached; screens show it rather than wrong numbers. */
@@ -178,6 +183,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       shippingCents: pricing?.shippingCents ?? 0,
       totalCents: pricing?.totalCents ?? 0,
       taxCents: pricing?.taxCents ?? 0,
+      coldPackCents: pricing?.coldPackCents ?? 0,
+      coldParcelCount: parcels.filter((p) => p.chilled).length,
+      ambientSubtotalCents: pricing?.ambientSubtotalCents ?? 0,
       pricing: quote.isPending || demo.isLoading,
       error:
         demoFailed || quoteFailed

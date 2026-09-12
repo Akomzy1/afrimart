@@ -171,7 +171,7 @@ export const checkoutRouter = router({
       }
 
       const pricing = priceOrder(plan, input.destination.state);
-      const split = splitPayment(plan, pricing.totalCents, pricing.taxCents);
+      const split = splitPayment(plan, pricing.totalCents, pricing.taxCents, pricing.shippingCents + pricing.coldPackCents);
 
       // Snapshot data for the parcel contents: a placed order must keep the
       // name and price it was placed at, not follow the listing afterwards.

@@ -6,7 +6,7 @@ import { selectCarrier } from "../shipping/select.js";
 import { route } from "./engine.js";
 import { priceOrder } from "./pricing.js";
 import { splitPayment } from "../payments/split.js";
-import { blendedShippingCents, FREE_SHIPPING_THRESHOLD_CENTS } from "../config.js";
+import { blendedShippingCents, coldPackCents, FREE_SHIPPING_THRESHOLD_CENTS } from "../config.js";
 import type { BasketLine, CandidateListing } from "./types.js";
 
 const carrier = new LocalCarrierGateway();
@@ -138,12 +138,14 @@ describe("CART-3 mandatory temperature split", () => {
 });
 
 describe("CART-5 one shipping charge, never one per parcel", () => {
-  test("a two-parcel order below the threshold is charged one blended fee", async () => {
+  test("a two-parcel ambient order below the threshold is charged one blended fee", async () => {
+    // Both parcels ambient, so both sit on the shipping line. A mixed basket
+    // splits across two categories instead — see the cold-chain suite.
     const pool = [
-      listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900, temperatureClass: "ambient" }),
-      listing({ storeId: "A", canonicalProductId: "fish", priceCents: 1600, temperatureClass: "frozen" }),
+      listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 }),
+      listing({ storeId: "B", canonicalProductId: "garri", priceCents: 1600, metro: "Bronx" }),
     ];
-    const plan = await route([line("egusi"), line("fish")], pool, carrier, { toZip: ZIP });
+    const plan = await route([line("egusi"), line("garri")], pool, carrier, { toZip: ZIP });
     const pricing = priceOrder(plan, "TX");
 
     assert.equal(pricing.parcelCount, 2);
@@ -197,6 +199,85 @@ describe("CART-5 one shipping charge, never one per parcel", () => {
     const onePool = [listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 })];
     const one = priceOrder(await route([line("egusi")], onePool, carrier, { toZip: ZIP }), "TX");
     assert.equal(one.exceptionalSplit, false);
+  });
+});
+
+describe("CART-5 cold chain is not shipping", () => {
+  const mixedPool = [
+    listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900, temperatureClass: "ambient" }),
+    listing({ storeId: "A", canonicalProductId: "fish", priceCents: 1600, temperatureClass: "frozen" }),
+  ];
+  const mixedLines = [line("egusi"), line("fish")];
+
+  test("a chilled parcel is charged a cold pack even on a small basket", async () => {
+    const plan = await route(mixedLines, mixedPool, carrier, { toZip: ZIP });
+    const pricing = priceOrder(plan, "TX");
+
+    assert.ok(pricing.coldPackCents > 0);
+    assert.equal(pricing.coldPackCents, coldPackCents(1));
+  });
+
+  test("cold goods never count toward the free-shipping threshold", async () => {
+    // Ambient side is tiny; the chilled line alone would clear the threshold.
+    const pool = [
+      listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 500, temperatureClass: "ambient" }),
+      listing({
+        storeId: "A",
+        canonicalProductId: "fish",
+        priceCents: FREE_SHIPPING_THRESHOLD_CENTS + 2000,
+        temperatureClass: "frozen",
+      }),
+    ];
+    const pricing = priceOrder(await route(mixedLines, pool, carrier, { toZip: ZIP }), "TX");
+
+    assert.ok(pricing.itemsSubtotalCents > FREE_SHIPPING_THRESHOLD_CENTS, "basket clears the threshold overall");
+    assert.equal(pricing.freeShippingApplied, false, "but the ambient side does not");
+    assert.ok(pricing.shippingCents > 0, "so the ambient parcel still pays shipping");
+  });
+
+  test("the cold pack is charged even when the ambient side ships free", async () => {
+    const pool = [
+      listing({
+        storeId: "A",
+        canonicalProductId: "bulk",
+        priceCents: FREE_SHIPPING_THRESHOLD_CENTS + 500,
+        temperatureClass: "ambient",
+      }),
+      listing({ storeId: "A", canonicalProductId: "fish", priceCents: 1600, temperatureClass: "frozen" }),
+    ];
+    const pricing = priceOrder(await route([line("bulk"), line("fish")], pool, carrier, { toZip: ZIP }), "TX");
+
+    assert.equal(pricing.freeShippingApplied, true);
+    assert.equal(pricing.shippingCents, 0, "ambient ships free");
+    assert.ok(pricing.coldPackCents > 0, "cold chain is never absorbed by the threshold");
+  });
+
+  test("an all-ambient order has no cold-pack line at all", async () => {
+    const pool = [listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 })];
+    const pricing = priceOrder(await route([line("egusi")], pool, carrier, { toZip: ZIP }), "TX");
+
+    assert.equal(pricing.coldPackCents, 0);
+  });
+
+  test("the buyer still sees at most two cost lines, whatever the split", async () => {
+    // Three sellers, one of them chilled: five parcels would be five fees under
+    // a per-parcel model. Here it stays shipping + cold pack.
+    const pool = [
+      listing({ storeId: "A", canonicalProductId: "egusi", priceCents: 900 }),
+      listing({ storeId: "B", canonicalProductId: "garri", priceCents: 900, metro: "Bronx" }),
+      listing({ storeId: "C", canonicalProductId: "fish", priceCents: 900, metro: "Chicago", temperatureClass: "frozen" }),
+      listing({ storeId: "D", canonicalProductId: "oil", priceCents: 900, metro: "Atlanta" }),
+    ];
+    const plan = await route([line("egusi"), line("garri"), line("fish"), line("oil")], pool, carrier, { toZip: ZIP });
+    const pricing = priceOrder(plan, "TX");
+
+    assert.equal(pricing.parcelCount, 4);
+    const lineCount = [pricing.shippingCents, pricing.coldPackCents].filter((c) => c > 0).length;
+    assert.ok(lineCount <= 2, "never more than shipping plus cold pack");
+    assert.equal(
+      pricing.totalCents,
+      pricing.itemsSubtotalCents + pricing.shippingCents + pricing.coldPackCents + pricing.taxCents,
+    );
   });
 });
 
