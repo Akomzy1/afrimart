@@ -132,6 +132,7 @@ model Listing {
   /// PRD QC-5 -- the buyer-facing freshness/quality-guarantee badge, distinct from temperatureClass.
   freshnessGuarantee Boolean          @default(false)
   cartItems          CartItem[]
+  shipmentItems      ShipmentItem[]
   reviews            Review[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
@@ -217,8 +218,30 @@ model Shipment {
   status            ShipmentStatus    @default(pending)
   estimatedDelivery DateTime?
   packingPhotoUrl   String?
+  items             ShipmentItem[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
+}
+
+/// What is actually in a parcel. Hangs off Shipment rather than Order so the
+/// CART-3 temperature split is preserved in the data, and so a store reading
+/// its own shipment sees exactly its pack list and nothing from another store.
+/// Name and price are snapshotted: listings change, a placed order must not.
+model ShipmentItem {
+  id                 String   @id @default(cuid())
+  shipment           Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipmentId         String
+  listing            Listing  @relation(fields: [listingId], references: [id])
+  listingId          String
+  canonicalProductId String
+  nameSnapshot       String
+  packSizeSnapshot   String
+  categorySnapshot   String
+  quantity           Int
+  unitPriceCents     Int
+  lineTotalCents     Int
+
+  @@index([shipmentId])
 }
 
 model Payment {

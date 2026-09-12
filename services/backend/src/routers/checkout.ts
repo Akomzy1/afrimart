@@ -167,6 +167,14 @@ export const checkoutRouter = router({
       const pricing = priceOrder(plan, input.destination.state);
       const split = splitPayment(plan, pricing.totalCents, pricing.taxCents);
 
+      // Snapshot data for the parcel contents: a placed order must keep the
+      // name and price it was placed at, not follow the listing afterwards.
+      const snapshots = await prisma.canonicalProduct.findMany({
+        where: { id: { in: plan.assignment.map((a) => a.canonicalProductId) } },
+        select: { id: true, canonicalName: true, packSize: true, category: true },
+      });
+      const snapshotById = new Map(snapshots.map((s) => [s.id, s]));
+
       return prisma.$transaction(async (tx) => {
         const order = await tx.order.create({
           data: {
@@ -177,15 +185,34 @@ export const checkoutRouter = router({
           },
         });
 
-        await tx.shipment.createMany({
-          data: plan.parcels.map((p) => ({
-            orderId: order.id,
-            storeId: p.storeId,
-            temperatureClass: p.temperatureClass,
-            carrier: p.carrier,
-            estimatedDelivery: p.estimatedDelivery,
-          })),
-        });
+        // One create per parcel rather than createMany, because each shipment
+        // carries its own items and createMany cannot write the nested rows.
+        for (const p of plan.parcels) {
+          await tx.shipment.create({
+            data: {
+              orderId: order.id,
+              storeId: p.storeId,
+              temperatureClass: p.temperatureClass,
+              carrier: p.carrier,
+              estimatedDelivery: p.estimatedDelivery,
+              items: {
+                create: p.lines.map((l) => {
+                  const snap = snapshotById.get(l.canonicalProductId);
+                  return {
+                    listingId: l.listing.listingId,
+                    canonicalProductId: l.canonicalProductId,
+                    nameSnapshot: snap?.canonicalName ?? "",
+                    packSizeSnapshot: snap?.packSize ?? "",
+                    categorySnapshot: snap?.category ?? "",
+                    quantity: l.quantity,
+                    unitPriceCents: l.listing.priceCents,
+                    lineTotalCents: l.lineTotalCents,
+                  };
+                }),
+              },
+            },
+          });
+        }
 
         // PAY-1 — a real Stripe PaymentIntent replaces this placeholder id once
         // Connect credentials exist; the amount and split are already correct.

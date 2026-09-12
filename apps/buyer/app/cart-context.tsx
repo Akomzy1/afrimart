@@ -46,6 +46,9 @@ export interface Parcel {
 /** Mirrors the backend's CART-5 threshold, for the progress bar only. */
 export const FREE_SHIPPING_THRESHOLD_CENTS = 10000;
 
+/** Seeded in prisma/seed.ts. Replace with the signed-in buyer when auth lands. */
+export const DEMO_BUYER_ID = "demo-buyer";
+
 /** The demo basket, by canonical name — resolved to real listings on mount. */
 const DEMO_BASKET: { name: string; qty: number }[] = [
   { name: "Egusi", qty: 2 },

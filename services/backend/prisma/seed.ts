@@ -316,7 +316,31 @@ async function main() {
     }
   }
 
-  console.log(`Seeded ${products.length} products, ${storeIds.size} stores, ${hubs.size} hub metros.`);
+  // The buyer the apps act as until there is auth. Fixed id so checkout can
+  // place an order without a sign-in, and so reruns of the seed are idempotent.
+  const buyer = await prisma.buyer.upsert({
+    where: { email: "amara@example.com" },
+    update: {},
+    create: {
+      id: "demo-buyer",
+      email: "amara@example.com",
+      phone: "+17135550142",
+      addresses: {
+        create: {
+          id: "demo-address",
+          line1: "1200 Heritage Lane",
+          city: "Houston",
+          state: "TX",
+          zip: "77002",
+          isDefault: true,
+        },
+      },
+    },
+  });
+
+  console.log(
+    `Seeded ${products.length} products, ${storeIds.size} stores, ${hubs.size} hub metros, buyer ${buyer.id}.`,
+  );
 }
 
 main()

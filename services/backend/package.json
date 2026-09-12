@@ -12,7 +12,9 @@
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "verify:economics": "tsx src/scripts/verify-economics.ts",
+    "verify:loop": "tsx src/scripts/verify-order-loop.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -14,7 +14,8 @@ import {
   LockIcon,
   ClockIcon,
 } from "@afrimart/ui";
-import { useCart } from "../cart-context";
+import { trpc } from "@afrimart/api-client";
+import { useCart, DEMO_BUYER_ID } from "../cart-context";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const dayShort = (offset: number) =>
@@ -25,7 +26,7 @@ type PayMethod = "card" | "paypal";
 /** AfriMart Buyer - Cart and Checkout.html — checkout view. */
 export default function CheckoutPage() {
   const router = useRouter();
-  const { parcels, count, sellerCount, subtotalCents, shippingCents, totalCents } = useCart();
+  const { parcels, lines, count, sellerCount, subtotalCents, shippingCents, totalCents } = useCart();
 
   const [name, setName] = useState("");
   const [street, setStreet] = useState("");
@@ -36,8 +37,8 @@ export default function CheckoutPage() {
   const [wallet, setWallet] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [placed, setPlaced] = useState(false);
-  // Stable across re-renders; a real order id comes from the backend order router.
-  const [orderId] = useState(() => `AM-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(100 + Math.random() * 900)}`);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const place = trpc.checkout.place.useMutation();
 
   const zipValid = /^\d{5}$/.test(zip);
   const invalid = {
@@ -49,9 +50,25 @@ export default function CheckoutPage() {
   };
   const formValid = name.trim() && street.trim() && city.trim() && state.trim() && zipValid;
 
-  function placeOrder() {
+  /**
+   * PAY-1 — the order is written by the backend, which re-routes the basket
+   * before persisting so the plan that ships is the plan that was quoted. The
+   * confirmation waits for a real order id rather than inventing one.
+   */
+  async function placeOrder() {
     setAttempted(true);
-    if (formValid) setPlaced(true);
+    if (!formValid) return;
+    try {
+      const result = await place.mutateAsync({
+        buyerId: DEMO_BUYER_ID,
+        items: lines.map((l) => ({ listingId: l.listingId, quantity: l.qty })),
+        destination: { street, city, state, zip },
+      });
+      setOrderId(result.orderId);
+      setPlaced(true);
+    } catch {
+      // The mutation's error is rendered below; don't show a false confirmation.
+    }
   }
 
   if (placed) {
@@ -210,7 +227,14 @@ export default function CheckoutPage() {
             />
           </div>
           <div className="dRailActions">
-            <BigButton onClick={placeOrder}>Pay {money(totalCents)}</BigButton>
+            <BigButton onClick={placeOrder}>
+              {place.isPending ? "Placing your order…" : `Pay ${money(totalCents)}`}
+            </BigButton>
+            {place.isError && (
+              <p className="payerr" role="alert">
+                We couldn&apos;t place that order — {place.error.message}
+              </p>
+            )}
             <div className="trust">
               <LockIcon /> Encrypted payment · money-back freshness guarantee
             </div>

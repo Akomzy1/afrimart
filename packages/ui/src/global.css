@@ -925,3 +925,6 @@ button { font-family: inherit; cursor: pointer; }
   .acct-layout .reorder .rail { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); overflow: visible; padding: 0 0 6px; }
   .acct-layout .rcard { width: auto; }
 }
+
+/* Checkout placement failure — the buyer must see why, not a dead button. */
+.payerr { margin-top: 10px; font-size: 13px; line-height: 1.4; color: #8c2f1d; background: #fdf1ed; border: 1px solid #f0cfc4; border-radius: var(--r-sm); padding: 10px 12px; }

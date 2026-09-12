@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ProductGlyph,
   CheckIcon,
@@ -13,7 +14,8 @@ import {
   ShipCheckIcon,
   LogoMark,
 } from "@afrimart/ui";
-import { SEED_ORDERS, MESSAGES, type MerchantOrder } from "./orders";
+import { trpc } from "@afrimart/api-client";
+import { MESSAGES, glyphForCategory, type MerchantOrder } from "./orders";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -37,31 +39,84 @@ type Tab = "camera" | "orders" | "messages";
  * call rather than a UI one. Flagged, not built.
  */
 export default function MerchantApp() {
+  // useSearchParams opts the tree into client rendering, which the static
+  // export needs a boundary for. The fallback is the shell, not a spinner —
+  // a merchant on a slow phone should see furniture, not a blank screen.
+  return (
+    <Suspense fallback={<div className="mr-shell" />}>
+      <MerchantAppInner />
+    </Suspense>
+  );
+}
+
+function MerchantAppInner() {
   const [tab, setTab] = useState<Tab>("orders");
-  const [orders, setOrders] = useState<MerchantOrder[]>(SEED_ORDERS);
   const [openId, setOpenId] = useState<string | null>(null);
+
+  /**
+   * There is no merchant sign-in yet. Rather than add a store picker — which
+   * would be a fourth surface the prototype doesn't have — the store comes from
+   * `?store=<id>`, defaulting to the first live one. Replace with the session's
+   * store when auth lands; every query below is already scoped by it.
+   */
+  const params = useSearchParams();
+  const storesQuery = trpc.merchant.stores.useQuery();
+  const storeId = params.get("store") ?? storesQuery.data?.[0]?.id ?? "";
+  const store = storesQuery.data?.find((s) => s.id === storeId) ?? storesQuery.data?.[0];
+
+  const inbox = trpc.merchant.inbox.useQuery({ storeId }, { enabled: Boolean(storeId) });
+  const utils = trpc.useUtils();
+  const acceptJob = trpc.merchant.accept.useMutation({
+    onSuccess: () => utils.merchant.inbox.invalidate(),
+  });
+  const shipJob = trpc.merchant.markShipped.useMutation({
+    onSuccess: () => utils.merchant.inbox.invalidate(),
+  });
+
+  /**
+   * Which items the merchant has ticked off, and how far through the flow they
+   * are. Deliberately client-side: the backend models a shipment's status, not
+   * a half-finished packing session, and a tick is not worth a round trip.
+   */
+  const [packedBy, setPackedBy] = useState<Record<string, number[]>>({});
+  const [stepBy, setStepBy] = useState<Record<string, number>>({});
+
+  const orders: MerchantOrder[] = (inbox.data ?? []).map((s) => ({
+    id: s.shipmentId,
+    ref: s.orderRef,
+    buyer: s.buyer,
+    ago: s.ago,
+    status: s.status,
+    step: stepBy[s.shipmentId] ?? 0,
+    packed: packedBy[s.shipmentId] ?? [],
+    valueCents: s.valueCents,
+    temperatureClass: s.temperatureClass,
+    items: s.items.map((i) => ({ name: i.name, qty: i.qty, glyph: glyphForCategory(i.category) })),
+  }));
 
   const open = orders.find((o) => o.id === openId) ?? null;
   const newCount = orders.filter((o) => o.status === "new").length;
   const unread = MESSAGES.filter((m) => m.unread).length;
 
   function update(id: string, patch: Partial<MerchantOrder>) {
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+    if (patch.step !== undefined) setStepBy((prev) => ({ ...prev, [id]: patch.step as number }));
+    if (patch.status === "packing") acceptJob.mutate({ shipmentId: id });
+    if (patch.status === "ready") shipJob.mutate({ shipmentId: id });
   }
 
   /**
    * Derived from the previous state, not the render closure: a merchant tapping
-   * items quickly fires several of these in one tick, and reading `order.packed`
+   * items quickly fires several of these in one tick, and reading `packed`
    * from the closure would make each tap overwrite the last.
    */
   function togglePacked(id: string, index: number) {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === id
-          ? { ...o, packed: o.packed.includes(index) ? o.packed.filter((i) => i !== index) : [...o.packed, index] }
-          : o,
-      ),
-    );
+    setPackedBy((prev) => {
+      const current = prev[id] ?? [];
+      return {
+        ...prev,
+        [id]: current.includes(index) ? current.filter((i) => i !== index) : [...current, index],
+      };
+    });
   }
 
   // ---- order detail / fulfilment ----
@@ -75,7 +130,7 @@ export default function MerchantApp() {
           <button type="button" className="back" onClick={() => setOpenId(null)} aria-label="Back to orders">
             <ChevronLeftIcon />
           </button>
-          <h2 className="serif">Order {open.id}</h2>
+          <h2 className="serif">Order {open.ref}</h2>
         </div>
 
         <div className="mr-scroll">
@@ -84,7 +139,7 @@ export default function MerchantApp() {
               <div className="k">{open.status === "new" ? "New order" : "Packing"}</div>
               <div className="buyer">{open.buyer}</div>
               <div className="items">
-                {itemCount} items · {open.id}
+                {itemCount} items · {open.ref}
               </div>
             </div>
             <div className="r">
@@ -210,7 +265,7 @@ export default function MerchantApp() {
             </span>
             <span className="tag">Seller</span>
           </div>
-          <div className="store">Adunni Foods · Houston</div>
+          <div className="store">{store ? `${store.name} · ${store.metro.split(",")[0]}` : " "}</div>
         </div>
       </div>
 
@@ -260,7 +315,7 @@ function OrdersInbox({
             <div className="mr-ordcard new" key={o.id}>
               <button type="button" className="oc-top" onClick={() => onOpen(o.id)}>
                 <div className="oc-l">
-                  <div className="num">{o.id}</div>
+                  <div className="num">{o.ref}</div>
                   <div className="meta">{o.items.reduce((n, i) => n + i.qty, 0)} items</div>
                   <div className="buyer">{o.buyer}</div>
                 </div>
@@ -286,7 +341,7 @@ function OrdersInbox({
             <div className="mr-ordcard" key={o.id}>
               <button type="button" className="oc-top" onClick={() => onOpen(o.id)}>
                 <div className="oc-l">
-                  <div className="num">{o.id}</div>
+                  <div className="num">{o.ref}</div>
                   <div className="meta">{o.items.reduce((n, i) => n + i.qty, 0)} items</div>
                   <div className="buyer">{o.buyer}</div>
                 </div>
@@ -317,7 +372,7 @@ function OrdersInbox({
             <div className="mr-ordcard" key={o.id}>
               <button type="button" className="oc-top" onClick={() => onOpen(o.id)}>
                 <div className="oc-l">
-                  <div className="num">{o.id}</div>
+                  <div className="num">{o.ref}</div>
                   <div className="meta">Packed · label printed</div>
                   <div className="buyer">{o.buyer}</div>
                 </div>
