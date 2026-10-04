@@ -112,7 +112,7 @@ Wire this to PRD section 6.1 (ONB-1 through ONB-8) for the actual onboarding log
 
 Build out `services/backend` to support everything the five prior prompts now call: the canonical product catalogue and name-resolution graph (PRD 6.3), the single-store-preferring routing and checkout logic (6.5), payments and marketplace splitting (6.7), and the multi-carrier shipping integration (6.8, and Appendix B if present in the PRD).
 
-There is no prototype for backend logic — build this from the PRD requirement IDs directly, and implement the routing engine's behaviour exactly as specified: fill from one store first, split only when no single store can complete the order, disclose multi-parcel arrivals, absorb cost under the free-shipping threshold.
+There is no prototype for backend logic — build this from the PRD requirement IDs directly, and implement the routing engine's behaviour exactly as specified: fill from one store first, split only when no single store can complete the order, disclose multi-parcel arrivals, and charge the buyer the actual shipping cost as a single line (see CART-5 — there is no platform free-shipping threshold).
 
 ---
 
