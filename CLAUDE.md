@@ -1,16 +1,16 @@
 # CLAUDE.md — AfriMart
 
-This file orients any Claude Code session working on this repository. Read this first, then `/docs/AfriMart_PRD.docx` for the full specification and `/docs/AfriMart_Claude_Design_Prompts.md` for the UI spec, before writing code.
+This file orients any Claude Code session working on this repository. Read this first, then `/docs/AfriMart_PRD.md` for the full specification and `/docs/AfriMart_Claude_Design_Prompts.md` for the UI spec, before writing code.
 
 ## What this project is
 
-AfriMart is a shipping-first, AI-powered marketplace for African groceries in the United States. African stores, home-based sellers, and aspiring food entrepreneurs list products; buyers anywhere in the US order and receive them by nationwide shipping. Full specification: `/docs/AfriMart_PRD.docx` (or its exported markdown if you convert it — see "Docs in this repo" below).
+AfriMart is a shipping-first, AI-powered marketplace for African groceries in the United States. African stores, home-based sellers, and aspiring food entrepreneurs list products; buyers anywhere in the US order and receive them by nationwide shipping. Full specification: `/docs/AfriMart_PRD.md`.
 
 Read `/docs/AfriMart_Brand_Guide.pdf` before writing any UI. It defines the palette, type direction, and voice — treat its values as ground truth over anything approximate elsewhere.
 
 ## Source of truth hierarchy
 
-1. **The PRD** (`/docs/AfriMart_PRD.docx`) — functional requirements, phase tags, architecture, data model, release plan. Governs *what* to build and *how it behaves*. If this file and a prior conversation disagree, the PRD wins.
+1. **The PRD** (`/docs/AfriMart_PRD.md`) — functional requirements, phase tags, architecture, data model, release plan. Governs *what* to build and *how it behaves*. If this file and a prior conversation disagree, the PRD wins.
 2. **The Claude Design prototypes** (`/docs/prototype/` — see "Design prompts and prototypes" below) — govern *how it looks and how screens are laid out*. Where the PRD describes a flow in prose, the exported prototype page is the actual visual spec for it: layout, hierarchy, density, and component choices. Build UI to match the prototype, not an independent interpretation of the PRD's prose.
 3. **This file (CLAUDE.md)** — conventions, structure, and standing instructions for how to build, not what to build or how it looks.
 4. **The Brand Guide** — palette, type, and voice truth; applies to every screen, prototyped or not.
@@ -54,7 +54,7 @@ Logo files are in `/docs/brand/` (avatar, reversed mark, cover lockup). Use the 
 
 Both apps were designed before this build started, then built as clickable HTML prototypes in Claude Design. Treat the resulting prototypes as the UI spec.
 
-**Format: these are standalone, self-contained HTML files, not a linked multi-page project.** Each exported page bundles its own fonts, styles, and scripts inline — there is no separate `Design system files/` or `assets/` folder to chase down, and no relative paths to break. One file = one complete, readable spec for that screen.
+**These are Claude Artifact bundle exports, not plain HTML.** Each file is a self-contained, standalone page that renders correctly in a browser — but internally it is a self-extracting bundle (a `<script type="__bundler/template">` tag holding the real page as a JSON-escaped string, plus a manifest of base64 fonts/images), so opening the raw file in a text editor shows loader boilerplate, not the design. For reading/reuse as a spec, use the already-extracted plain HTML in `/docs/prototype/extracted/` (one file per functional page, same filenames). If a prototype page is re-exported later, re-run that extraction before using it as a build reference.
 
 **The prototype set contains these pages, all verified current** (colors and responsive layout confirmed correct as of the latest export):
 
@@ -105,6 +105,21 @@ afrimart/
 
 One backend, one design-system package, two thin frontend apps. Buyer and merchant never talk to each other directly — both go through the backend. Do not duplicate order/catalogue/routing logic between the two apps.
 
+## Tech stack (confirmed 2026-09-03)
+
+| Part | Choice | Notes |
+|---|---|---|
+| `apps/buyer`, `apps/merchant` | Next.js (App Router), TypeScript | One framework for both so `packages/ui` stays truly shared; buyer benefits from SSR/ISR on browse/product pages, merchant runs mostly client-rendered |
+| `services/backend` | Node.js/TypeScript, Fastify + tRPC | End-to-end typed API into `packages/api-client` without codegen |
+| Database | PostgreSQL + Prisma | Prisma's generated types back `packages/shared` |
+| Payments | Stripe Connect | Per PRD INT-2 — marketplace collection/splitting/payouts |
+| Shipping | EasyPost | Per PRD INT-1 — rates, labels, tracking, address validation across carriers |
+| SMS | Twilio, A2P 10DLC registered | Per PRD INT-3 — merchant alerts (MCH-7) and buyer notifications (NTF-2) |
+| AI (vision cataloguing, Cook agent, embeddings/search) | Claude (Anthropic API) + Voyage embeddings | ONB-2 vision cataloguing, AGT-2/AGT-6 conversational agent and cooking guidance, CAT-2/CAT-3 knowledge-graph matching |
+| Sales tax | Stripe Tax | Per PRD PAY-5/INT-6, integrates directly with Stripe Connect |
+| Hosting | Vercel (both PWAs), Railway (backend + Postgres) | Low-ops for MVP stage |
+| Package manager / monorepo tool | npm workspaces + Turborepo | Cross-platform, no extra global install required |
+
 ## Build sequencing
 
 Unless told otherwise, build in this order, matching the PRD's phase tags and the group's actual rollout plan:
@@ -112,6 +127,31 @@ Unless told otherwise, build in this order, matching the PRD's phase tags and th
 1. **Phase 0 (if requested separately):** a standalone waitlist/landing site — not part of the main monorepo's apps, a simple static site with a buyer/seller fork and email capture. Treat this as its own small project if asked for; don't conflate it with the Phase 1 PWA build.
 2. **Phase 1 MVP**, in the order the PRD's functional requirements are grouped: seller onboarding → merchant app → catalogue/canonical resolution → discovery/search → cart/checkout/routing → Cook agent → payments → fulfilment → notifications → operations console.
 3. Do not start Phase 2/3-tagged requirements (cold-chain, consolidation, membership, native apps, Canada) without being asked.
+
+## Verifying UI work
+
+Verify by rendering and measuring, not by reading the diff. There is no browser
+automation package installed, but Chrome is on the machine and can be driven
+headless over the DevTools Protocol (`--remote-debugging-port` plus Node's global
+`WebSocket`) to read computed styles and geometry at each breakpoint.
+
+- **Screenshot through CDP (`Page.captureScreenshot`) under the same
+  `Emulation.setDeviceMetricsOverride` used for measuring — never Chrome's
+  standalone `--screenshot` flag.** That flag has twice produced badly clipped
+  images while the DOM measured completely correct: once on the buyer Home pass
+  (a contained layout looked overflowing) and once on the merchant inbox (cards
+  and the third tab looked cut off, while the DOM reported a 350px card inside a
+  390px viewport with zero overflow). Both cost real time chasing a layout bug
+  that did not exist. Same emulation for the picture as for the numbers.
+- **Measure overflow against the viewport, not the body**: use
+  `document.documentElement.scrollWidth - window.innerWidth`. Comparing
+  `scrollWidth` to the body's width reports 0 even when the body itself is wider
+  than the screen.
+- **Drive interactive flows, don't just render them.** Clicking through the
+  merchant fulfilment flow surfaced two real bugs that no static render or code
+  review would have shown: a stale-closure state update that dropped every
+  second rapid tap, and an action disabled only by `pointer-events: none`, which
+  stops a mouse but not the keyboard or a script.
 
 ## Working conventions
 
@@ -122,7 +162,7 @@ Unless told otherwise, build in this order, matching the PRD's phase tags and th
 
 ## Docs in this repo
 
-- `/docs/AfriMart_PRD.docx` — full product requirements
+- `/docs/AfriMart_PRD.md` — full product requirements
 - `/docs/AfriMart_Brand_Guide.pdf` — logo, palette, type, voice
 - `/docs/brand/` — logo files (avatar, reversed mark, cover)
 - `/docs/prototype/` — the standalone Claude Design HTML pages (buyer app fully responsive; merchant deliberately mobile-only) — the UI spec (see "Design prompts and prototypes" above)
