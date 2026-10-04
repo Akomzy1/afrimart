@@ -19,7 +19,7 @@ The Phase 1 objective is to prove that dispersed diaspora buyers will order Afri
 
 **North Star metric:** reorder rate — the share of buyers who place a second order within 60 days — because repeat purchasing is the truest signal that the product solves the problem and that unit economics can compound.
 
-**Supporting metrics:** first 1,000 nationwide orders (Phase 1 milestone); repeat-purchase rate above 40% (Phase 2 gate); average basket size relative to the free-shipping threshold; share of orders fulfilled from a single store; catalogue accuracy (buyer-flagged item error rate); merchant order-acceptance rate and fulfilment time; blended CAC as a fraction of 12-month contribution margin; and, once cold-chain launches, the perishable damage/spoilage rate.
+**Supporting metrics:** first 1,000 nationwide orders (Phase 1 milestone); repeat-purchase rate above 40% (Phase 2 gate); average basket size and shipping cost as a share of basket value; share of orders fulfilled from a single store; catalogue accuracy (buyer-flagged item error rate); merchant order-acceptance rate and fulfilment time; blended CAC as a fraction of 12-month contribution margin; and, once cold-chain launches, the perishable damage/spoilage rate.
 
 ## 3. Scope: Goals and Non-Goals
 
@@ -67,7 +67,7 @@ A field representative or remote session installs the merchant app on the owner'
 
 **Buyer first order — direct**
 
-A buyer searches for a product by whatever name or spelling they use, or browses by cuisine. They add items to the cart; the routing engine works invisibly to keep the basket fillable from one store. At checkout the system rate-shops carriers, shows a single total with free shipping above the threshold, states the expected arrival, and takes payment. The order is routed to the store, which accepts, packs from a photo packing list, prints the label, and hands off to carrier pickup. The buyer receives tracking notifications through to delivery.
+A buyer searches for a product by whatever name or spelling they use, or browses by cuisine. They add items to the cart; the routing engine works invisibly to keep the basket fillable from one store. At checkout the system rate-shops carriers, shows a single total with shipping charged at the actual carrier cost, states the expected arrival, and takes payment. The order is routed to the store, which accepts, packs from a photo packing list, prints the label, and hands off to carrier pickup. The buyer receives tracking notifications through to delivery.
 
 **Buyer order — recipe-to-cart**
 
@@ -75,7 +75,7 @@ A buyer opens the conversational agent and names a dish and a headcount. The age
 
 **Multi-store order fulfilment**
 
-When no single store can complete a basket, the routing engine splits it by source; each store packs and ships its own portion. The buyer sees one order and one total, with the multi-parcel arrival disclosed at checkout and the extra shipping cost absorbed under the free-shipping threshold. Each parcel is tracked individually under one order view.
+When no single store can complete a basket, the routing engine splits it by source; each store packs and ships its own portion. The buyer sees one order and one total, with the multi-parcel arrival disclosed at checkout and the actual combined shipping cost shown as a single shipping line — which is why the routing engine works hard to keep the basket to one store. Each parcel is tracked individually under one order view.
 
 ## 6. Functional Requirements
 
@@ -120,7 +120,7 @@ The cultural knowledge graph and entity resolution are a core moat: they make a 
 | **CAT-2** | Cultural knowledge graph mapping alternate names and spellings across Yoruba, Igbo, Twi, Amharic, Swahili, French, and phonetic English to canonical products. | 1         |
 | **CAT-3** | Entity resolution: match a store's raw product string to a canonical SKU and deduplicate the same product across stores.                                       | 1         |
 | **CAT-4** | Store listing model: canonical SKU plus store-specific price, stock status, and fulfilment attributes.                                                         | 1         |
-| **CAT-5** | Temperature and handling classification (ambient / refrigerated / frozen) and shipping weight per product, to drive routing and feasibility.                   | 1         |
+| **CAT-5** | Temperature and handling classification (ambient / refrigerated / frozen), plus shipping weight and package dimensions per product, to drive routing, feasibility and rate calculation. Dimensions are required because carriers price on the greater of actual weight or dimensional weight, so bulky light goods cannot be rated on weight alone. Under pass-through pricing, under-declared weight or size produces carrier adjustments charged back to the seller (PAY-9).                   | 1         |
 | **CAT-6** | Confidence thresholds that route uncertain vision- or extraction-derived items to manual confirmation before publishing.                                       | 1         |
 | **CAT-7** | Bulk/wholesale seller flag: a store or seller can opt in to fulfil catering-scale quantities, used by the routing engine to match Plan an Event orders (see AGT-11). | 2         |
 | **CAT-8** | Authenticity and provenance badging: products and sellers carry a visible trust signal — diaspora-owned, imported-direct, or made-in-USA-by-an-African-brand — surfaced on listing and product pages. | 1 |
@@ -146,10 +146,10 @@ The routing engine is the operational heart of the marketplace: it concentrates 
 | **ID**     | **Requirement**                                                                                                                                                                                                                                                  | **Phase** |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
 | **CART-1** | Cart supporting items sourced from multiple stores.                                                                                                                                                                                                              | 1         |
-| **CART-2** | Single-store-preferring routing: complete the basket from one store wherever possible, accepting a modest price difference to avoid a split; spread across stores only when no single store can complete it; optimise for landed shipping cost and arrival date. | 1         |
+| **CART-2** | Single-store-preferring routing: complete the basket from one store wherever possible, accepting a modest price difference to avoid a split; spread across stores only when no single store can complete it; optimise for landed shipping cost and arrival date. Because the buyer pays actual shipping, every avoided split lowers the buyer's price directly. | 1         |
 | **CART-3** | Mandatory temperature split: ambient and perishable items always ship as separate shipments.                                                                                                                                                                     | 1         |
 | **CART-4** | Perishable feasibility enforcement at checkout via live carrier transit query; block any perishable that cannot arrive in the safe window.                                                                                                                       | 2         |
-| **CART-5** | Shipping charge presentation and absorption, by cost category. Ambient goods: free shipping above the basket threshold, with multi-shipment cost absorbed by the platform; below the threshold, a single blended charge scaled to the actual parcel count. Perishable goods: a cold-pack fee always applies regardless of basket value, because cold-chain cost cannot be absorbed at any realistic threshold. The buyer is shown at most one shipping line and one cold-pack line, disclosed in the cart before checkout — never a per-seller or per-parcel breakdown.                                                                                                      | 1         |
+| **CART-5** | Shipping charged at actual cost. The buyer pays the live calculated carrier cost of every parcel, derived from declared weight and dimensions, origin and destination; AfriMart absorbs shipping on no category and runs no platform free-shipping threshold. Chilled and frozen parcels also carry a cold-pack line covering insulated packaging and coolant, at cost. The buyer sees at most one shipping line and one cold-pack line, disclosed in the cart before checkout — never a per-seller or per-parcel breakdown — and a basket may still combine items from several sellers.                                                                                                      | 1         |
 | **CART-6** | Multi-parcel arrival disclosure at checkout: number of parcels and estimated delivery dates.                                                                                                                                                                     | 1         |
 | **CART-7** | Anchor-store consolidation: option for the routing engine to combine multi-store items intra-metro into one shipment where volume justifies it.                                                                                                                  | 2         |
 | **CART-8** | Real-time rate shopping across carriers via the shipping API at checkout.                                                                                                                                                                                        | 1         |
@@ -164,7 +164,7 @@ An optional layer for jobs a product grid cannot do — never a gate in front of
 | **AGT-2** | Recipe-to-cart: parse dish and headcount, assemble a scaled basket, check availability across stores, and propose substitutions.                                                                                                                                          | 1         |
 | **AGT-3** | Substitution suggestions when an item is unavailable or infeasible to ship in time.                                                                                                                                                                                       | 1         |
 | **AGT-4** | Auto-replenishment agent: learn a household's cadence and proactively suggest reorders before staples run out.                                                                                                                                                            | 2         |
-| **AGT-5** | Agent obeys the same routing, feasibility, and threshold logic as standard checkout.                                                                                                                                                                                      | 1         |
+| **AGT-5** | Agent obeys the same routing, feasibility, and shipping-pricing logic as standard checkout.                                                                                                                                                                                      | 1         |
 | **AGT-6** | Cooking guidance: on request, the agent provides step-by-step instructions for the named dish, scaled to the buyer's headcount and grounded in the items they ordered, drawing on a curated, authenticity-reviewed recipe library that the AI adapts rather than invents. | 1         |
 | **AGT-7** | Cook-along and delivery follow-up: when a recipe order is delivered, the agent offers to guide the cooking session (“your ingredients have arrived — ready to cook?”), closing the loop from recipe to basket to delivery to a successful meal.                           | 2         |
 | **AGT-8** | Plan an Event: menu-based input for an occasion — event type, guest count, and either the buyer's own list of dishes or a request for an AI-suggested menu by occasion (e.g. naming ceremony, wedding, Eid, graduation). | 2 |
@@ -183,11 +183,14 @@ Marketplace payments must collect from the buyer and remit to independent stores
 |-----------|----------------------------------------------------------------------------------------------------------------|-----------|
 | **PAY-1** | Buyer checkout supporting cards and digital wallets.                                                           | 1         |
 | **PAY-2** | Marketplace payment splitting: collect from buyer, remit to the fulfilling store(s) net of take rate and fees. | 1         |
-| **PAY-3** | Configurable take rate (12–15%) plus per-order fulfilment/packaging fee.                                       | 1         |
+| **PAY-3** | Configurable take rate (12–15%) charged on item value only — never on pass-through shipping, which the seller neither sets nor receives — plus a per-order fulfilment/packaging fee.                                       | 1         |
 | **PAY-4** | Refunds and partial refunds for damaged or missing items.                                                      | 1         |
 | **PAY-5** | Sales-tax calculation by jurisdiction.                                                                         | 1         |
 | **PAY-6** | Store payout scheduling and statements.                                                                        | 1         |
-| **PAY-7** | Recurring billing for subscription boxes and membership.                                                       | 3         |
+| **PAY-7** | Recurring billing for subscriptions: seller subscriptions, planner and meal-plan subscriptions, recurring boxes, and membership. | 2 |
+| **PAY-8** | Payout hold: a new seller's funds are held until delivery is confirmed and the refund window has closed; the hold shortens as the seller builds a record of fulfilled orders without disputes. | 1 |
+| **PAY-9** | Carrier adjustment chargeback: post-delivery carrier billing corrections caused by incorrect declared weight or dimensions are charged back to the seller who declared them, deducted from their next payout. | 1 |
+| **PAY-10** | Seller-funded free shipping: a seller may offer free shipping on their own listings, in which case the label cost is deducted from that seller's payout. The platform never funds it. | 2 |
 
 ### 6.8 Fulfilment and Logistics
 
@@ -203,6 +206,7 @@ A single multi-carrier shipping API is the entire logistics layer; no carrier co
 | **FUL-6** | Dry-ice hazmat handling: automated compliant labelling and enforcement of per-package limits at label generation.                                                | 2         |
 | **FUL-7** | Ship-day discipline for perishables: prevent shipments that would sit in transit over a weekend without temperature control.                                     | 2         |
 | **FUL-8** | Bring-your-own-carrier: plug negotiated carrier accounts into the same shipping API at volume.                                                                   | 3         |
+| **FUL-9** | Platform-issued labels only: every label is generated through AfriMart's carrier integration and supplied to the seller; sellers never buy labels independently. This keeps quotes accurate, enforces packaging and cold-chain standards, and keeps remote fulfilment on the platform rather than in a direct seller-buyer channel. | 1 |
 
 ### 6.9 Notifications and Order Tracking
 
@@ -224,7 +228,7 @@ Later-phase revenue and retention mechanics, specified at low resolution here.
 |-----------|-----------------------------------------------------------------------------------|-----------|
 | **SUB-1** | “Taste of Home” curated regional boxes: catalogue, one-off purchase, and gifting. | 2         |
 | **SUB-2** | Recurring box subscriptions with management and pause/cancel.                     | 2         |
-| **SUB-3** | Free-shipping membership tier.                                                    | 3         |
+| **SUB-3** | Free-shipping membership tier: a paid subscription whose fee funds members' ambient shipping — the one case in which AfriMart pays for shipping, and only as a product the buyer has bought.                                                    | 3         |
 | **SUB-4** | Brand advertising and sponsored placement for African food brands.                | 3         |
 | **SUB-5** | Send-to-family gifting: any order, not only Taste of Home boxes, can ship to a recipient other than the buyer, with a gift note and optional gift packaging — letting a buyer stock a relative or student's pantry from afar. | 2 |
 
@@ -238,7 +242,7 @@ The internal surface through which the team maintains catalogue quality, onboard
 | **ADM-2** | Store onboarding management: status, kit issuance, and hub assignment.                  | 1         |
 | **ADM-3** | Order and fulfilment monitoring with the ability to intervene on stuck orders.          | 1         |
 | **ADM-4** | Knowledge-graph management: add canonical products and name mappings.                   | 1         |
-| **ADM-5** | Financial reconciliation across payouts, take rate, and tax.                            | 1         |
+| **ADM-5** | Financial reconciliation across payouts, take rate, tax, and carrier adjustments charged back to sellers.                            | 1         |
 | **ADM-6** | Store performance and ranking management.                                               | 2         |
 
 ### 6.12 Seller Types, Verification, and the Entrepreneur On-Ramp
@@ -270,6 +274,8 @@ Quality on AfriMart is a layered system rather than an assumption: standards at 
 | **QC-5** | Buyer-facing freshness and quality guarantee: a clear money-back promise on items that arrive damaged, expired, or not as described.                              | 1         |
 | **QC-6** | Enforcement ladder: automated thresholds moving a seller from warning, to listing suspension, to delisting, administered through the operations console.          | 1         |
 | **QC-7** | Operations sampling: periodic test orders placed by the platform to spot-check quality, packaging, and accuracy across sellers.                                   | 2         |
+| **QC-8** | Loss allocation: the buyer is refunded promptly under QC-5, then the cost is recovered — from the seller for packaging or product failures, or as a carrier claim for loss or delay evidenced by tracking, where the carrier's terms allow. Claims for spoiled or damaged goods require buyer photo evidence. | 1 |
+| **QC-9** | Refund-abuse controls: refund claims are tracked per buyer; repeated claims are routed to manual review and capped before automatic approval. | 1 |
 
 ### 6.14 Community and Social Discovery
 
@@ -281,6 +287,24 @@ AfriMart adds a light social layer on top of transactions — not a general soci
 | **COM-2** | Authenticity ratings: buyers who purchase a badged-authentic product (see CAT-8) can leave a specific authenticity rating, separate from the general quality rating in 6.13, surfaced alongside the badge. | 2 |
 | **COM-3** | Creator and cook-along content: a lightweight surface for community or creator-submitted cook-along videos and posts linked to specific products and recipes, discoverable from product and recipe pages. | 3 |
 | **COM-4** | Follow a seller or creator: a buyer can follow a favourite home seller, store, or content creator and receive updates on new listings or content. | 3 |
+
+### 6.15 Additional Revenue Streams
+
+Beyond commission (PAY-3), the fulfilment fee, curated boxes (SUB-1, SUB-2), membership (SUB-3) and brand advertising (SUB-4), AfriMart adds revenue in two further waves. REV-1 to REV-3 are the first priorities within Phase 2 because they need almost no new build. Two rules bind every stream: shipping is never marked up (CART-5), and buyers are never charged for delivery protection, since the freshness guarantee (QC-5) is already free.
+
+| **ID** | **Requirement** | **Phase** |
+|---|---|---|
+| **REV-1** | Promoted listings: sellers pay a percentage of promoted sales to appear higher in search and category pages. Promoted placement is always labelled as such and never overrides seller verification (SEL-2) or quality gating (SEL-4). | 2 |
+| **REV-2** | Seller subscription (AfriMart Pro): a monthly plan giving a reduced commission rate, improved placement and sales analytics, so high-volume sellers pay less per sale in exchange for predictable recurring revenue. | 2 |
+| **REV-3** | Gift cards: digital gift cards redeemable across all sellers, supporting diaspora gifting (SUB-5). Unredeemed balances are handled under each state's unclaimed-property and gift-card rules; breakage is recognised as revenue only where state law allows. | 2 |
+| **REV-4** | Professional planner subscription: a monthly plan for event planners unlocking saved events and propose-then-approve client sharing (AGT-12, AGT-13). | 2 |
+| **REV-5** | Weekly meal-plan subscription: the Cook agent plans a household's week of meals and builds the recurring basket automatically, turning occasional use into a standing weekly order. | 2 |
+| **REV-6** | Restaurant and caterer wholesale channel: business accounts for African restaurants and caterers buying in bulk, using bulk seller matching (CAT-7, AGT-11). | 2 |
+| **REV-7** | Brand sampling: food brands pay to include product samples in Taste of Home boxes (SUB-1). | 2 |
+| **REV-8** | Market insights: anonymised, aggregated demand data sold to African food brands and importers; never seller- or buyer-identifiable. | 3 |
+| **REV-9** | Seller financing: working-capital financing offered to sellers through the payment provider's platform financing programme, repaid automatically from payouts, with credit risk held by the provider rather than AfriMart. | 3 |
+| **REV-10** | Partnership bundles: referral and bundle arrangements with adjacent diaspora services, such as streaming or remittance apps, earning referral fees without new builds. | 3 |
+| **REV-11** | Packaging and supplies margin: selling packaging top-ups to sellers at a margin. Until then, replacement supplies are provided at cost, funded by the per-order fulfilment fee. | 3 |
 
 ## 7. Non-Functional Requirements
 
@@ -341,12 +365,12 @@ Requirements above are tagged to the phase in which they are expected to ship. T
 | **Phase**   | **Scope**                                                                                                                                                                                                                                                                                                                                                          | **Exit criteria**                                                       |
 |-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------|
 | **Phase 1** | MVP: filming + structured-import onboarding, merchant app with SMS rail, canonical catalogue and search, cart and single-store-preferring routing, recipe-to-cart, marketplace payments, ambient nationwide shipping, tracking, and the operations console. One supply metro. Includes home-based sellers of shelf-stable goods under a seller-verification layer. | First 1,000 nationwide orders; positive contribution on ambient orders  |
-| **Phase 2** | Cold-chain and perishables; second supply metro; anchor-store consolidation; auto-replenishment; curated boxes; AI extraction fallback and two-way sync; fresh and prepared home food; the aspiring-entrepreneur on-ramp with demand-testing and AI seller guidance; Plan an Event menu-based catering and bulk seller matching; Canada expansion groundwork.                                                                  | Repeat-purchase rate above 40%; perishable damage rate within tolerance |
-| **Phase 3** | Free-shipping membership tier; brand advertising platform; negotiated carrier contracts; native iOS and Android apps (success-gated); vertical/direct import on hero staples; exploratory adjacent categories (e.g. beauty and haircare); expansion across remaining supply metros.                                                                                                                                                                                    | Membership-driven margin; advertising revenue live                      |
+| **Phase 2** | Cold-chain and perishables; second supply metro; anchor-store consolidation; auto-replenishment; curated boxes; AI extraction fallback and two-way sync; fresh and prepared home food; the aspiring-entrepreneur on-ramp with demand-testing and AI seller guidance; Plan an Event menu-based catering and bulk seller matching; additional revenue streams REV-1 to REV-7, led by promoted listings, seller subscriptions and gift cards; Canada expansion groundwork.                                                                  | Repeat-purchase rate above 40%; perishable damage rate within tolerance |
+| **Phase 3** | Free-shipping membership tier; brand advertising platform; negotiated carrier contracts; native iOS and Android apps (success-gated); vertical/direct import on hero staples; exploratory adjacent categories (e.g. beauty and haircare); market insights, seller financing, partnership bundles and packaging margin (REV-8 to REV-11); expansion across remaining supply metros.                                                                                                                                                                                    | Membership-driven margin; advertising revenue live                      |
 
 ## 11. Risks and Mitigations
 
-**Shipping economics on heavy staples.** Heavy items make per-order shipping expensive. Mitigation: routing-engine basket concentration, a visible free-shipping threshold set from the unit-economics model, and hub selection for carrier-rate advantage. This is the first thing to model before build.
+**Shipping cost and competitiveness.** Heavy items make shipping expensive. Mitigation: shipping is passed through at actual cost, so the platform carries no shipping loss on any order; routing-engine basket concentration lowers the buyer's cost; mandatory weights and dimensions keep quotes accurate. The residual risk is competitive — buyers comparing AfriMart with stores that offer free shipping over a threshold may find delivery dearer here. Sellers may offer their own free shipping (PAY-10); a pooled community-delivery option is an open decision (see Open Questions).
 
 **Customer acquisition cost.** The diaspora is dispersed and heterogeneous. Mitigation: launch demand through a community-insider beachhead (Columbus) via churches, associations, and community channels rather than paid acquisition; lead with cuisine-specific curation.
 
@@ -362,4 +386,4 @@ Requirements above are tagged to the phase in which they are expected to ship. T
 
 ## 12. Open Questions and Dependencies
 
-The shipping unit-economics model — the free-shipping threshold and target basket size — is the outstanding analytical prerequisite and blocks final pricing decisions. The Phase 1 supply metro and the initial cohort of 15–20 stores must be confirmed, ideally aligned with the group's own networks. The specific multi-carrier shipping API and payments-splitting provider are to be selected against the marketplace and multi-tenant requirements. Cold-chain packaging must be validated before Phase 2. Per-metro dry-ice sourcing and US tax/entity setup are Phase 2 dependencies to confirm ahead of time.
+Shipping is passed through at actual cost, so pricing no longer depends on a platform free-shipping threshold. The remaining shipping question is competitive: how delivery charges affect conversion against stores that offer free shipping over a threshold, and whether to answer it with a pooled community-delivery option in which households in one city combine orders into a single scheduled shipment to a shared pickup point. The Phase 1 supply metro and the initial cohort of 15–20 stores must be confirmed, ideally aligned with the group's own networks. The specific multi-carrier shipping API and payments-splitting provider are to be selected against the marketplace and multi-tenant requirements. Cold-chain packaging must be validated before Phase 2. Per-metro dry-ice sourcing and US tax/entity setup are Phase 2 dependencies to confirm ahead of time.
