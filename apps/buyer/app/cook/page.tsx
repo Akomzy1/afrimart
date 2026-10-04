@@ -12,7 +12,7 @@ import {
   CartIcon,
   useToast,
 } from "@afrimart/ui";
-import { useCart, FREE_SHIPPING_THRESHOLD_CENTS } from "../cart-context";
+import { useCart } from "../cart-context";
 import { RECIPES, RECIPE_SUBTITLES, type Recipe } from "./recipes";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -63,8 +63,12 @@ export default function CookPage() {
 
   function basketFor(recipe: Recipe) {
     const subtotal = recipe.items.reduce((s, i) => s + i.priceCents * i.qty, 0);
-    const remaining = Math.max(0, FREE_SHIPPING_THRESHOLD_CENTS - subtotal);
-    const pct = Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD_CENTS) * 100));
+    // AGT-5 — Cook obeys the same shipping rule as checkout: carrier cost, no
+    // threshold. These recipes are scripted demo data, so the parcel count and
+    // carriage are scripted too; the cart re-quotes the basket for real the
+    // moment anything is added.
+    const shipping = recipe.shippingCents;
+    const total = subtotal + shipping;
     return (
       <div className="basket">
         <div className="bh">
@@ -97,18 +101,22 @@ export default function CookPage() {
 
         <div className="btotal">
           <div className="r">
-            <span>Subtotal</span>
-            <span className="v">{money(subtotal)}</span>
+            <span>Items</span>
+            <span className="v tnum">{money(subtotal)}</span>
           </div>
-          <div className={`free${remaining === 0 ? " done" : ""}`}>
-            {remaining === 0 ? "Free shipping unlocked" : `${money(remaining)} away from free shipping`}
+          <div className="r">
+            <span>
+              Shipping
+              <span className="s">
+                {recipe.parcels} {recipe.parcels === 1 ? "parcel" : "parcels"} · carrier cost
+              </span>
+            </span>
+            <span className="v tnum">{money(shipping)}</span>
           </div>
-          <div className="track">
-            <div className={`fill${remaining === 0 ? " done" : ""}`} style={{ width: `${pct}%` }} />
-          </div>
+          <div className="shipnote">Fewer parcels cost less — items from the same seller ship together.</div>
           <div className="tot">
-            <span className="l">Total</span>
-            <span className="v">{money(subtotal)}</span>
+            <span className="l">Running total</span>
+            <span className="v tnum">{money(total)}</span>
           </div>
         </div>
 

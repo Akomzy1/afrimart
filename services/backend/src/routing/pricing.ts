@@ -1,19 +1,19 @@
-import {
-  blendedShippingCents,
-  coldPackCents,
-  EXCEPTIONAL_SPLIT_PARCELS,
-  FREE_SHIPPING_THRESHOLD_CENTS,
-} from "../config.js";
+import { EXCEPTIONAL_SPLIT_PARCELS } from "../config.js";
 import { estimateTaxCents } from "../tax.js";
 import type { Parcel, RoutingPlan } from "./types.js";
 
 /**
  * CART-5 and CART-6 — what the buyer is actually shown.
  *
- * The invariant this file exists to protect: the buyer sees exactly one
- * shipping number for the whole order, whatever the routing engine did behind
- * it. Two parcels from two metros still produce one charge. Anything that
- * divides shipping by parcel or by seller is a bug, not a refinement.
+ * Shipping is pass-through. The buyer pays the sum of the live carrier quotes
+ * for their parcels, and the cold-pack line is the actual cost of insulated
+ * packaging and coolant. The platform absorbs nothing and marks up nothing;
+ * there is no threshold and no blended schedule to tune.
+ *
+ * The presentation invariant survives unchanged, and is the thing to protect:
+ * at most ONE shipping line and ONE cold-pack line, whatever the routing did
+ * behind them. Two cost categories — never a line per seller or per parcel.
+ * Anything that divides either figure for display is a bug.
  */
 
 export interface ParcelDisclosure {
@@ -28,31 +28,21 @@ export interface ParcelDisclosure {
 
 export interface OrderPricing {
   itemsSubtotalCents: number;
-  /**
-   * The single blended figure for the ambient side. Never per-parcel, never
-   * per-seller. Cold parcels are not in here — see coldPackCents.
-   */
+  /** One line: the sum of every parcel's carrier quote. */
   shippingCents: number;
-  /**
-   * One cold-chain line for the whole order, charged whatever the basket is
-   * worth. Covers the cold parcels' transport, packaging and refrigerant.
-   */
+  /** One line: insulated packaging and coolant across chilled parcels, at cost. */
   coldPackCents: number;
   taxCents: number;
   totalCents: number;
-  /** The ambient subtotal only — cold goods never count toward the threshold. */
-  ambientSubtotalCents: number;
-  chilledSubtotalCents: number;
-  freeShippingApplied: boolean;
-  centsToFreeShipping: number;
-  /** Platform-side only: what we pay carriers versus what we charged. */
+  /**
+   * Zero by construction under pass-through, and asserted in tests. If this is
+   * ever non-zero the platform has started absorbing or marking up shipping,
+   * which CART-5 forbids.
+   */
   shippingMarginCents: number;
   parcelCount: number;
-  /**
-   * True when the engine could only satisfy this basket with three or more
-   * parcels. Reported, never blocked — we want the frequency before deciding
-   * whether to cap it.
-   */
+  coldParcelCount: number;
+  /** Three or more parcels — reported so the frequency can be seen, never blocked. */
   exceptionalSplit: boolean;
   parcels: ParcelDisclosure[];
 }
@@ -72,39 +62,23 @@ function reasonFor(parcel: Parcel, allParcels: Parcel[]): string {
 export function priceOrder(plan: RoutingPlan, destinationState: string): OrderPricing {
   const itemsSubtotalCents = plan.itemsSubtotalCents;
 
-  // Two cost categories, not five sellers. Shipping covers the ambient side and
-  // can be absorbed above the threshold; cold chain is its own line and never
-  // is, because a perishable box costs more than any sane threshold can hide.
-  const ambientParcels = plan.parcels.filter((p) => p.temperatureClass === "ambient");
-  const coldParcels = plan.parcels.filter((p) => p.temperatureClass !== "ambient");
+  // Pass-through: exactly what the carriers quoted, and exactly what the
+  // packaging costs. No threshold, no blending, no markup.
+  const shippingCents = plan.trueShippingCostCents;
+  const coldPackCents = plan.trueColdPackCostCents;
+  const coldParcelCount = plan.parcels.filter((p) => p.temperatureClass !== "ambient").length;
 
-  const subtotalOf = (parcels: Parcel[]) =>
-    parcels.reduce((sum, p) => sum + p.lines.reduce((s, l) => s + l.lineTotalCents, 0), 0);
-  const ambientSubtotalCents = subtotalOf(ambientParcels);
-  const chilledSubtotalCents = subtotalOf(coldParcels);
-
-  // CART-5: the threshold reads the ambient subtotal alone. Cold goods must not
-  // buy their way past it — that was the hole that made a $105 basket with a
-  // chilled parcel ship for nothing against $64 of carrier cost.
-  const freeShippingApplied = ambientSubtotalCents >= FREE_SHIPPING_THRESHOLD_CENTS;
-  const shippingCents =
-    ambientParcels.length === 0 || freeShippingApplied ? 0 : blendedShippingCents(ambientParcels.length);
-  const coldPack = coldPackCents(coldParcels.length);
-
-  const taxCents = estimateTaxCents(itemsSubtotalCents + shippingCents + coldPack, destinationState);
+  const taxCents = estimateTaxCents(itemsSubtotalCents + shippingCents + coldPackCents, destinationState);
 
   return {
     itemsSubtotalCents,
     shippingCents,
-    coldPackCents: coldPack,
+    coldPackCents,
     taxCents,
-    totalCents: itemsSubtotalCents + shippingCents + coldPack + taxCents,
-    ambientSubtotalCents,
-    chilledSubtotalCents,
-    freeShippingApplied,
-    centsToFreeShipping: Math.max(0, FREE_SHIPPING_THRESHOLD_CENTS - ambientSubtotalCents),
-    shippingMarginCents: shippingCents + coldPack - plan.trueShippingCostCents,
+    totalCents: itemsSubtotalCents + shippingCents + coldPackCents + taxCents,
+    shippingMarginCents: shippingCents + coldPackCents - (plan.trueShippingCostCents + plan.trueColdPackCostCents),
     parcelCount: plan.parcels.length,
+    coldParcelCount,
     exceptionalSplit: plan.parcels.length >= EXCEPTIONAL_SPLIT_PARCELS,
     // CART-6: disclose parcel count and estimated dates, never hide the split.
     parcels: plan.parcels.map((p) => ({

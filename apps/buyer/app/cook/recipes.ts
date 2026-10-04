@@ -20,6 +20,9 @@ export interface Recipe {
   title: string;
   /** CART-6 — parcel arrival disclosed before anything reaches the cart. */
   arrival: string;
+  /** CART-5 — how many parcels this basket lands in, and what carriage costs. */
+  parcels: number;
+  shippingCents: number;
   items: RecipeItem[];
 }
 
@@ -40,6 +43,8 @@ export const RECIPES: Recipe[] = [
     say: "A proper party jollof for eight — here's everything you'll need. I've kept the rice firm and the pepper base generous, the way it should be.",
     title: "Jollof rice · serves 8",
     arrival: `Everything travels from one seller in **Chicago**, so it arrives together by **${dayName(2)}**.`,
+    parcels: 1,
+    shippingCents: 1180,
     items: [
       { name: "Parboiled rice", altNames: "Long-grain · 5kg", glyph: "wheat", qty: 1, priceCents: 2200,
         substitution: "Kwame & Sons is out of long-grain today — I swapped in Accra Home's parboiled. It holds its shape just as well." },
@@ -57,6 +62,8 @@ export const RECIPES: Recipe[] = [
     say: "Egusi soup for six, the way it's meant to be — nutty, rich and deeply green. Here's your basket, measured for a full pot with some to spare.",
     title: "Egusi soup · serves 6",
     arrival: `These come from two sellers, so your order arrives in **two parcels** — ${dayName(2)} and ${dayName(3)}. One order, one total.`,
+    parcels: 2,
+    shippingCents: 2240,
     items: [
       { name: "Egusi", altNames: "Ground melon seeds · 500g", glyph: "leaf", qty: 2, priceCents: 850 },
       { name: "Red Palm Oil", altNames: "Cold-pressed · 1L", glyph: "jar", qty: 1, priceCents: 1530 },
@@ -72,6 +79,8 @@ export const RECIPES: Recipe[] = [
     say: "Doro wat for four — slow-cooked and deep with berbere. I've put in enough spice for the stew to taste like it should, not a polite version of it.",
     title: "Doro wat · serves 4",
     arrival: `One seller in **Washington, DC** has all of it, so it arrives together by **${dayName(3)}**.`,
+    parcels: 1,
+    shippingCents: 980,
     items: [
       { name: "Berbere", altNames: "Fresh-blended · 250g", glyph: "seed", qty: 1, priceCents: 990 },
       { name: "Niter kibbeh", altNames: "Spiced clarified butter · 400g", glyph: "butter", qty: 1, priceCents: 1350 },

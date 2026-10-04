@@ -1,20 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { LocationIcon, ShippingProgress } from "@afrimart/ui";
+import { LocationIcon } from "@afrimart/ui";
 
 export interface ShippingEstimatorProps {
   shippingDays: string;
   metro: string;
+  /** Live single-parcel carrier estimate for this listing to this ZIP. */
+  estimateCents?: number;
 }
 
 /**
- * "Delivery to you" block on product detail. Arrival-date math and the
- * free-shipping progress bar are placeholders — real carrier rate-shopping
- * (CART-4, CART-8) and an itemized cart subtotal land with checkout in
- * Prompt 4/8, not here.
+ * "Delivery to you" block on product detail.
+ *
+ * CART-5 — shipping is charged at carrier cost, so this shows the cost rather
+ * than progress toward a threshold that no longer exists. The figure is a
+ * one-parcel estimate for this item alone; the cart re-quotes the whole basket,
+ * which is usually cheaper per item once things consolidate.
  */
-export function ShippingEstimator({ shippingDays, metro }: ShippingEstimatorProps) {
+export function ShippingEstimator({ shippingDays, metro, estimateCents }: ShippingEstimatorProps) {
   const [zip, setZip] = useState("77002");
   const [arrival, setArrival] = useState(() => estimate(shippingDays));
 
@@ -45,8 +49,14 @@ export function ShippingEstimator({ shippingDays, metro }: ShippingEstimatorProp
           Ships in {shippingDays} from {metro}
         </div>
       </div>
-      <div style={{ marginTop: 14 }}>
-        <ShippingProgress subtotalCents={8600} thresholdCents={10000} />
+      <div className="ship">
+        <div className="top">
+          <div className="a">
+            Estimated delivery <b>{estimateCents === undefined ? "—" : `$${(estimateCents / 100).toFixed(2)}`}</b>
+          </div>
+          <div className="b">at carrier rates</div>
+        </div>
+        <p>Fewer parcels cost less — items from the same seller ship together.</p>
       </div>
     </div>
   );

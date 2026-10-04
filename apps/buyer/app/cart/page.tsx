@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   PageHeader,
-  ShippingProgress,
   ProductGlyph,
   ParcelGroup,
   CartLineItem,
@@ -15,7 +14,7 @@ import {
   ArrowRightIcon,
   SparkleIcon,
 } from "@afrimart/ui";
-import { useCart, FREE_SHIPPING_THRESHOLD_CENTS } from "../cart-context";
+import { useCart } from "../cart-context";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const dayName = (offset: number) =>
@@ -24,7 +23,7 @@ const dayName = (offset: number) =>
 /** AfriMart Buyer - Cart and Checkout.html — cart view. CART-2/3/5/6. */
 export default function CartPage() {
   const router = useRouter();
-  const { parcels, lines, count, sellerCount, subtotalCents, shippingCents, totalCents, coldPackCents, coldParcelCount, ambientSubtotalCents, setQty, remove } = useCart();
+  const { parcels, lines, count, sellerCount, subtotalCents, shippingCents, totalCents, coldPackCents, coldParcelCount, setQty, remove } = useCart();
 
   if (!lines.length) {
     return (
@@ -71,11 +70,24 @@ export default function CartPage() {
 
       <div className="cart-layout">
         <div className="cartMain">
-          <div className="cart-freebar">
-            {/* Ambient goods only — chilled items never count toward free
-                shipping, so showing the whole subtotal here would promise a
-                threshold the cold side can't reach. */}
-            <ShippingProgress subtotalCents={ambientSubtotalCents} thresholdCents={FREE_SHIPPING_THRESHOLD_CENTS} />
+          {/*
+            CART-5 — shipping is passed through at carrier cost, so there is no
+            threshold to make progress toward. The prototype replaces the old
+            progress bar with the cost itself plus the one thing a buyer can
+            act on: consolidating their basket.
+          */}
+          <div className="shipline">
+            <div className="top">
+              <div className="a">
+                Shipping
+                <span>
+                  {parcels.length} {parcels.length === 1 ? "parcel" : "parcels"}
+                  {coldParcelCount ? ` · ${coldParcelCount} cold` : ""}
+                </span>
+              </div>
+              <div className="v tnum">{money(shippingCents)}</div>
+            </div>
+            <p>Fewer parcels cost less — items from the same city ship together.</p>
           </div>
 
           {/* CART-6 — multi-parcel arrival disclosed up front, never hidden. */}

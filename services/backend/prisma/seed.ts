@@ -25,6 +25,8 @@ interface SeedProduct {
   packSize: string;
   temperatureClass: "ambient" | "refrigerated" | "frozen";
   shippingWeightOz: number;
+  /** CAT-5 — inches. Carriers bill the greater of actual and dimensional weight. */
+  dims: [number, number, number];
   freshnessGuarantee?: boolean;
   usedDescription: string;
   langs: { language: string; name: string }[];
@@ -42,6 +44,7 @@ const products: SeedProduct[] = [
     packSize: "500g",
     temperatureClass: "ambient",
     shippingWeightOz: 18,
+    dims: [9, 6, 3],
     freshnessGuarantee: true,
     usedDescription:
       "Ground egusi thickens soups into a rich, nutty stew. Toast it lightly, then simmer with leafy greens, smoked fish and palm oil for a classic egusi soup.",
@@ -69,6 +72,7 @@ const products: SeedProduct[] = [
     packSize: "2kg",
     temperatureClass: "ambient",
     shippingWeightOz: 72,
+    dims: [12, 9, 7],
     usedDescription:
       "Soak garri in cold water for a quick drink, or stir into hot water to make èbà — the soft, stretchy staple served with soups and stews.",
     langs: [
@@ -91,6 +95,7 @@ const products: SeedProduct[] = [
     packSize: "1L",
     temperatureClass: "ambient",
     shippingWeightOz: 36,
+    dims: [8, 6, 10],
     usedDescription:
       "The soul of West African cooking. A spoonful lends jollof, stews and soups their deep colour and unmistakable flavour.",
     langs: [
@@ -114,6 +119,7 @@ const products: SeedProduct[] = [
     packSize: "250g",
     temperatureClass: "ambient",
     shippingWeightOz: 9,
+    dims: [7, 5, 3],
     freshnessGuarantee: true,
     usedDescription: "Blend into pepper sauces and stews for a fruity, fiery heat. A little goes a long way.",
     langs: [
@@ -136,6 +142,7 @@ const products: SeedProduct[] = [
     packSize: "200g",
     temperatureClass: "ambient",
     shippingWeightOz: 7,
+    dims: [6, 4, 2],
     usedDescription:
       "A fragrant blend of chilli, fenugreek and warm spices — the backbone of doro wat and misir wot. Bloom it in oil to release its aroma.",
     langs: [
@@ -161,6 +168,7 @@ const products: SeedProduct[] = [
     packSize: "400g",
     temperatureClass: "refrigerated",
     shippingWeightOz: 22,
+    dims: [14, 10, 4],
     freshnessGuarantee: true,
     usedDescription:
       "The backbone of pepper soup and egusi. Flakes apart into the pot and leaves a deep, smoky stock behind.",
@@ -183,6 +191,7 @@ const products: SeedProduct[] = [
     packSize: "150g",
     temperatureClass: "ambient",
     shippingWeightOz: 6,
+    dims: [6, 4, 2],
     usedDescription: "A peanut-based spice rub for grilled meat. Coat beef or chicken generously before it hits the fire.",
     langs: [
       { language: "Hausa", name: "Yaji" },
@@ -203,6 +212,7 @@ const products: SeedProduct[] = [
     packSize: "5kg",
     temperatureClass: "ambient",
     shippingWeightOz: 176,
+    dims: [15, 11, 8],
     usedDescription: "Firm, separate grains that stand up to the tomato-rich sauce of a proper party jollof.",
     langs: [
       { language: "Wolof", name: "Ceebu" },
@@ -223,6 +233,7 @@ const products: SeedProduct[] = [
     packSize: "1kg",
     temperatureClass: "ambient",
     shippingWeightOz: 36,
+    dims: [8, 6, 10],
     usedDescription: "Stir into hot water for a smooth swallow, or bake into wholesome plantain treats.",
     langs: [
       { language: "Yoruba", name: "Èlùbọ̀ ọ̀gẹ̀dẹ̀" },
@@ -289,6 +300,9 @@ async function main() {
         images: [],
         temperatureClass: p.temperatureClass,
         shippingWeightOz: p.shippingWeightOz,
+        lengthIn: p.dims[0],
+        widthIn: p.dims[1],
+        heightIn: p.dims[2],
       },
     });
 
@@ -326,6 +340,9 @@ async function main() {
           leadTimeDays: l.leadTimeDays,
           temperatureClass: p.temperatureClass,
           shippingWeightOz: p.shippingWeightOz,
+          lengthIn: p.dims[0],
+          widthIn: p.dims[1],
+          heightIn: p.dims[2],
           freshnessGuarantee: p.freshnessGuarantee ?? false,
         },
       });

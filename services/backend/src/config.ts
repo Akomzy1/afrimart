@@ -4,7 +4,11 @@
  * and get tuned without touching logic.
  */
 
-/** PAY-3 — the PRD specifies a configurable take rate in the 12-15% band. */
+/**
+ * PAY-3 — configurable take rate in the 12-15% band, charged on item value
+ * only. Shipping is pass-through: the seller neither sets it nor receives it,
+ * so it must never enter the commission base.
+ */
 export const TAKE_RATE_BPS = Number(process.env.TAKE_RATE_BPS ?? 1300);
 export const TAKE_RATE_MIN_BPS = 1200;
 export const TAKE_RATE_MAX_BPS = 1500;
@@ -13,73 +17,62 @@ export const TAKE_RATE_MAX_BPS = 1500;
 export const FULFILMENT_FEE_CENTS = Number(process.env.FULFILMENT_FEE_CENTS ?? 199);
 
 /**
- * CART-5 — at or above this subtotal the platform absorbs shipping entirely.
- * Below it the buyer sees ONE blended charge, never one fee per parcel.
+ * CART-5 — shipping is charged at actual cost and absorbed on no category.
+ *
+ * There is deliberately no free-shipping threshold and no blended fee schedule
+ * here any more. Both existed to decide how much of a split the platform ate;
+ * under pass-through it eats none, so the buyer's shipping line is simply the
+ * sum of the live carrier quotes for their parcels. The only two exceptions in
+ * the PRD are seller-funded free shipping (PAY-10, Phase 2) and the paid
+ * membership tier (SUB-3, Phase 3) — neither is built.
+ *
+ * Keeping a constant here would invite a future session to reintroduce
+ * absorption by editing a number. There is nothing to edit.
  */
-export const FREE_SHIPPING_THRESHOLD_CENTS = Number(process.env.FREE_SHIPPING_THRESHOLD_CENTS ?? 10000);
 
 /**
- * CART-5's blended charge. The requirement is about *presentation* — one
- * shipping figure, never a per-seller breakdown — not about that figure being
- * the same for every basket. A flat constant made multi-parcel orders
- * structurally loss-making: a four-way split cost $46.90 to ship and recovered
- * $7.50.
- *
- * So the figure scales with parcel count while staying a single number. The
- * buyer still sees one order, one total, and cannot infer a per-seller fee from
- * it: the increment is not any parcel's real cost, and the schedule is
- * deliberately sub-linear so the platform keeps absorbing part of a split
- * rather than passing it through.
+ * CAT-5 — carriers bill on the greater of actual weight and dimensional
+ * weight, so a bulky light parcel cannot be rated on weight alone. Divisor 166
+ * is the common US domestic retail figure (cubic inches per pound); negotiated
+ * contracts often use 139. Revisit when real carrier terms land.
  */
-export const BLENDED_SHIPPING_BASE_CENTS = Number(process.env.BLENDED_SHIPPING_BASE_CENTS ?? 750);
-export const BLENDED_SHIPPING_PER_EXTRA_PARCEL_CENTS = Number(
-  process.env.BLENDED_SHIPPING_PER_EXTRA_PARCEL_CENTS ?? 450,
-);
+export const DIM_DIVISOR = Number(process.env.DIM_DIVISOR ?? 166);
 
 /**
- * Cold chain is not shipping, and must never be absorbed by a basket-size
- * threshold. A perishable box runs $37-67 all-in, so no threshold we would
- * realistically set can swallow one — raising the threshold only moves the
- * cliff. Chilled and frozen parcels therefore always carry this fee, whatever
- * the basket is worth, and it covers their transport as well as the insulated
- * packaging and refrigerant. The ambient side keeps the free-shipping mechanic,
- * which is where absorption is affordable.
+ * PAY-8 — payout hold for sellers without a track record.
  *
- * PROVISIONAL NUMBERS. These are placed to sit inside the quoted $37-67 all-in
- * band once carrier and packaging quotes exist; they are not derived from real
- * ones yet and should be replaced when EasyPost cold-chain pricing lands.
+ * Funds are held until delivery is confirmed and the refund window has closed.
+ * The hold shortens as a seller accumulates delivered orders with no disputes,
+ * and disappears once they are established. Defaults are provisional and
+ * should be set from real dispute rates once there are any.
  */
-export const COLD_PACK_BASE_CENTS = Number(process.env.COLD_PACK_BASE_CENTS ?? 1900);
-export const COLD_PACK_PER_EXTRA_PARCEL_CENTS = Number(process.env.COLD_PACK_PER_EXTRA_PARCEL_CENTS ?? 1400);
+export const REFUND_WINDOW_DAYS = Number(process.env.REFUND_WINDOW_DAYS ?? 14);
+/** Clean delivered orders needed before a seller is paid without a hold. */
+export const SELLER_ESTABLISHED_AFTER_ORDERS = Number(process.env.SELLER_ESTABLISHED_AFTER_ORDERS ?? 20);
+/** Clean delivered orders after which the window is halved. */
+export const SELLER_TRUSTED_AFTER_ORDERS = Number(process.env.SELLER_TRUSTED_AFTER_ORDERS ?? 5);
 
-export function coldPackCents(coldParcelCount: number): number {
-  if (coldParcelCount <= 0) return 0;
-  return COLD_PACK_BASE_CENTS + (coldParcelCount - 1) * COLD_PACK_PER_EXTRA_PARCEL_CENTS;
-}
+/**
+ * QC-9 — refund-abuse controls. Claims are tracked per buyer; past the cap,
+ * a claim goes to manual review instead of being auto-approved.
+ */
+export const REFUND_AUTO_APPROVE_CENTS = Number(process.env.REFUND_AUTO_APPROVE_CENTS ?? 5000);
+export const REFUND_CLAIMS_BEFORE_REVIEW = Number(process.env.REFUND_CLAIMS_BEFORE_REVIEW ?? 2);
+export const REFUND_CLAIM_WINDOW_DAYS = Number(process.env.REFUND_CLAIM_WINDOW_DAYS ?? 90);
 
 /**
  * Parcel count at or above which an order is reported as an exceptional split.
- * Not a cap — nothing is blocked. We want to see how often the engine can only
- * satisfy an order this way before deciding whether to cap it.
+ * Not a cap — nothing is blocked. Under pass-through the buyer sees the cost of
+ * a split directly, so this is now a product signal rather than a loss signal.
  */
 export const EXCEPTIONAL_SPLIT_PARCELS = Number(process.env.EXCEPTIONAL_SPLIT_PARCELS ?? 3);
 
 /**
- * SEL-2/SEL-4 seller eligibility for routing.
- *
- * SEL-2 as written gates *non-store* sellers: verification is "required before
- * a non-store seller can list to the public", which leaves an unverified
- * `store` free to sell. `REQUIRE_VERIFIED_ALL` is the stricter stance — no
- * unverified seller of any type may receive a routed order. It is the default
- * because an order landing with an unverified seller is where SEL-2 and SEL-4
- * are supposed to bite; set it false to fall back to SEL-2's literal reading.
+ * SEL-2/SEL-4 seller eligibility for routing. The PRD now requires
+ * verification before a seller of any type can list publicly or be assigned an
+ * order, so this defaults on; false falls back to gating non-store sellers only.
  */
 export const REQUIRE_VERIFIED_ALL = process.env.REQUIRE_VERIFIED_ALL !== "false";
-
-export function blendedShippingCents(parcelCount: number): number {
-  if (parcelCount <= 0) return 0;
-  return BLENDED_SHIPPING_BASE_CENTS + (parcelCount - 1) * BLENDED_SHIPPING_PER_EXTRA_PARCEL_CENTS;
-}
 
 if (TAKE_RATE_BPS < TAKE_RATE_MIN_BPS || TAKE_RATE_BPS > TAKE_RATE_MAX_BPS) {
   throw new Error(

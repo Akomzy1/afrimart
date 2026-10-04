@@ -26,7 +26,7 @@ type PayMethod = "card" | "paypal";
 /** AfriMart Buyer - Cart and Checkout.html — checkout view. */
 export default function CheckoutPage() {
   const router = useRouter();
-  const { parcels, lines, count, sellerCount, subtotalCents, shippingCents, totalCents, coldPackCents, coldParcelCount, ambientSubtotalCents } = useCart();
+  const { parcels, lines, count, sellerCount, subtotalCents, shippingCents, totalCents, coldPackCents, coldParcelCount } = useCart();
 
   const [name, setName] = useState("");
   const [street, setStreet] = useState("");

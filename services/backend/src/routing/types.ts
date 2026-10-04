@@ -18,6 +18,10 @@ export interface CandidateListing {
   batchQuantityCap: number | null;
   temperatureClass: TemperatureClass;
   shippingWeightOz: number;
+  /** CAT-5 — needed for dimensional weight; carriers bill the greater of the two. */
+  lengthIn: number;
+  widthIn: number;
+  heightIn: number;
   /** SEL-2/SEL-4 — routing must not hand an order to a seller that hasn't passed the trust gate. */
   sellerType: SellerType;
   verificationStatus: string;
@@ -42,8 +46,12 @@ export interface Parcel {
   temperatureClass: TemperatureClass;
   lines: AssignedLine[];
   weightOz: number;
-  /** True carrier cost, which the buyer never sees per-parcel (CART-5). */
+  /** What the carrier actually bills on: max(actual, dimensional). */
+  billableWeightOz: number;
+  /** Live carrier quote for this parcel. Passed through to the buyer (CART-5). */
   carrierCostCents: number;
+  /** Insulated packaging and coolant for this parcel, at cost. Zero if ambient. */
+  coldPackCostCents: number;
   carrier: string;
   service: string;
   transitDays: number;
@@ -55,8 +63,10 @@ export interface RoutingPlan {
   assignment: AssignedLine[];
   parcels: Parcel[];
   itemsSubtotalCents: number;
-  /** What the carriers actually charge in total — platform-side, never displayed. */
+  /** Sum of the parcel carrier quotes. This IS the buyer shipping line now. */
   trueShippingCostCents: number;
+  /** Sum of the cold-pack material costs across chilled parcels. */
+  trueColdPackCostCents: number;
   /** CART-2 — whether one store covered the whole basket. */
   singleStore: boolean;
   storeCount: number;

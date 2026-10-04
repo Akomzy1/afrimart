@@ -22,6 +22,24 @@ function addDays(from: Date, days: number): Date {
   return d;
 }
 
+/**
+ * CAT-5 — a parcel's box. Items stack, so height adds while the footprint is
+ * the largest item's; a real packing solver would do better, but under-
+ * declaring volume produces carrier adjustments charged back to the seller
+ * (PAY-9), so the estimate deliberately errs upward rather than downward.
+ */
+function parcelDimensions(group: AssignedLine[]) {
+  let lengthIn = 0;
+  let widthIn = 0;
+  let heightIn = 0;
+  for (const l of group) {
+    lengthIn = Math.max(lengthIn, l.listing.lengthIn);
+    widthIn = Math.max(widthIn, l.listing.widthIn);
+    heightIn += l.listing.heightIn * l.quantity;
+  }
+  return { lengthIn, widthIn, heightIn };
+}
+
 function groupIntoParcelGroups(assignment: AssignedLine[]): Map<string, AssignedLine[]> {
   const groups = new Map<string, AssignedLine[]>();
   for (const line of assignment) {
@@ -55,13 +73,16 @@ export async function route(
   for (const group of groups.values()) {
     const head = group[0].listing;
     const weightOz = group.reduce((sum, l) => sum + l.listing.shippingWeightOz * l.quantity, 0);
-
-    const quotes = await carrier.rates({
+    const dimensions = parcelDimensions(group);
+    const spec = {
       fromMetro: head.metro,
       toZip: options.toZip,
       weightOz,
+      dimensions,
       temperatureClass: head.temperatureClass,
-    });
+    };
+
+    const quotes = await carrier.rates(spec);
     const choice = selectCarrier(quotes, windowForTemperature(head.temperatureClass));
     if (!choice) throw new Error(`No carrier rates available from ${head.metro} to ${options.toZip}.`);
 
@@ -72,7 +93,9 @@ export async function route(
       temperatureClass: head.temperatureClass,
       lines: group,
       weightOz,
+      billableWeightOz: choice.quote.billableWeightOz,
       carrierCostCents: choice.quote.costCents,
+      coldPackCostCents: await carrier.coldPackCostCents(spec),
       carrier: choice.quote.carrier,
       service: choice.quote.service,
       transitDays: choice.quote.transitDays,
@@ -91,6 +114,7 @@ export async function route(
     parcels,
     itemsSubtotalCents,
     trueShippingCostCents: parcels.reduce((sum, p) => sum + p.carrierCostCents, 0),
+    trueColdPackCostCents: parcels.reduce((sum, p) => sum + p.coldPackCostCents, 0),
     singleStore: selection.singleStore,
     storeCount,
     singleStorePremiumCents: Math.max(0, itemsSubtotalCents - selection.cheapestPossibleCents),

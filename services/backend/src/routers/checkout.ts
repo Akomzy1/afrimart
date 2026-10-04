@@ -79,6 +79,9 @@ async function resolveBasket(input: BasketInput) {
       batchQuantityCap: r.batchQuantityCap,
       temperatureClass: r.temperatureClass,
       shippingWeightOz: r.shippingWeightOz,
+      lengthIn: r.lengthIn,
+      widthIn: r.widthIn,
+      heightIn: r.heightIn,
       sellerType: r.store.sellerType,
       verificationStatus: r.store.verificationStatus,
     }));

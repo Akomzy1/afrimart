@@ -46,9 +46,6 @@ export interface Parcel {
   lines: CartLine[];
 }
 
-/** Mirrors the backend's CART-5 threshold, for the progress bar only. */
-export const FREE_SHIPPING_THRESHOLD_CENTS = 10000;
-
 /** Seeded in prisma/seed.ts. Replace with the signed-in buyer when auth lands. */
 export const DEMO_BUYER_ID = "demo-buyer";
 
@@ -94,8 +91,6 @@ interface CartContextValue {
   /** CART-5 — the cold-chain line, shown in the cart not sprung at payment. */
   coldPackCents: number;
   coldParcelCount: number;
-  /** Threshold progress counts ambient goods only; cold never buys past it. */
-  ambientSubtotalCents: number;
   /** True while a quote is in flight — totals shown are the previous ones. */
   pricing: boolean;
   /** Set when the backend could not be reached; screens show it rather than wrong numbers. */
@@ -185,7 +180,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       taxCents: pricing?.taxCents ?? 0,
       coldPackCents: pricing?.coldPackCents ?? 0,
       coldParcelCount: parcels.filter((p) => p.chilled).length,
-      ambientSubtotalCents: pricing?.ambientSubtotalCents ?? 0,
       pricing: quote.isPending || demo.isLoading,
       error:
         demoFailed || quoteFailed

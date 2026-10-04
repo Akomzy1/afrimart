@@ -96,8 +96,9 @@ export function splitPayment(
     stores,
     platformGrossCents,
     logisticsRevenueCents,
-    carrierCostCents: plan.trueShippingCostCents,
-    platformNetCents: platformGrossCents + logisticsRevenueCents - plan.trueShippingCostCents,
+    carrierCostCents: plan.trueShippingCostCents + plan.trueColdPackCostCents,
+    platformNetCents:
+      platformGrossCents + logisticsRevenueCents - (plan.trueShippingCostCents + plan.trueColdPackCostCents),
     taxCollectedCents: taxCents,
   };
 }

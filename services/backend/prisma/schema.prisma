@@ -83,6 +83,7 @@ model Store {
   listings              Listing[]
   shipments             Shipment[]
   payouts               Payout[]
+  carrierAdjustments    CarrierAdjustment[]
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 }
@@ -100,6 +101,10 @@ model CanonicalProduct {
   images            String[]
   temperatureClass  TemperatureClass
   shippingWeightOz  Float
+  /// CAT-5 — carriers bill the greater of actual and dimensional weight.
+  lengthIn          Float            @default(8)
+  widthIn           Float            @default(6)
+  heightIn          Float            @default(4)
   aliases           NameAlias[]
   listings          Listing[]
   createdAt         DateTime          @default(now())
@@ -129,6 +134,10 @@ model Listing {
   batchQuantityCap   Int?
   temperatureClass   TemperatureClass
   shippingWeightOz   Float
+  /// CAT-5 — declared by the seller; wrong values produce PAY-9 chargebacks.
+  lengthIn           Float            @default(8)
+  widthIn            Float            @default(6)
+  heightIn           Float            @default(4)
   /// PRD QC-5 -- the buyer-facing freshness/quality-guarantee badge, distinct from temperatureClass.
   freshnessGuarantee Boolean          @default(false)
   cartItems          CartItem[]
@@ -157,6 +166,7 @@ model Buyer {
   phone         String?
   addresses     Address[]
   carts         Cart[]
+  refundClaims  RefundClaim[]
   orders        Order[]
   subscriptions Subscription[]
   createdAt     DateTime       @default(now())
@@ -265,6 +275,11 @@ model Payout {
   fulfilmentFeeCents Int
   netCents           Int
   status             String    @default("scheduled")
+  /// PAY-8 — funds held until delivery is confirmed and the refund window closes.
+  heldUntil          DateTime?
+  holdReason         String?
+  /// PAY-9 — carrier chargebacks deducted from this payout.
+  adjustmentsCents   Int       @default(0)
   scheduledFor       DateTime?
   paidAt             DateTime?
   createdAt          DateTime  @default(now())
@@ -281,4 +296,47 @@ model Subscription {
   nextRenewalAt  DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+}
+
+/// PAY-9 — a carrier billing correction, almost always caused by a seller
+/// declaring the wrong weight or dimensions. Recorded against the seller who
+/// declared them and deducted from their next payout.
+model CarrierAdjustment {
+  id                 String    @id @default(cuid())
+  store              Store     @relation(fields: [storeId], references: [id])
+  storeId            String
+  shipmentId         String?
+  carrierReference   String    @unique
+  amountCents        Int
+  reason             String
+  declaredWeightOz   Float
+  actualWeightOz     Float
+  /// Set once folded into a payout, so an adjustment is never charged twice.
+  settledPayoutId    String?
+  createdAt          DateTime  @default(now())
+
+  @@index([storeId, settledPayoutId])
+}
+
+/// QC-8 / QC-9 — a buyer's refund claim, the evidence for it, and where the
+/// cost was ultimately recovered from.
+model RefundClaim {
+  id              String    @id @default(cuid())
+  buyer           Buyer     @relation(fields: [buyerId], references: [id])
+  buyerId         String
+  orderId         String
+  shipmentId      String?
+  reason          String
+  amountCents     Int
+  /// QC-8 — photo evidence is mandatory for spoiled or damaged goods.
+  photoUrl        String?
+  /// auto_approved | manual_review | approved | rejected
+  status          String    @default("manual_review")
+  /// QC-8 — seller | carrier | platform. Who the cost is recovered from.
+  recoveryTarget  String?
+  recoveredCents  Int       @default(0)
+  createdAt       DateTime  @default(now())
+  resolvedAt      DateTime?
+
+  @@index([buyerId, createdAt])
 }
