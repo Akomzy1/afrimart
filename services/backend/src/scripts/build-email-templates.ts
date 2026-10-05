@@ -77,9 +77,23 @@ for (const file of files) {
   const tokens = new Set((withItems.match(/\{\{#?\/?([a-zA-Z]+)\}\}/g) ?? []).map((t) => t));
   console.log(`${file.padEnd(34)} ${rows} demo rows -> items block   tokens: ${[...tokens].join(" ")}`);
 }
+/**
+ * Templates that legitimately carry no item list, and so are expected to
+ * match zero rows. Listed explicitly rather than loosening the check: a
+ * template losing its items is a silent failure worth catching, so a new
+ * exception should be a deliberate edit here.
+ *
+ * report-received-parcel is parcel-level by design — the buyer is reporting
+ * that a whole parcel never arrived, so it summarises the parcel rather than
+ * enumerating what was in it.
+ */
+const NO_ITEMS_EXPECTED = new Set(["report-received-parcel.html"]);
+
+const unexpectedlyEmpty = emptyTemplates.filter((f) => !NO_ITEMS_EXPECTED.has(f));
+
 // A template with no matched rows would silently render no order lines at
 // all, which is worse than failing: it looks fine until a real order ships.
-if (emptyTemplates.length) {
+if (unexpectedlyEmpty.length) {
   console.error(`\nNo item rows matched in: ${emptyTemplates.join(", ")}`);
   console.error("Real order lines would not render there. Fix ITEM_ROW rather than shipping it.");
   process.exit(1);

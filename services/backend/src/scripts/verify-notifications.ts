@@ -9,7 +9,7 @@ import { prisma } from "../db.js";
 import { LocalCarrierGateway } from "../shipping/carrier.js";
 import { route } from "../routing/engine.js";
 import { priceOrder } from "../routing/pricing.js";
-import { handleTrackingEvent, queueMerchantAlert, queueOrderConfirmation } from "../notifications/pipeline.js";
+import { handleTrackingEvent, queueMerchantAlerts, queueOrderConfirmation } from "../notifications/pipeline.js";
 import { drain } from "../notifications/outbox.js";
 import { MemoryEmailSender, MemoryPushSender, DisabledSmsSender, setSenders } from "../notifications/senders.js";
 import type { BasketLine, CandidateListing } from "../routing/types.js";
@@ -85,10 +85,7 @@ const order = await prisma.$transaction(async (tx) => {
     });
   }
   await queueOrderConfirmation(tx, o.id);
-  const placed = await tx.shipment.findMany({ where: { orderId: o.id }, include: { items: true } });
-  for (const s of placed) {
-    await queueMerchantAlert(tx, s.id, s.storeId, s.items.reduce((n, i) => n + i.quantity, 0));
-  }
+  await queueMerchantAlerts(tx, o.id);
   return o;
 });
 
@@ -103,7 +100,12 @@ check(
   Object.keys(d.byTemplate).some((t) => t === "order-confirmed"),
   Object.keys(d.byTemplate).join(", "),
 );
-check(`one merchant push per parcel (${parcels.length})`, push.captured.length === parcels.length, `${push.captured.length} pushes`);
+const distinctStores = new Set(parcels.map((p) => p.storeId));
+check(
+  `one merchant push per SELLER (${distinctStores.size}), not per parcel (${parcels.length})`,
+  push.captured.length === distinctStores.size,
+  `${push.captured.length} pushes for ${distinctStores.size} sellers across ${parcels.length} parcels`,
+);
 
 console.log("\n=== 2. each parcel ships ===");
 let seq = 0;

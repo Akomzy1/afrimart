@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { InstallPrompt } from "./InstallPrompt";
 import {
   LogoMark,
   ProductGlyph,
@@ -223,6 +224,10 @@ export default function OnboardingPage() {
           <div className="count">
             <b>{products.length}</b> products listed · Mama Ngozi, Bronx
           </div>
+
+          {/* Without this, the promise above is false on iOS: web push only
+              reaches a PWA installed to the home screen. */}
+          <InstallPrompt />
 
           {/* ONB-8 — kit issuance and hub assignment, recorded at go-live. */}
           <div className="mr-kit">

@@ -6,7 +6,7 @@ import { LocalCarrierGateway } from "../shipping/carrier.js";
 import { route } from "../routing/engine.js";
 import { priceOrder } from "../routing/pricing.js";
 import { splitPayment } from "../payments/split.js";
-import { queueMerchantAlert, queueOrderConfirmation } from "../notifications/pipeline.js";
+import { queueMerchantAlerts, queueOrderConfirmation } from "../notifications/pipeline.js";
 import { drain } from "../notifications/outbox.js";
 import type { BasketLine, CandidateListing } from "../routing/types.js";
 
@@ -250,13 +250,7 @@ export const checkoutRouter = router({
         // commits. If anything below rolls the order back, nobody is told
         // about an order that does not exist.
         await queueOrderConfirmation(tx, order.id);
-        const placed = await tx.shipment.findMany({
-          where: { orderId: order.id },
-          include: { items: true },
-        });
-        for (const s of placed) {
-          await queueMerchantAlert(tx, s.id, s.storeId, s.items.reduce((n, i) => n + i.quantity, 0));
-        }
+        await queueMerchantAlerts(tx, order.id);
 
         return { orderId: order.id, pricing, parcelCount: plan.parcels.length };
       });

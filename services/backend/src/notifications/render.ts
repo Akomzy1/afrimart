@@ -24,7 +24,10 @@ export type TemplateName =
   | "parcel-shipped-2-of-3"
   | "parcel-shipped-3-of-3"
   | "delivered"
-  | "refund-issued";
+  | "chilled-parcel-delivered"
+  | "refund-issued"
+  | "report-received-item"
+  | "report-received-parcel";
 
 export interface EmailItem {
   name: string;
@@ -128,6 +131,13 @@ export function subjectFor(name: TemplateName, ctx: RenderContext & { refundAmou
       return `Order confirmed: ${ctx.orderRef}`;
     case "delivered":
       return "Your order has arrived";
+    case "chilled-parcel-delivered":
+      // Deliberately urgent and specific: this one is time-sensitive in a way
+      // no other delivery email is.
+      return "Your chilled parcel was delivered — refrigerate it now";
+    case "report-received-item":
+    case "report-received-parcel":
+      return "We have received your report";
     case "refund-issued":
       return `We've refunded ${ctx.refundAmount ?? "your order"} to your card`;
     default:

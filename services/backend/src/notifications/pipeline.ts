@@ -154,6 +154,32 @@ export async function handleTrackingEvent(event: TrackingEvent): Promise<HandleR
       }
     }
 
+    // A chilled parcel is told immediately and on its own, the moment it
+    // lands — independent of the other parcels, because the whole-order
+    // delivered email may be days away and food left on a doorstep does not
+    // wait for it. This is the one delivery notice that is per parcel.
+    if (mapped === "delivered" && shipment.temperatureClass !== "ambient") {
+      const ctx = {
+        orderRef,
+        parcelLabel,
+        items: itemsFor(shipment.items, shipment.store.name),
+      };
+      if (
+        await enqueue(tx, {
+          channel: "email",
+          template: "chilled-parcel-delivered",
+          recipient: shipment.order.buyer.email,
+          subject: subjectFor("chilled-parcel-delivered", ctx),
+          body: await renderEmail("chilled-parcel-delivered", ctx),
+          dedupeKey: `email:chilled-delivered:${shipment.id}`,
+          orderId: shipment.orderId,
+          shipmentId: shipment.id,
+        })
+      ) {
+        queued.push("chilled-parcel-delivered");
+      }
+    }
+
     // Delivered is an order-level email: it fires once, when the last parcel
     // lands, not once per parcel.
     if (mapped === "delivered" && statuses.every((s) => s === "delivered")) {
@@ -233,20 +259,52 @@ export async function queueOrderConfirmation(
   return ok ? template : null;
 }
 
-/** Merchant web push for a new order. One per shipment, deduped the same way. */
-export async function queueMerchantAlert(
+/**
+ * Merchant web push for a new order — one per seller per order, not per
+ * parcel.
+ *
+ * A seller whose items split across a chilled and an ambient parcel has one
+ * job to do, not two, and two buzzing alerts for the same order reads as a
+ * duplicate rather than as information. The dedupe key is therefore
+ * store + order, so the second parcel's call is a no-op.
+ */
+export async function queueMerchantAlerts(
   tx: Parameters<typeof enqueue>[0],
-  shipmentId: string,
-  storeId: string,
-  itemCount: number,
-): Promise<boolean> {
-  return enqueue(tx, {
-    channel: "push",
-    template: "merchant-new-order",
-    recipient: storeId,
-    subject: "New order",
-    body: `${itemCount} ${itemCount === 1 ? "item" : "items"} to pack.`,
-    dedupeKey: `push:new-order:${shipmentId}`,
-    shipmentId,
+  orderId: string,
+): Promise<string[]> {
+  const shipments = await tx.shipment.findMany({
+    where: { orderId },
+    include: { items: true },
   });
+
+  // Fold the order's parcels down to one entry per seller first.
+  const byStore = new Map<string, { items: number; parcels: number }>();
+  for (const s of shipments) {
+    const current = byStore.get(s.storeId) ?? { items: 0, parcels: 0 };
+    current.items += s.items.reduce((n, i) => n + i.quantity, 0);
+    current.parcels += 1;
+    byStore.set(s.storeId, current);
+  }
+
+  const alerted: string[] = [];
+  for (const [storeId, { items, parcels }] of byStore) {
+    const body =
+      parcels > 1
+        ? `${items} ${items === 1 ? "item" : "items"} to pack, in ${parcels} parcels.`
+        : `${items} ${items === 1 ? "item" : "items"} to pack.`;
+    if (
+      await enqueue(tx, {
+        channel: "push",
+        template: "merchant-new-order",
+        recipient: storeId,
+        subject: "New order",
+        body,
+        dedupeKey: `push:new-order:${orderId}:${storeId}`,
+        orderId,
+      })
+    ) {
+      alerted.push(storeId);
+    }
+  }
+  return alerted;
 }
