@@ -14,7 +14,9 @@
     "seed": "tsx prisma/seed.ts",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "verify:economics": "tsx src/scripts/verify-economics.ts",
-    "verify:loop": "tsx src/scripts/verify-order-loop.ts"
+    "verify:loop": "tsx src/scripts/verify-order-loop.ts",
+    "seed:staff": "tsx src/scripts/seed-staff.ts",
+    "verify:auth": "tsx src/scripts/verify-ops-auth.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -25,6 +27,7 @@
     "@prisma/client": "^5.20.0",
     "@trpc/server": "^11.0.0",
     "fastify": "^5.0.0",
+    "otplib": "^13.5.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

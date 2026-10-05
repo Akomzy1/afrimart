@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
-import { publicProcedure, router } from "../trpc.js";
+import { router, staffProcedure } from "../trpc.js";
+import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
 import { computeHold } from "../payments/payout.js";
 
@@ -17,6 +18,28 @@ import { computeHold } from "../payments/payout.js";
 
 const idInput = z.object({ id: z.string() });
 
+/**
+ * Which store changes count as a change of standing. A hub reassignment or a
+ * normal step through onboarding is routine; suspension, delisting,
+ * reinstatement and any verification change are not, because each one changes
+ * whether a seller can trade and who is accountable for that decision.
+ */
+function auditActionForStoreChange(
+  before: { onboardingStatus: string; verificationStatus: string },
+  after: { onboardingStatus: string; verificationStatus: string },
+): AuditedAction | null {
+  if (before.onboardingStatus !== after.onboardingStatus) {
+    if (after.onboardingStatus === "suspended") return "store.suspend";
+    if (after.onboardingStatus === "delisted") return "store.delist";
+    if (["suspended", "delisted"].includes(before.onboardingStatus) && after.onboardingStatus === "live") {
+      return "store.reinstate";
+    }
+  }
+  if (before.verificationStatus !== after.verificationStatus) return "store.verification_change";
+  return null;
+}
+
+
 export const adminRouter = router({
   /* ---------------------------------------------------------------- ADM-1 */
 
@@ -25,7 +48,7 @@ export const adminRouter = router({
    * are the ones CAT-6 is actually protecting the catalogue from — a reviewer
    * working top-down should meet the riskiest items while fresh.
    */
-  reviewQueue: publicProcedure
+  reviewQueue: staffProcedure("catalogue:read")
     .input(z.object({ includeResolved: z.boolean().default(false) }).optional())
     .query(async ({ input }) => {
       const drafts = await prisma.catalogueDraft.findMany({
@@ -67,7 +90,7 @@ export const adminRouter = router({
    * name the canonical product it resolves to — an approval cannot invent one
    * implicitly, or the knowledge graph fills with near-duplicates (CAT-3).
    */
-  approveDraft: publicProcedure
+  approveDraft: staffProcedure("catalogue:write")
     .input(
       z.object({
         id: z.string(),
@@ -106,7 +129,7 @@ export const adminRouter = router({
       });
     }),
 
-  rejectDraft: publicProcedure
+  rejectDraft: staffProcedure("catalogue:write")
     .input(z.object({ id: z.string(), note: z.string().min(1) }))
     .mutation(({ input }) =>
       prisma.catalogueDraft.update({
@@ -118,7 +141,7 @@ export const adminRouter = router({
   /* ---------------------------------------------------------------- ADM-2 */
 
   /** Store onboarding: where every seller is, and what is blocking them. */
-  stores: publicProcedure.query(async () => {
+  stores: staffProcedure("stores:read").query(async () => {
     const stores = await prisma.store.findMany({
       include: {
         hubMetro: true,
@@ -142,11 +165,11 @@ export const adminRouter = router({
     }));
   }),
 
-  hubs: publicProcedure.query(() =>
+  hubs: staffProcedure("stores:read").query(() =>
     prisma.hubMetro.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, state: true } }),
   ),
 
-  updateStore: publicProcedure
+  updateStore: staffProcedure("stores:write")
     .input(
       z.object({
         id: z.string(),
@@ -157,15 +180,34 @@ export const adminRouter = router({
         hubMetroId: z.string().optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, ...patch } = input;
-      return prisma.store.update({
-        where: { id },
-        data: {
-          ...patch,
-          // SEL-2 — stamp the moment verification was granted, for the record.
-          ...(patch.verificationStatus === "verified" ? { verifiedAt: new Date() } : {}),
-        },
+      const before = await prisma.store.findUnique({ where: { id } });
+      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such store." });
+
+      return prisma.$transaction(async (tx) => {
+        const after = await tx.store.update({
+          where: { id },
+          data: {
+            ...patch,
+            // SEL-2 — stamp the moment verification was granted, for the record.
+            ...(patch.verificationStatus === "verified" ? { verifiedAt: new Date() } : {}),
+          },
+        });
+
+        // Anything that changes a seller's standing is audited; a hub move or
+        // a step through onboarding is routine and is not.
+        const action = auditActionForStoreChange(before, after);
+        if (action) {
+          await writeAudit(tx, ctx.staff, {
+            action,
+            subjectType: "store",
+            subjectId: id,
+            before: { onboardingStatus: before.onboardingStatus, verificationStatus: before.verificationStatus },
+            after: { onboardingStatus: after.onboardingStatus, verificationStatus: after.verificationStatus },
+          });
+        }
+        return after;
       });
     }),
 
@@ -176,7 +218,7 @@ export const adminRouter = router({
    * left to a reviewer's eye: a shipment a seller has not moved within the
    * window is the thing operations exists to catch before the buyer notices.
    */
-  fulfilment: publicProcedure.query(async () => {
+  fulfilment: staffProcedure("fulfilment:read").query(async () => {
     const cutoff = new Date(Date.now() - STUCK_ORDER_HOURS * 3600_000);
     const shipments = await prisma.shipment.findMany({
       where: { status: { notIn: ["delivered"] } },
@@ -210,7 +252,7 @@ export const adminRouter = router({
   }),
 
   /** Intervene on a stuck shipment: nudge it along or cancel the order. */
-  interveneShipment: publicProcedure
+  interveneShipment: staffProcedure("fulfilment:write")
     .input(
       z.object({
         shipmentId: z.string(),
@@ -232,7 +274,7 @@ export const adminRouter = router({
   /* ---------------------------------------------------------------- ADM-4 */
 
   /** The knowledge graph: canonical products and the names that resolve to them. */
-  graph: publicProcedure.input(z.object({ search: z.string().optional() }).optional()).query(async ({ input }) => {
+  graph: staffProcedure("graph:read").input(z.object({ search: z.string().optional() }).optional()).query(async ({ input }) => {
     const term = input?.search?.trim();
     const products = await prisma.canonicalProduct.findMany({
       where: term
@@ -259,7 +301,7 @@ export const adminRouter = router({
     }));
   }),
 
-  addCanonicalProduct: publicProcedure
+  addCanonicalProduct: staffProcedure("graph:write")
     .input(
       z.object({
         canonicalName: z.string().min(1),
@@ -277,7 +319,7 @@ export const adminRouter = router({
     )
     .mutation(({ input }) => prisma.canonicalProduct.create({ data: { ...input, images: [] } })),
 
-  addAlias: publicProcedure
+  addAlias: staffProcedure("graph:write")
     .input(
       z.object({
         canonicalProductId: z.string(),
@@ -288,7 +330,7 @@ export const adminRouter = router({
     )
     .mutation(({ input }) => prisma.nameAlias.create({ data: input })),
 
-  removeAlias: publicProcedure.input(idInput).mutation(({ input }) =>
+  removeAlias: staffProcedure("graph:write").input(idInput).mutation(({ input }) =>
     prisma.nameAlias.delete({ where: { id: input.id } }),
   ),
 
@@ -300,7 +342,7 @@ export const adminRouter = router({
    * buyers were charged should equal what sellers are owed, plus the
    * platform's commission and fees, plus tax, plus what the carriers cost.
    */
-  reconciliation: publicProcedure.query(async () => {
+  reconciliation: staffProcedure("finance:read").query(async () => {
     const [orders, payouts, adjustments, payments] = await Promise.all([
       prisma.order.findMany({ select: { totalCents: true, shippingCents: true, taxCents: true, status: true } }),
       prisma.payout.findMany({ include: { store: { select: { name: true } } } }),
@@ -362,11 +404,202 @@ export const adminRouter = router({
   }),
 
   /** PAY-8 — what hold a seller would get today, for the console to explain. */
-  payoutHoldFor: publicProcedure.input(idInput).query(async ({ input }) => {
+  payoutHoldFor: staffProcedure("finance:read").input(idInput).query(async ({ input }) => {
     const [clean, disputed] = await Promise.all([
       prisma.shipment.count({ where: { storeId: input.id, status: "delivered" } }),
       prisma.refundClaim.count({ where: { status: { in: ["approved", "manual_review"] } } }),
     ]);
     return computeHold({ cleanDeliveredOrders: clean, disputedOrders: disputed }, new Date());
   }),
+
+  /* ------------------------------------------- ADM-5 money, all audited */
+
+  /**
+   * PAY-8 — put a payout on hold, or release one. Finance only: `operations`
+   * can read the reconciliation screen to chase a problem but cannot move the
+   * money, which is the separation the roles exist for.
+   */
+  holdPayout: staffProcedure("finance:write")
+    .input(z.object({ payoutId: z.string(), until: z.coerce.date(), reason: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const before = await prisma.payout.findUnique({ where: { id: input.payoutId } });
+      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such payout." });
+
+      return prisma.$transaction(async (tx) => {
+        const after = await tx.payout.update({
+          where: { id: input.payoutId },
+          data: { heldUntil: input.until, holdReason: input.reason, status: "held" },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: "payout.hold",
+          subjectType: "payout",
+          subjectId: input.payoutId,
+          before: { status: before.status, heldUntil: before.heldUntil, netCents: before.netCents },
+          after: { status: after.status, heldUntil: after.heldUntil, netCents: after.netCents },
+          note: input.reason,
+        });
+        return after;
+      });
+    }),
+
+  releasePayout: staffProcedure("finance:write")
+    .input(z.object({ payoutId: z.string(), note: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const before = await prisma.payout.findUnique({ where: { id: input.payoutId } });
+      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such payout." });
+      if (before.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "That payout has already been paid." });
+
+      return prisma.$transaction(async (tx) => {
+        const after = await tx.payout.update({
+          where: { id: input.payoutId },
+          data: { heldUntil: null, holdReason: null, status: "released", paidAt: new Date() },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: "payout.release",
+          subjectType: "payout",
+          subjectId: input.payoutId,
+          before: { status: before.status, heldUntil: before.heldUntil, paidAt: before.paidAt },
+          after: { status: after.status, heldUntil: null, paidAt: after.paidAt },
+          note: input.note,
+        });
+        return after;
+      });
+    }),
+
+  /**
+   * PAY-9 — record a carrier billing correction against the seller that
+   * declared the wrong weight or dimensions. Recording it is the audited act;
+   * `applyAdjustments` nets it off the next payout.
+   */
+  recordChargeback: staffProcedure("finance:write")
+    .input(
+      z.object({
+        storeId: z.string(),
+        carrierReference: z.string().min(1),
+        amountCents: z.number().int().positive(),
+        reason: z.string().min(1),
+        declaredWeightOz: z.number().positive(),
+        actualWeightOz: z.number().positive(),
+        shipmentId: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) =>
+      prisma.$transaction(async (tx) => {
+        const adjustment = await tx.carrierAdjustment.create({ data: input });
+        await writeAudit(tx, ctx.staff, {
+          action: "chargeback.record",
+          subjectType: "adjustment",
+          subjectId: adjustment.id,
+          before: null,
+          after: {
+            storeId: input.storeId,
+            amountCents: input.amountCents,
+            declaredWeightOz: input.declaredWeightOz,
+            actualWeightOz: input.actualWeightOz,
+          },
+          note: input.reason,
+        });
+        return adjustment;
+      }),
+    ),
+
+  /** QC-9 — refund claims waiting on a human. */
+  refundClaims: staffProcedure("finance:read").query(async () => {
+    const claims = await prisma.refundClaim.findMany({
+      where: { status: { in: ["manual_review", "auto_approved"] } },
+      include: { buyer: { select: { email: true } } },
+      orderBy: { createdAt: "asc" },
+      take: 200,
+    });
+    return claims.map((c) => ({
+      id: c.id,
+      buyerEmail: c.buyer.email,
+      orderId: c.orderId,
+      reason: c.reason,
+      amountCents: c.amountCents,
+      photoUrl: c.photoUrl,
+      status: c.status,
+      recoveryTarget: c.recoveryTarget,
+      createdAt: c.createdAt,
+    }));
+  }),
+
+  /**
+   * QC-8 — resolve a claim and say where the cost lands. The refund to the
+   * buyer is not what is being decided here; that already happened. This
+   * records the recovery, which is the part that affects a seller's money.
+   */
+  resolveRefundClaim: staffProcedure("finance:write")
+    .input(
+      z.object({
+        claimId: z.string(),
+        decision: z.enum(["approve", "reject"]),
+        recoveryTarget: z.enum(["seller", "carrier", "platform"]).optional(),
+        recoveredCents: z.number().int().min(0).default(0),
+        note: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const before = await prisma.refundClaim.findUnique({ where: { id: input.claimId } });
+      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such claim." });
+
+      return prisma.$transaction(async (tx) => {
+        const after = await tx.refundClaim.update({
+          where: { id: input.claimId },
+          data: {
+            status: input.decision === "approve" ? "approved" : "rejected",
+            recoveryTarget: input.recoveryTarget,
+            recoveredCents: input.recoveredCents,
+            resolvedAt: new Date(),
+          },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: input.decision === "approve" ? "refund.approve" : "refund.reject",
+          subjectType: "refund",
+          subjectId: input.claimId,
+          before: { status: before.status, recoveryTarget: before.recoveryTarget, recoveredCents: before.recoveredCents },
+          after: { status: after.status, recoveryTarget: after.recoveryTarget, recoveredCents: after.recoveredCents },
+          note: input.note,
+        });
+        if (input.decision === "approve" && input.recoveryTarget && input.recoveredCents > 0) {
+          await writeAudit(tx, ctx.staff, {
+            action: "refund.recovery_recorded",
+            subjectType: "refund",
+            subjectId: input.claimId,
+            after: { recoveryTarget: input.recoveryTarget, recoveredCents: input.recoveredCents },
+          });
+        }
+        return after;
+      });
+    }),
+
+  /** The trail itself. Read-only everywhere — nothing edits or deletes it. */
+  auditLog: staffProcedure("audit:read")
+    .input(
+      z
+        .object({ subjectType: z.string().optional(), subjectId: z.string().optional(), limit: z.number().max(500).default(100) })
+        .optional(),
+    )
+    .query(async ({ input }) => {
+      const entries = await prisma.auditLogEntry.findMany({
+        where: {
+          ...(input?.subjectType ? { subjectType: input.subjectType } : {}),
+          ...(input?.subjectId ? { subjectId: input.subjectId } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: input?.limit ?? 100,
+      });
+      return entries.map((e) => ({
+        id: e.id,
+        actorEmail: e.actorEmail,
+        actorRole: e.actorRole,
+        action: e.action,
+        subjectType: e.subjectType,
+        subjectId: e.subjectId,
+        before: e.before,
+        after: e.after,
+        note: e.note,
+        createdAt: e.createdAt,
+      }));
+    }),
 });

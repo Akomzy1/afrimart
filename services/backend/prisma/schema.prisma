@@ -374,3 +374,81 @@ model CatalogueDraft {
 
   @@index([status, confidence])
 }
+
+/// Staff roles for the operations console. Deliberately coarse: four roles
+/// that match how the team actually divides work, rather than a permission
+/// matrix nobody maintains. A catalogue reviewer can never reach money.
+enum StaffRole {
+  catalogue_reviewer
+  operations
+  finance
+  admin
+}
+
+/// An internal operator. Entirely separate from Buyer and from Store: staff
+/// credentials must never be issuable through a buyer or merchant signup, and
+/// no staff row is reachable from either app's API surface.
+model StaffUser {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String
+  /// scrypt, stored as "salt:derivedKey" — see src/auth/password.ts.
+  passwordHash  String
+  role          StaffRole
+  /// Base32 TOTP secret. Null until the operator enrols a device.
+  mfaSecret     String?
+  mfaEnrolledAt DateTime?
+  /// Set to lock an account out without deleting its audit trail.
+  disabledAt    DateTime?
+  lastLoginAt   DateTime?
+  sessions      StaffSession[]
+  auditEntries  AuditLogEntry[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+/// A logged-in staff session. Opaque random token, stored hashed, with real
+/// server-side expiry and revocation — a signed stateless token could not be
+/// revoked mid-shift, which is the whole point of holding these in the
+/// database.
+model StaffSession {
+  id            String    @id @default(cuid())
+  staffUser     StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  staffUserId   String
+  /// SHA-256 of the bearer token. The token itself is never stored.
+  tokenHash     String    @unique
+  /// Null until the second factor is satisfied; procedures require it set.
+  mfaVerifiedAt DateTime?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  ip            String?
+  userAgent     String?
+
+  @@index([staffUserId])
+}
+
+/// Every action that moves money or changes a seller's standing. Written in
+/// the same transaction as the change itself, so an audited action cannot
+/// succeed without its log entry.
+model AuditLogEntry {
+  id          String     @id @default(cuid())
+  actor       StaffUser? @relation(fields: [actorId], references: [id])
+  actorId     String?
+  /// Snapshotted so the trail survives the account being renamed or deleted.
+  actorEmail  String
+  actorRole   String
+  action      String
+  subjectType String
+  subjectId   String
+  /// State before and after, for anything that can be reversed or disputed.
+  before      Json?
+  after       Json?
+  note        String?
+  createdAt   DateTime   @default(now())
+
+  @@index([subjectType, subjectId])
+  @@index([createdAt])
+  @@index([actorId])
+}

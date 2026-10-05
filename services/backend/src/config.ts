@@ -93,3 +93,11 @@ export const CATALOGUE_AUTO_APPROVE_CONFIDENCE = Number(process.env.CATALOGUE_AU
  * flags it as stuck. Short enough to beat a buyer noticing.
  */
 export const STUCK_ORDER_HOURS = Number(process.env.STUCK_ORDER_HOURS ?? 24);
+
+/**
+ * Staff session lifetime. Two clocks: the idle timeout slides with use so an
+ * abandoned console locks itself, and the absolute cap does not, so no session
+ * outlives a shift however busy it is.
+ */
+export const SESSION_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES ?? 30);
+export const SESSION_ABSOLUTE_HOURS = Number(process.env.SESSION_ABSOLUTE_HOURS ?? 12);

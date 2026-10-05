@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@afrimart/api-client";
+import { SignIn } from "./SignIn";
+import { readStaffToken, writeStaffToken } from "./providers";
 
 const EMPTY = {
   canonicalName: "", shortDescription: "", usedDescription: "", category: "", cuisine: "",
@@ -26,43 +28,83 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 type Tab = "queue" | "stores" | "fulfilment" | "graph" | "finance";
 
 export default function OpsConsole() {
-  const [tab, setTab] = useState<Tab>("queue");
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
-  const queue = trpc.admin.reviewQueue.useQuery({ includeResolved: false });
-  const fulfilment = trpc.admin.fulfilment.useQuery();
+  // A token in storage is only a hint. The me() query is what actually proves
+  // the session is live, MFA-cleared and not idled out.
+  useEffect(() => setSignedIn(Boolean(readStaffToken())), []);
+
+  if (signedIn === null) return null;
+  if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
+  return <Console onSignedOut={() => { writeStaffToken(null); setSignedIn(false); }} />;
+}
+
+function Console({ onSignedOut }: { onSignedOut: () => void }) {
+  const [tab, setTab] = useState<Tab>("queue");
+  const me = trpc.staffAuth.me.useQuery(undefined, { retry: false });
+
+  // Badge counts, each only fetched by a role allowed to see them — asking
+  // anyway would just produce a wall of 403s in the console.
+  const perms = me.data?.permissions ?? [];
+  const queue = trpc.admin.reviewQueue.useQuery(
+    { includeResolved: false },
+    { enabled: perms.includes("catalogue:read" as never) },
+  );
+  const fulfilment = trpc.admin.fulfilment.useQuery(undefined, {
+    enabled: perms.includes("fulfilment:read" as never),
+  });
   const pendingCount = queue.data?.length ?? 0;
   const stuckCount = fulfilment.data?.filter((s) => s.stuck).length ?? 0;
+
+  // A session that has gone stale server-side surfaces here first, because
+  // me() is the one query every role can make.
+  if (me.isError) {
+    return <SignIn onSignedIn={() => me.refetch()} />;
+  }
+
+  const can = (p: string) => me.data?.permissions.includes(p as never) ?? false;
+
+  // Tabs follow permissions. Hiding one is a courtesy, not the control — the
+  // server refuses the call regardless of what the console chooses to draw.
+  const allTabs: { id: Tab; label: string; badge?: number; shown: boolean }[] = [
+    { id: "queue", label: "Catalogue review", badge: pendingCount, shown: can("catalogue:read") },
+    { id: "stores", label: "Onboarding", badge: undefined, shown: can("stores:read") },
+    { id: "fulfilment", label: "Fulfilment", badge: stuckCount, shown: can("fulfilment:read") },
+    { id: "graph", label: "Knowledge graph", badge: undefined, shown: can("graph:read") },
+    { id: "finance", label: "Reconciliation", badge: undefined, shown: can("finance:read") },
+  ];
+  const visible = allTabs.filter((t) => t.shown);
+
+  const active = visible.some((v) => v.id === tab) ? tab : visible[0]?.id;
 
   return (
     <div className="op-shell">
       <div className="op-top">
         <h1>AfriMart Operations</h1>
-        <span className="env">Internal · no auth yet</span>
+        {me.data && (
+          <span className="env">
+            {me.data.name} · {me.data.role.replace("_", " ")}
+          </span>
+        )}
+        <button type="button" className="op-btn op-signout" onClick={onSignedOut}>
+          Sign out
+        </button>
       </div>
 
       <div className="op-tabs">
-        <button type="button" className={tab === "queue" ? "on" : ""} onClick={() => setTab("queue")}>
-          Catalogue review{pendingCount ? <span className="n">{pendingCount}</span> : null}
-        </button>
-        <button type="button" className={tab === "stores" ? "on" : ""} onClick={() => setTab("stores")}>
-          Onboarding
-        </button>
-        <button type="button" className={tab === "fulfilment" ? "on" : ""} onClick={() => setTab("fulfilment")}>
-          Fulfilment{stuckCount ? <span className="n">{stuckCount}</span> : null}
-        </button>
-        <button type="button" className={tab === "graph" ? "on" : ""} onClick={() => setTab("graph")}>
-          Knowledge graph
-        </button>
-        <button type="button" className={tab === "finance" ? "on" : ""} onClick={() => setTab("finance")}>
-          Reconciliation
-        </button>
+        {visible.map((t) => (
+          <button key={t.id} type="button" className={active === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+            {t.label}
+            {t.badge ? <span className="n">{t.badge}</span> : null}
+          </button>
+        ))}
       </div>
 
-      {tab === "queue" && <ReviewQueue />}
-      {tab === "stores" && <Onboarding />}
-      {tab === "fulfilment" && <Fulfilment />}
-      {tab === "graph" && <KnowledgeGraph />}
-      {tab === "finance" && <Reconciliation />}
+      {active === "queue" && <ReviewQueue />}
+      {active === "stores" && <Onboarding />}
+      {active === "fulfilment" && <Fulfilment />}
+      {active === "graph" && <KnowledgeGraph />}
+      {active === "finance" && <Reconciliation />}
     </div>
   );
 }
