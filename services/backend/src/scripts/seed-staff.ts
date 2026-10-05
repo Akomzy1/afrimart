@@ -11,6 +11,38 @@ import { prisma } from "../db.js";
 import { hashPassword } from "../auth/password.js";
 import type { StaffRole } from "@prisma/client";
 
+
+/**
+ * Refuse to run anywhere that looks like production.
+ *
+ * This script mints working credentials with a known password. The failure
+ * mode is not subtle: pointed at production it creates four accounts an
+ * attacker can read off a public repository. Three independent checks, and
+ * an explicit override that has to be typed out in full, because a guard
+ * that is easy to switch off is a comment.
+ */
+function refuseIfProduction() {
+  if (process.env.ALLOW_STAFF_SEED === "yes-create-real-credentials") return;
+
+  const url = process.env.DATABASE_URL ?? "";
+  const host = (() => { try { return new URL(url).hostname; } catch { return ""; } })();
+  const localHosts = ["localhost", "127.0.0.1", "::1", "host.docker.internal", "postgres", "db"];
+
+  const reasons: string[] = [];
+  if (process.env.NODE_ENV === "production") reasons.push("NODE_ENV is production");
+  if (host && !localHosts.includes(host)) reasons.push(`database host "${host}" is not local`);
+  if (/\b(prod|production|live)\b/i.test(url)) reasons.push("DATABASE_URL names a production database");
+
+  if (reasons.length) {
+    console.error("Refusing to seed staff accounts:");
+    for (const r of reasons) console.error("  - " + r);
+    console.error("These are real credentials with a known password.");
+    console.error("Override only if you are certain: ALLOW_STAFF_SEED=yes-create-real-credentials");
+    process.exit(1);
+  }
+}
+
+refuseIfProduction();
 const PASSWORD = process.env.STAFF_SEED_PASSWORD ?? "ops-demo-password";
 
 const PEOPLE: { email: string; name: string; role: StaffRole }[] = [

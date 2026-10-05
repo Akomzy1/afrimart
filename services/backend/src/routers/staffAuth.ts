@@ -4,6 +4,15 @@ import { generateSecret, generateURI, verifySync } from "otplib";
 import { prisma } from "../db.js";
 import { router, staffAuthProcedure, staffProcedure } from "../trpc.js";
 import { verifyPassword } from "../auth/password.js";
+import {
+  decoyHash,
+  isLockedOut,
+  lockedOutError,
+  recordFailure,
+  recordSuccess,
+  verifyAndMaybeRehash,
+} from "../auth/lockout.js";
+import { clearIp, tooManyFromIp } from "../auth/rateLimit.js";
 import { issueSession, markMfaVerified, revokeSession, resolveSession } from "../auth/session.js";
 import { permissionsFor } from "../auth/permissions.js";
 
@@ -33,17 +42,31 @@ export const staffAuthRouter = router({
   signIn: staffAuthProcedure
     .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
+      // Per-IP ceiling first: this runs before any hashing, so a spray cannot
+      // make the server do 1.5s of scrypt work per guess.
+      if (tooManyFromIp(ctx.ip)) throw lockedOutError();
+
       const user = await prisma.staffUser.findUnique({ where: { email: input.email.toLowerCase() } });
 
-      // Verify against a dummy hash when the account is unknown so the reply
-      // takes the same time either way; skipping the work on a miss turns the
-      // endpoint into an account-enumeration oracle.
-      const stored = user?.passwordHash ?? "00:" + "0".repeat(128);
-      const ok = await verifyPassword(input.password, stored);
+      // A locked account still pays the hashing cost below, so a prober
+      // cannot tell "locked" from "wrong password" by how fast we answer.
+      const locked = user ? isLockedOut(user) : false;
 
-      if (!user || !ok || user.disabledAt) {
-        throw new TRPCError({ code: "UNAUTHORIZED", message: BAD_CREDENTIALS });
+      // Verify against a correctly-formed decoy when the account is unknown,
+      // so the reply takes the same time either way.
+      const ok = user
+        ? await verifyAndMaybeRehash(input.password, user)
+        : await verifyPassword(input.password, await decoyHash());
+
+      if (!user || !ok || user.disabledAt || locked) {
+        if (user && !ok && !locked) await recordFailure(user.id, "password", user);
+        // Same message for every failure: unknown address, wrong password,
+        // disabled and locked are indistinguishable from outside.
+        throw locked ? lockedOutError() : new TRPCError({ code: "UNAUTHORIZED", message: BAD_CREDENTIALS });
       }
+
+      await recordSuccess(user.id);
+      clearIp(ctx.ip);
 
       const session = await issueSession(user.id, { ip: ctx.ip, userAgent: ctx.userAgent });
       await prisma.staffUser.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
@@ -62,7 +85,9 @@ export const staffAuthRouter = router({
   /** Second factor. Required before any ops route will answer. */
   verifyMfa: staffAuthProcedure
     .input(z.object({ token: z.string().min(1), code: z.string().min(6).max(8) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (tooManyFromIp(ctx.ip)) throw lockedOutError();
+
       const session = await resolveSession(input.token);
       if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "That session has expired." });
 
@@ -70,10 +95,18 @@ export const staffAuthRouter = router({
       if (!user?.mfaSecret) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No authenticator is enrolled for this account." });
       }
+
+      // A six-digit code is brute-forceable in minutes without a ceiling —
+      // this step needs its own counter, not just the password's.
+      if (isLockedOut(user)) throw lockedOutError();
+
       if (!totpValid(input.code, user.mfaSecret)) {
+        await recordFailure(user.id, "mfa", user);
         throw new TRPCError({ code: "UNAUTHORIZED", message: "That code isn't right. Try the next one." });
       }
 
+      await recordSuccess(user.id);
+      clearIp(ctx.ip);
       await markMfaVerified(input.token);
       return { role: user.role, name: user.name, permissions: permissionsFor(user.role) };
     }),

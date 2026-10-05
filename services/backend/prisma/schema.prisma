@@ -401,6 +401,11 @@ model StaffUser {
   /// Set to lock an account out without deleting its audit trail.
   disabledAt    DateTime?
   lastLoginAt   DateTime?
+  /// Rate limiting. Counted per account; cleared on a successful sign-in.
+  failedLoginAttempts Int      @default(0)
+  failedMfaAttempts   Int      @default(0)
+  /// Set while an account is temporarily locked out after repeated failures.
+  lockedUntil         DateTime?
   sessions      StaffSession[]
   auditEntries  AuditLogEntry[]
   createdAt     DateTime       @default(now())

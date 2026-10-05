@@ -101,3 +101,15 @@ export const STUCK_ORDER_HOURS = Number(process.env.STUCK_ORDER_HOURS ?? 24);
  */
 export const SESSION_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES ?? 30);
 export const SESSION_ABSOLUTE_HOURS = Number(process.env.SESSION_ABSOLUTE_HOURS ?? 12);
+
+/**
+ * Sign-in rate limiting. Password hashing at N=2^17 costs ~1.5s and ~128MB
+ * per attempt, so these bounds protect capacity as much as they protect the
+ * account — an unbounded login endpoint here is a denial-of-service lever.
+ */
+export const MAX_LOGIN_ATTEMPTS = Number(process.env.MAX_LOGIN_ATTEMPTS ?? 5);
+export const MAX_MFA_ATTEMPTS = Number(process.env.MAX_MFA_ATTEMPTS ?? 5);
+export const LOCKOUT_MINUTES = Number(process.env.LOCKOUT_MINUTES ?? 15);
+/** Per-IP ceiling across all accounts, to blunt spraying one password widely. */
+export const MAX_ATTEMPTS_PER_IP = Number(process.env.MAX_ATTEMPTS_PER_IP ?? 20);
+export const IP_WINDOW_MINUTES = Number(process.env.IP_WINDOW_MINUTES ?? 15);
