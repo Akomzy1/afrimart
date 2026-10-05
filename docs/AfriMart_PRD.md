@@ -218,7 +218,7 @@ Reliable order-state communication protects trust in a category where trust is t
 | **NTF-2** | Buyer notifications by email and SMS for order confirmation, shipment, and tracking.                     | 1         |
 | **NTF-3** | Multi-parcel tracking: each parcel individually trackable under one unified order view.                  | 1         |
 | **NTF-4** | Merchant transactional SMS via registered A2P 10DLC campaign.                                            | 1         |
-| **NTF-5** | Delivery-issue flagging: buyer reports damage or a missing item, triggering the refund and support path. | 1         |
+| **NTF-5** | Delivery-issue flagging: buyer reports an item or parcel problem (QC-3), triggering the refund and support path. | 1         |
 
 ### 6.10 Subscriptions, Boxes, and Membership
 
@@ -269,12 +269,12 @@ Quality on AfriMart is a layered system rather than an assumption: standards at 
 |----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
 | **QC-1** | Product standards at listing: a prohibited and restricted items policy, labelling requirements, and expiry rules — no short-dated goods without clear disclosure. | 1         |
 | **QC-2** | Packing photo confirmation: the merchant photographs the packed order before sealing, creating an evidence trail for every shipment and dispute.                  | 1         |
-| **QC-3** | Item-level quality flagging by buyers (damaged, expired, not as described, suspected inauthentic), feeding the refund path and the seller's quality record.       | 1         |
+| **QC-3** | Buyer problem reporting at two levels. Item-level, with a required photo: damaged, spoiled or expired, not as described, doesn't seem genuine, and missing from the box — the last checked against the seller's packing photo (QC-2). Parcel-level, with no photo: parcel hasn't arrived, offered only once the expected delivery date has passed or tracking shows delivered, always routed to manual review and never auto-approved, and handled as a carrier claim. Late delivery is not a buyer-facing reason: for dry goods it is not grounds for a refund, and for chilled goods late arrival is reported as spoiled. Item-level reports feed the refund path and the seller's quality record; parcel-level reports feed the carrier record instead, unless the parcel never received a carrier scan, in which case it counts against the seller.       | 1         |
 | **QC-4** | Seller quality score aggregating ratings, quality flags, and fulfilment performance, directly driving search ranking and visibility.                              | 1         |
 | **QC-5** | Buyer-facing freshness and quality guarantee: a clear money-back promise on items that arrive damaged, expired, or not as described.                              | 1         |
 | **QC-6** | Enforcement ladder: automated thresholds moving a seller from warning, to listing suspension, to delisting, administered through the operations console.          | 1         |
 | **QC-7** | Operations sampling: periodic test orders placed by the platform to spot-check quality, packaging, and accuracy across sellers.                                   | 2         |
-| **QC-8** | Loss allocation: the buyer is refunded promptly under QC-5, then the cost is recovered — from the seller for packaging or product failures, or as a carrier claim for loss or delay evidenced by tracking, where the carrier's terms allow. Claims for spoiled or damaged goods require buyer photo evidence. | 1 |
+| **QC-8** | Loss allocation: the buyer is refunded promptly under QC-5, then the cost is recovered — from the seller for packaging or product failures, or as a carrier claim for loss or delay evidenced by tracking, where the carrier's terms allow. Item-level claims require buyer photo evidence; parcel-not-arrived claims require none but are always reviewed (QC-3). | 1 |
 | **QC-9** | Refund-abuse controls: refund claims are tracked per buyer; repeated claims are routed to manual review and capped before automatic approval. | 1 |
 
 ### 6.14 Community and Social Discovery
