@@ -113,3 +113,25 @@ export const LOCKOUT_MINUTES = Number(process.env.LOCKOUT_MINUTES ?? 15);
 /** Per-IP ceiling across all accounts, to blunt spraying one password widely. */
 export const MAX_ATTEMPTS_PER_IP = Number(process.env.MAX_ATTEMPTS_PER_IP ?? 20);
 export const IP_WINDOW_MINUTES = Number(process.env.IP_WINDOW_MINUTES ?? 15);
+
+/**
+ * QC-4/QC-6 — the minimum sample before a defect *rate* may drive automatic
+ * enforcement.
+ *
+ * One upheld complaint across three orders is a 33% defect rate and means
+ * almost nothing. Twenty delivered orders is the point at which a rate
+ * starts to separate a bad seller from an unlucky one, and it matches the
+ * PAY-8 threshold at which a seller is considered established, so a seller
+ * stops being treated as new in both senses at once. Below it the score is
+ * still calculated and visible to operations — it just cannot act on its own.
+ */
+export const QUALITY_MIN_ORDERS_FOR_ENFORCEMENT = Number(process.env.QUALITY_MIN_ORDERS_FOR_ENFORCEMENT ?? 20);
+
+/** Confirmed-defect rates at each rung. Provisional until there is real data. */
+export const QUALITY_WARNING_DEFECT_RATE = Number(process.env.QUALITY_WARNING_DEFECT_RATE ?? 0.05);
+export const QUALITY_REDUCED_VISIBILITY_DEFECT_RATE = Number(process.env.QUALITY_REDUCED_VISIBILITY_DEFECT_RATE ?? 0.1);
+/** At or above this the case goes to a person — never to automatic delisting. */
+export const QUALITY_REVIEW_DEFECT_RATE = Number(process.env.QUALITY_REVIEW_DEFECT_RATE ?? 0.2);
+
+/** QC-1 — below this many days to expiry, a listing must disclose it. */
+export const SHORT_DATED_DAYS = Number(process.env.SHORT_DATED_DAYS ?? 30);

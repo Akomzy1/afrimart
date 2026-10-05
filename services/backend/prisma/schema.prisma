@@ -85,6 +85,8 @@ model Store {
   payouts               Payout[]
   carrierAdjustments    CarrierAdjustment[]
   catalogueDrafts       CatalogueDraft[]
+  badges                SellerBadge[]
+  enforcements          SellerEnforcement[]
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 }
@@ -141,6 +143,9 @@ model Listing {
   heightIn           Float            @default(4)
   /// PRD QC-5 -- the buyer-facing freshness/quality-guarantee badge, distinct from temperatureClass.
   freshnessGuarantee Boolean          @default(false)
+  /// QC-1 — expiry rules. Short-dated goods may be listed only with disclosure.
+  expiresOn          DateTime?
+  shortDatedDisclosed Boolean         @default(false)
   cartItems          CartItem[]
   shipmentItems      ShipmentItem[]
   reviews            Review[]
@@ -523,4 +528,69 @@ model Notification {
   sentAt     DateTime?
 
   @@index([status, createdAt])
+}
+
+enum BadgeKind {
+  diaspora_owned
+  imported_direct
+  made_in_usa_african_brand
+}
+
+enum BadgeStatus {
+  applied
+  approved
+  rejected
+  revoked
+}
+
+/// CAT-8 — an authenticity or provenance claim a seller has *applied* for.
+///
+/// Never self-declared: a badge only becomes visible once a reviewer approves
+/// it, and the approval is audited like any other change to a seller's
+/// standing. A badge a seller can switch on themselves tells a buyer nothing,
+/// which defeats the point of having one.
+model SellerBadge {
+  id         String      @id @default(cuid())
+  store      Store       @relation(fields: [storeId], references: [id])
+  storeId    String
+  kind       BadgeKind
+  status     BadgeStatus @default(applied)
+  /// What the seller submitted in support of the claim.
+  evidence   String?
+  reviewNote String?
+  reviewedAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  @@unique([storeId, kind])
+}
+
+enum EnforcementLevel {
+  warning
+  reduced_visibility
+  suspended
+  delisted
+  cleared
+}
+
+/// QC-6 — a step on the enforcement ladder, and who took it.
+///
+/// Warnings and reduced visibility may be applied automatically once a seller
+/// has enough orders to judge. Suspension and delisting may not: those end a
+/// livelihood, and the PRD's "administered through the operations console"
+/// is read here as requiring a person. `actorEmail` is null exactly when the
+/// system acted, which makes the distinction auditable rather than implied.
+model SellerEnforcement {
+  id          String           @id @default(cuid())
+  store       Store            @relation(fields: [storeId], references: [id])
+  storeId     String
+  level       EnforcementLevel
+  reason      String
+  /// Null for an automatic action; set when a human decided.
+  actorEmail  String?
+  /// The score and sample size the decision was taken on, kept for appeal.
+  scoreAtTime Float?
+  ordersAtTime Int?
+  createdAt   DateTime         @default(now())
+
+  @@index([storeId, createdAt])
 }

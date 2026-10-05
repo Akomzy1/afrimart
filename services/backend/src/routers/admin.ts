@@ -5,6 +5,7 @@ import { router, staffProcedure } from "../trpc.js";
 import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
 import { computeHold } from "../payments/payout.js";
+import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 
 /**
  * PRD 6.11 — the internal operations console's API (ADM-1 to ADM-5).
@@ -601,5 +602,172 @@ export const adminRouter = router({
         note: e.note,
         createdAt: e.createdAt,
       }));
+    }),
+
+  /* ------------------------------------------- QC-4 / QC-6 / CAT-8 */
+
+  /** QC-4 — every seller's score, with whether it is actionable yet. */
+  sellerQuality: staffProcedure("stores:read").query(async () => {
+    const stores = await prisma.store.findMany({
+      include: {
+        enforcements: { orderBy: { createdAt: "desc" }, take: 1 },
+        badges: true,
+        shipments: { select: { status: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const claims = await prisma.refundClaim.findMany({
+      where: { status: "approved", recoveryTarget: "seller" },
+      select: { shipmentId: true },
+    });
+    const claimedShipments = new Set(claims.map((c) => c.shipmentId).filter(Boolean) as string[]);
+    const shipmentOwners = await prisma.shipment.findMany({
+      where: { id: { in: [...claimedShipments] } },
+      select: { id: true, storeId: true },
+    });
+    const confirmedByStore = new Map<string, number>();
+    for (const s of shipmentOwners) {
+      confirmedByStore.set(s.storeId, (confirmedByStore.get(s.storeId) ?? 0) + 1);
+    }
+
+    return stores.map((s) => {
+      const delivered = s.shipments.filter((sh) => sh.status === "delivered").length;
+      const quality = computeScore({
+        deliveredOrders: delivered,
+        // QC-4 — confirmed only. A submitted claim moves nothing until a
+        // reviewer upholds it, and carrier-recovered claims never count.
+        confirmedSellerClaims: confirmedByStore.get(s.id) ?? 0,
+        averageRating: s.qualityScore,
+        ratingCount: 0,
+        onTimeAcceptanceRate: null,
+      });
+      const ladder = ladderFor(quality);
+      return {
+        storeId: s.id,
+        storeName: s.name,
+        score: quality.score,
+        defectRate: quality.defectRate,
+        sampleSize: quality.sampleSize,
+        enforceable: quality.enforceable,
+        currentLevel: s.enforcements[0]?.level ?? null,
+        suggestedAction: ladder.action,
+        suggestedReason: ladder.reason,
+        requiresHumanDecision: ladder.requiresHumanDecision,
+        visibilityMultiplier: visibilityMultiplierFor(quality, s.enforcements[0]?.level ?? null),
+        badges: s.badges.map((b) => ({ kind: b.kind, status: b.status })),
+      };
+    });
+  }),
+
+  /**
+   * QC-6 — record an enforcement step.
+   *
+   * Suspension and delisting are refused here unless a human is driving:
+   * they end a seller's income, and the ladder deliberately stops short of
+   * taking them automatically. Both are audited alongside the money actions.
+   */
+  enforce: staffProcedure("stores:write")
+    .input(
+      z.object({
+        storeId: z.string(),
+        level: z.enum(["warning", "reduced_visibility", "suspended", "delisted", "cleared"]),
+        reason: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const store = await prisma.store.findUnique({ where: { id: input.storeId } });
+      if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "No such store." });
+
+      return prisma.$transaction(async (tx) => {
+        const record = await tx.sellerEnforcement.create({
+          data: {
+            storeId: input.storeId,
+            level: input.level,
+            reason: input.reason,
+            // Set precisely because a person took this step. Automatic
+            // actions leave it null, which is what makes the two
+            // distinguishable in the record rather than merely intended.
+            actorEmail: ctx.staff.email,
+          },
+        });
+
+        // Suspension and delisting also change whether the seller can trade,
+        // so they move onboarding state too — and are audited as standing
+        // changes, like every other suspension.
+        if (input.level === "suspended" || input.level === "delisted") {
+          const before = { onboardingStatus: store.onboardingStatus };
+          const after = await tx.store.update({
+            where: { id: input.storeId },
+            data: { onboardingStatus: input.level === "suspended" ? "suspended" : "delisted" },
+          });
+          await writeAudit(tx, ctx.staff, {
+            action: input.level === "suspended" ? "store.suspend" : "store.delist",
+            subjectType: "store",
+            subjectId: input.storeId,
+            before,
+            after: { onboardingStatus: after.onboardingStatus },
+            note: input.reason,
+          });
+        }
+        return record;
+      });
+    }),
+
+  /** CAT-8 — badge applications waiting on a reviewer. */
+  badgeApplications: staffProcedure("stores:read").query(async () => {
+    const badges = await prisma.sellerBadge.findMany({
+      where: { status: "applied" },
+      include: { store: { select: { name: true, sellerType: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    return badges.map((b) => ({
+      id: b.id,
+      storeName: b.store.name,
+      sellerType: b.store.sellerType,
+      kind: b.kind,
+      evidence: b.evidence,
+      createdAt: b.createdAt,
+    }));
+  }),
+
+  /**
+   * CAT-8 — approve or refuse a badge.
+   *
+   * A seller applies; a reviewer decides. A badge a seller could switch on
+   * themselves would carry no information for the buyer it is meant to
+   * reassure, so the grant is the whole control and is audited as a change
+   * to the seller's standing.
+   */
+  reviewBadge: staffProcedure("stores:write")
+    .input(
+      z.object({
+        badgeId: z.string(),
+        decision: z.enum(["approve", "reject", "revoke"]),
+        note: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const badge = await prisma.sellerBadge.findUnique({ where: { id: input.badgeId } });
+      if (!badge) throw new TRPCError({ code: "NOT_FOUND", message: "No such application." });
+
+      const status =
+        input.decision === "approve" ? "approved" : input.decision === "reject" ? "rejected" : "revoked";
+
+      return prisma.$transaction(async (tx) => {
+        const after = await tx.sellerBadge.update({
+          where: { id: input.badgeId },
+          data: { status, reviewNote: input.note, reviewedAt: new Date() },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: "store.verification_change",
+          subjectType: "store",
+          subjectId: badge.storeId,
+          before: { badge: badge.kind, status: badge.status },
+          after: { badge: after.kind, status: after.status },
+          note: input.note ?? `CAT-8 badge ${input.decision}`,
+        });
+        return after;
+      });
     }),
 });

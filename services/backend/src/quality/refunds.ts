@@ -12,13 +12,45 @@ import { REFUND_AUTO_APPROVE_CENTS, REFUND_CLAIMS_BEFORE_REVIEW } from "../confi
 export type RefundReason =
   | "damaged"
   | "spoiled"
+  | "wrong_item"
+  | "inauthentic"
   | "missing_items"
   | "not_delivered"
-  | "late_delivery"
-  | "wrong_item";
+  | "late_delivery";
+
+/**
+ * QC-3 — the five item-level reasons a buyer may choose, in the order the
+ * prototype offers them. Everything else in RefundReason is internal.
+ */
+export const BUYER_ITEM_REASONS = [
+  "damaged",
+  "spoiled",
+  "wrong_item",
+  "inauthentic",
+  "missing_items",
+] as const satisfies readonly RefundReason[];
+
+/** QC-3 — the single parcel-level reason. No photo, always reviewed. */
+export const BUYER_PARCEL_REASON = "not_delivered" as const;
+
+/**
+ * QC-3 — never offered to a buyer. For dry goods lateness is not grounds for
+ * a refund, and for chilled goods a late arrival is reported as spoiled, so
+ * exposing it would only invite the wrong claim.
+ */
+export const INTERNAL_ONLY_REASONS = ["late_delivery"] as const satisfies readonly RefundReason[];
+
+export function isBuyerSelectable(reason: RefundReason): boolean {
+  return (BUYER_ITEM_REASONS as readonly string[]).includes(reason) || reason === BUYER_PARCEL_REASON;
+}
 
 /** QC-8 — spoilage and damage claims require photo evidence. */
-const PHOTO_REQUIRED: RefundReason[] = ["damaged", "spoiled"];
+/**
+ * QC-3/QC-8 — every item-level reason needs a photo. A parcel that never
+ * arrived cannot be photographed, so that one requires none and is reviewed
+ * by a person instead.
+ */
+const PHOTO_REQUIRED: readonly RefundReason[] = BUYER_ITEM_REASONS;
 
 export type RecoveryTarget = "seller" | "carrier" | "platform";
 
@@ -30,6 +62,11 @@ export interface ClaimContext {
   priorClaims: number;
   /** Whether carrier tracking evidences loss or a delivery failure. */
   trackingShowsFailure: boolean;
+  /**
+   * QC-3 — did the parcel ever get a carrier scan? False means it never left
+   * the seller, which moves a not-arrived claim onto them.
+   */
+  hadCarrierScan?: boolean;
 }
 
 export interface ClaimDecision {
@@ -49,9 +86,13 @@ export function requiresPhoto(reason: RefundReason): boolean {
  */
 export function recoveryTargetFor(ctx: ClaimContext): RecoveryTarget {
   if (ctx.reason === "not_delivered" || ctx.reason === "late_delivery") {
-    return ctx.trackingShowsFailure ? "carrier" : "platform";
+    // QC-3 — a parcel that was scanned and then vanished is the carrier's.
+    // One that never received a scan never left the seller, whatever the
+    // label says, so it counts against them instead.
+    return ctx.hadCarrierScan === false ? "seller" : "carrier";
   }
-  // damaged, spoiled, missing_items, wrong_item — packed by the seller.
+  // damaged, spoiled, wrong_item, inauthentic, missing_items — the seller
+  // chose, packed and sealed the box.
   return "seller";
 }
 
@@ -65,6 +106,17 @@ export function assessClaim(ctx: ClaimContext): ClaimDecision {
   }
 
   const target = recoveryTargetFor(ctx);
+
+  // QC-3 — a not-arrived claim is always reviewed. There is no photo to judge
+  // it on and it becomes a carrier claim, so it never auto-approves however
+  // small or however clean the buyer's record.
+  if (ctx.reason === "not_delivered") {
+    return {
+      status: "manual_review",
+      recoveryTarget: target,
+      reasonGiven: "We'll check this with the carrier and come back to you.",
+    };
+  }
 
   // QC-9 — a buyer past the claim cap goes to a human, regardless of amount.
   if (ctx.priorClaims >= REFUND_CLAIMS_BEFORE_REVIEW) {

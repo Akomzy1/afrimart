@@ -479,14 +479,16 @@ describe("QC-8/QC-9 refunds and recovery", () => {
 
   test("a repeat claimant is routed to review rather than auto-approved", () => {
     const d = assessClaim({
-      reason: "missing_items", amountCents: 500, priorClaims: REFUND_CLAIMS_BEFORE_REVIEW, trackingShowsFailure: false,
+      reason: "missing_items", amountCents: 500, photoUrl: "https://x/p.jpg",
+      priorClaims: REFUND_CLAIMS_BEFORE_REVIEW, trackingShowsFailure: false,
     });
     assert.equal(d.status, "manual_review");
   });
 
   test("auto-approval is capped by amount", () => {
     const d = assessClaim({
-      reason: "missing_items", amountCents: REFUND_AUTO_APPROVE_CENTS + 1, priorClaims: 0, trackingShowsFailure: false,
+      reason: "missing_items", amountCents: REFUND_AUTO_APPROVE_CENTS + 1, photoUrl: "https://x/p.jpg",
+      priorClaims: 0, trackingShowsFailure: false,
     });
     assert.equal(d.status, "manual_review");
   });
