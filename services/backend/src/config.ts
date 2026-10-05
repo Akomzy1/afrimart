@@ -80,3 +80,16 @@ if (TAKE_RATE_BPS < TAKE_RATE_MIN_BPS || TAKE_RATE_BPS > TAKE_RATE_MAX_BPS) {
       `${TAKE_RATE_MIN_BPS}-${TAKE_RATE_MAX_BPS} bps (12-15%).`,
   );
 }
+
+/**
+ * CAT-6 / ADM-1 — vision- or import-derived items at or above this confidence
+ * may be auto-approved; below it a human must confirm before publishing.
+ * Provisional: set from real extraction accuracy once there is any.
+ */
+export const CATALOGUE_AUTO_APPROVE_CONFIDENCE = Number(process.env.CATALOGUE_AUTO_APPROVE_CONFIDENCE ?? 0.92);
+
+/**
+ * ADM-3 — hours a shipment may sit unaccepted or unposted before the console
+ * flags it as stuck. Short enough to beat a buyer noticing.
+ */
+export const STUCK_ORDER_HOURS = Number(process.env.STUCK_ORDER_HOURS ?? 24);

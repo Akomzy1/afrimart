@@ -93,7 +93,8 @@ Build toward this monorepo shape unless the person directs otherwise:
 afrimart/
 ├── apps/
 │   ├── buyer/          # buyer PWA — responsive, mobile + desktop
-│   └── merchant/       # merchant PWA — mobile only, three tabs
+│   ├── merchant/       # merchant PWA — mobile only, three tabs
+│   └── ops/            # internal operations console — staff only, plain
 ├── packages/
 │   ├── ui/             # shared design system: tokens, buttons, cards, typography
 │   ├── api-client/      # shared typed client for the backend API

@@ -84,6 +84,7 @@ model Store {
   shipments             Shipment[]
   payouts               Payout[]
   carrierAdjustments    CarrierAdjustment[]
+  catalogueDrafts       CatalogueDraft[]
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 }
@@ -339,4 +340,37 @@ model RefundClaim {
   resolvedAt      DateTime?
 
   @@index([buyerId, createdAt])
+}
+
+enum CatalogueDraftStatus {
+  pending_review
+  approved
+  rejected
+}
+
+/// CAT-6 / ADM-1 — an item the vision pass or an import read off a shelf, held
+/// back from the public catalogue until a human confirms it. Everything the
+/// merchant app captures lands here first; nothing reaches `Listing` without
+/// passing through, which is what makes "no unverified path to public listing"
+/// structural rather than a convention.
+model CatalogueDraft {
+  id                  String               @id @default(cuid())
+  store               Store                @relation(fields: [storeId], references: [id])
+  storeId             String
+  /// What the model actually read, kept verbatim so a reviewer can judge it.
+  rawText             String
+  suggestedName       String
+  suggestedPriceCents Int?
+  packSize            String?
+  temperatureClass    TemperatureClass     @default(ambient)
+  /// CAT-6 — below the threshold this cannot be auto-approved.
+  confidence          Float
+  /// CAT-3 — the canonical product entity resolution matched, if any.
+  matchedProductId    String?
+  status              CatalogueDraftStatus @default(pending_review)
+  reviewNote          String?
+  reviewedAt          DateTime?
+  createdAt           DateTime             @default(now())
+
+  @@index([status, confidence])
 }

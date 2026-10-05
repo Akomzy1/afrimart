@@ -381,6 +381,26 @@ async function main() {
     },
   });
 
+
+  // ADM-1 / CAT-6 — what the shelf-filming pass produced but has not been
+  // confirmed. Confidence spread on purpose: the low ones are what the
+  // review queue exists for, and one is a genuine misread.
+  const draftStore = storeIds.get("Adunni Foods") ?? [...storeIds.values()][0];
+  const drafts = [
+    { rawText: "EGUSI 8.50", suggestedName: "Egusi", suggestedPriceCents: 850, packSize: "500g", confidence: 0.97 },
+    { rawText: "GARRI IJEBU 12.00", suggestedName: "Garri", suggestedPriceCents: 1200, packSize: "5kg", confidence: 0.94 },
+    { rawText: "p?lm 1S.3O", suggestedName: "Red Palm Oil", suggestedPriceCents: 1530, packSize: "1L", confidence: 0.61 },
+    { rawText: "cr?yf ?.60", suggestedName: "Ground crayfish", suggestedPriceCents: 960, packSize: "200g", confidence: 0.38 },
+    { rawText: "ATA RODO 6.75", suggestedName: "Ata Rodo", suggestedPriceCents: 675, packSize: "250g", confidence: 0.89 },
+  ];
+  for (const d of drafts) {
+    const matched = await prisma.canonicalProduct.findFirst({ where: { canonicalName: d.suggestedName } });
+    await prisma.catalogueDraft.upsert({
+      where: { id: `draft:${d.rawText}` },
+      update: {},
+      create: { id: `draft:${d.rawText}`, storeId: draftStore, matchedProductId: matched?.id ?? null, ...d },
+    });
+  }
   console.log(
     `Seeded ${products.length} products, ${storeIds.size} stores, ${hubs.size} hub metros, buyer ${buyer.id}.`,
   );
