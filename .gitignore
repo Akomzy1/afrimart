@@ -14,3 +14,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 prisma/dev.db
+
+# Locally captured emails from the dev sender
+.mail/

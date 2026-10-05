@@ -6,6 +6,8 @@ import { LocalCarrierGateway } from "../shipping/carrier.js";
 import { route } from "../routing/engine.js";
 import { priceOrder } from "../routing/pricing.js";
 import { splitPayment } from "../payments/split.js";
+import { queueMerchantAlert, queueOrderConfirmation } from "../notifications/pipeline.js";
+import { drain } from "../notifications/outbox.js";
 import type { BasketLine, CandidateListing } from "../routing/types.js";
 
 /**
@@ -184,7 +186,7 @@ export const checkoutRouter = router({
       });
       const snapshotById = new Map(snapshots.map((s) => [s.id, s]));
 
-      return prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.create({
           data: {
             buyerId: input.buyerId,
@@ -244,7 +246,25 @@ export const checkoutRouter = router({
           })),
         });
 
+        // NTF-2/NTF-4 — queued inside this transaction, sent after it
+        // commits. If anything below rolls the order back, nobody is told
+        // about an order that does not exist.
+        await queueOrderConfirmation(tx, order.id);
+        const placed = await tx.shipment.findMany({
+          where: { orderId: order.id },
+          include: { items: true },
+        });
+        for (const s of placed) {
+          await queueMerchantAlert(tx, s.id, s.storeId, s.items.reduce((n, i) => n + i.quantity, 0));
+        }
+
         return { orderId: order.id, pricing, parcelCount: plan.parcels.length };
       });
+
+      // Only now, after the order has actually committed. A failure here
+      // leaves the notifications pending rather than losing them: the next
+      // drain sends them.
+      await drain();
+      return result;
     }),
 });

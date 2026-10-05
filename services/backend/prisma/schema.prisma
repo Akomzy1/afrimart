@@ -457,3 +457,70 @@ model AuditLogEntry {
   @@index([createdAt])
   @@index([actorId])
 }
+
+/// NTF-1 — a carrier tracking callback, stored before it is acted on.
+///
+/// Webhooks are retried, arrive twice, and arrive out of order. Recording the
+/// provider's own event id with a unique constraint makes replay a no-op: the
+/// second insert fails and the handler stops, rather than sending a second
+/// "shipped" email. Storing the raw payload means a mis-handled event can be
+/// replayed after a fix instead of being lost.
+model WebhookEvent {
+  id              String    @id @default(cuid())
+  provider        String
+  /// The carrier's id for this event. Unique: this is the deduplication.
+  providerEventId String    @unique
+  shipmentId      String?
+  /// Carrier status as sent, before mapping onto our own state machine.
+  rawStatus       String
+  /// When the carrier says it happened, which is not when we received it.
+  occurredAt      DateTime
+  payload         Json
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  /// Set when an event was valid but deliberately not applied, with why.
+  ignoredReason   String?
+
+  @@index([shipmentId, occurredAt])
+}
+
+enum NotificationChannel {
+  email
+  push
+  sms
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+  suppressed
+}
+
+/// NTF-2/NTF-4 — the transactional outbox.
+///
+/// Written in the same transaction as the state change that causes it, and
+/// sent only after that transaction commits. A rolled-back order therefore
+/// cannot email anyone, and a crash between commit and send loses nothing:
+/// the row is still pending and the next drain picks it up.
+///
+/// `dedupeKey` is the "one email per parcel per state" rule, enforced by the
+/// database rather than by remembering to check.
+model Notification {
+  id         String              @id @default(cuid())
+  channel    NotificationChannel
+  template   String
+  recipient  String
+  subject    String
+  body       String
+  dedupeKey  String              @unique
+  status     NotificationStatus  @default(pending)
+  attempts   Int                 @default(0)
+  lastError  String?
+  orderId    String?
+  shipmentId String?
+  createdAt  DateTime            @default(now())
+  sentAt     DateTime?
+
+  @@index([status, createdAt])
+}
