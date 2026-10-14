@@ -356,8 +356,26 @@ describe("QC-1 ops can switch a category off platform-wide", () => {
     const admin = await src("../routers/admin.ts");
     const start = admin.indexOf("setPlatformCategory:");
     const body = admin.slice(start);
-    assert.match(body, /staffProcedure\("stores:write"\)/);
+    // Admin only: the platform-wide switch reaches every home-tier seller at once.
+    assert.match(body, /staffProcedure\("settings:write"\)/);
     assert.match(body, /platformCategoryControl\.upsert/);
+  });
+});
+
+describe("QC-1 who may use the switches", () => {
+  test("only admin holds settings:write; operations keeps the per-seller switch", async () => {
+    const { roleHas } = await import("../auth/permissions.js");
+    assert.equal(roleHas("admin", "settings:write"), true);
+    for (const role of ["operations", "finance", "catalogue_reviewer"] as const) {
+      assert.equal(roleHas(role, "settings:write"), false, `${role} must not switch a category for the whole tier`);
+    }
+    assert.equal(roleHas("operations", "stores:write"), true, "operations keeps per-seller switches");
+  });
+
+  test("the per-seller switch is still stores:write, the platform one is not", async () => {
+    const admin = await src("../routers/admin.ts");
+    assert.match(procedureBody(admin, "setSellerCategory"), /staffProcedure\("stores:write"\)/);
+    assert.doesNotMatch(procedureBody(admin, "setPlatformCategory"), /stores:write/);
   });
 });
 

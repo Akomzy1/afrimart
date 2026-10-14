@@ -83,8 +83,12 @@ describe("role separation", () => {
       ...permissionsFor("operations"),
       ...permissionsFor("finance"),
     ]);
-    const orphaned = PERMISSIONS.filter((p) => !held.has(p) && p !== "staff:manage");
-    assert.deepEqual(orphaned, [], "a permission no non-admin role can hold is probably a mistake");
+    // Admin-only on purpose, and listed exactly: a new permission that lands
+    // here by accident fails this test instead of quietly being unreachable.
+    // settings:write is the platform-wide switches; staff:manage is accounts.
+    const ADMIN_ONLY = ["staff:manage", "settings:write"];
+    const orphaned = PERMISSIONS.filter((p) => !held.has(p));
+    assert.deepEqual(orphaned.sort(), [...ADMIN_ONLY].sort(), "the admin-only permissions are exactly the ones named");
   });
 
   test("every role can identify itself", () => {

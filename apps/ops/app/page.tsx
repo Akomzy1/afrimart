@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { trpc } from "@afrimart/api-client";
 import { SignIn } from "./SignIn";
 import { readStaffToken, writeStaffToken } from "./providers";
+import { SellerRules } from "./SellerRules";
 
 const EMPTY = {
   canonicalName: "", shortDescription: "", usedDescription: "", category: "", cuisine: "",
-  packSize: "", temperatureClass: "ambient", shippingWeightOz: "8", lengthIn: "8", widthIn: "6", heightIn: "4",
+  packSize: "", temperatureClass: "ambient", controlledCategory: "", shippingWeightOz: "8", lengthIn: "8", widthIn: "6", heightIn: "4",
 };
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -25,7 +26,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
  * onboarding or money, so this must sit behind a login before it is deployed
  * anywhere reachable.
  */
-type Tab = "queue" | "stores" | "fulfilment" | "graph" | "finance";
+type Tab = "queue" | "stores" | "rules" | "fulfilment" | "graph" | "finance";
 
 export default function OpsConsole() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -53,7 +54,16 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
   const fulfilment = trpc.admin.fulfilment.useQuery(undefined, {
     enabled: perms.includes("fulfilment:read" as never),
   });
+  const licences = trpc.admin.kitchenLicences.useQuery(
+    { status: "applied" },
+    { enabled: perms.includes("stores:read" as never) },
+  );
+  const badges = trpc.admin.badgeApplications.useQuery(
+    { status: "applied" },
+    { enabled: perms.includes("stores:read" as never) },
+  );
   const pendingCount = queue.data?.length ?? 0;
+  const applicationCount = (licences.data?.length ?? 0) + (badges.data?.length ?? 0);
   const stuckCount = fulfilment.data?.filter((s) => s.stuck).length ?? 0;
 
   // A session that has gone stale server-side surfaces here first, because
@@ -69,6 +79,7 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
   const allTabs: { id: Tab; label: string; badge?: number; shown: boolean }[] = [
     { id: "queue", label: "Catalogue review", badge: pendingCount, shown: can("catalogue:read") },
     { id: "stores", label: "Onboarding", badge: undefined, shown: can("stores:read") },
+    { id: "rules", label: "Seller rules", badge: applicationCount, shown: can("stores:read") },
     { id: "fulfilment", label: "Fulfilment", badge: stuckCount, shown: can("fulfilment:read") },
     { id: "graph", label: "Knowledge graph", badge: undefined, shown: can("graph:read") },
     { id: "finance", label: "Reconciliation", badge: undefined, shown: can("finance:read") },
@@ -102,6 +113,9 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
 
       {active === "queue" && <ReviewQueue />}
       {active === "stores" && <Onboarding />}
+      {active === "rules" && (
+        <SellerRules canWrite={can("stores:write")} canSettings={can("settings:write")} canAudit={can("audit:read")} />
+      )}
       {active === "fulfilment" && <Fulfilment />}
       {active === "graph" && <KnowledgeGraph />}
       {active === "finance" && <Reconciliation />}
@@ -169,7 +183,10 @@ function ReviewQueue() {
                 </td>
                 <td>
                   {d.storeName}
-                  <div className="muted">{d.metro}</div>
+                  <div className="muted">
+                    {d.metro}
+                    {d.sellerType !== "store" ? ` · ${d.sellerType.replace("_", " ")}` : ""}
+                  </div>
                 </td>
                 <td>
                   <select
@@ -212,6 +229,16 @@ function ReviewQueue() {
                       Reject
                     </button>
                   </div>
+                  {/* QC-1 refusals arrive here in the seller's own words — a missing permit
+                      confirmation, a paused category, chilled goods without a licensed
+                      kitchen. Shown as written so the reviewer can reject with a reason
+                      or tell the seller what is needed; swallowing them looks like a
+                      button that does nothing. */}
+                  {approve.variables?.id === d.id && approve.isError ? (
+                    <div className="op-err" style={{ marginTop: 8, maxWidth: 320 }}>
+                      {approve.error.message}
+                    </div>
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -251,6 +278,7 @@ function Onboarding() {
             <th>Hub</th>
             <th>Onboarding</th>
             <th>Verification</th>
+            <th>Seller rules</th>
             <th className="num">Listings</th>
             <th>Routable</th>
           </tr>
@@ -306,6 +334,26 @@ function Onboarding() {
                   <option value="pending">pending</option>
                   <option value="verified">verified</option>
                 </select>
+              </td>
+              <td>
+                {s.sellerType === "store" ? (
+                  <span className="muted">—</span>
+                ) : (
+                  <div className="op-actions">
+                    <span className={`op-pill ${s.kitchenLicence === "approved" ? "good" : s.kitchenLicence === "applied" ? "warn" : ""}`}>
+                      {s.kitchenLicence === "approved"
+                        ? "licensed kitchen"
+                        : s.kitchenLicence === "applied"
+                          ? "licence pending"
+                          : "no kitchen licence"}
+                    </span>
+                    {s.disabledCategories.map((c) => (
+                      <span key={c} className="op-pill bad">
+                        {c} off
+                      </span>
+                    ))}
+                  </div>
+                )}
               </td>
               <td className="num">
                 {s.listingCount}
@@ -433,6 +481,15 @@ function KnowledgeGraph() {
   const graph = trpc.admin.graph.useQuery({ search });
   const addAlias = trpc.admin.addAlias.useMutation({ onSuccess: () => utils.admin.graph.invalidate() });
   const removeAlias = trpc.admin.removeAlias.useMutation({ onSuccess: () => utils.admin.graph.invalidate() });
+  const reclassify = trpc.admin.setControlledCategory.useMutation({
+    onSuccess: () => {
+      utils.admin.graph.invalidate();
+      utils.admin.auditLog.invalidate();
+    },
+  });
+  const me = trpc.staffAuth.me.useQuery(undefined, { retry: false });
+  const canReclassify = me.data?.permissions.includes("graph:write" as never) ?? false;
+  const [cc, setCc] = useState<Record<string, { value: string; reason: string }>>({});
   const [draft, setDraft] = useState<Record<string, { alias: string; language: string }>>({});
 
   return (
@@ -468,6 +525,7 @@ function KnowledgeGraph() {
             <tr>
               <th>Canonical product</th>
               <th className="num">Listings</th>
+              <th>Meat, poultry, fish, dairy</th>
               <th>Aliases</th>
               <th>Add a name</th>
             </tr>
@@ -482,6 +540,58 @@ function KnowledgeGraph() {
                   </div>
                 </td>
                 <td className="num">{p.listingCount}</td>
+                <td>
+                  {/* QC-1 — which products fall under the meat, poultry, fish and dairy
+                      controls. A product left blank escapes the permit confirmation and
+                      every switch, so a missing classification is the thing to look for. */}
+                  <select
+                    className="op-select"
+                    style={{ maxWidth: 120 }}
+                    disabled={!canReclassify}
+                    value={cc[p.id]?.value ?? p.controlledCategory ?? ""}
+                    onChange={(e) =>
+                      setCc((c) => ({ ...c, [p.id]: { value: e.target.value, reason: c[p.id]?.reason ?? "" } }))
+                    }
+                  >
+                    <option value="">none</option>
+                    <option value="meat">meat</option>
+                    <option value="poultry">poultry</option>
+                    <option value="fish">fish</option>
+                    <option value="dairy">dairy</option>
+                  </select>
+                  {cc[p.id] && (cc[p.id]!.value || null) !== p.controlledCategory && (
+                    <div style={{ marginTop: 6 }}>
+                      <input
+                        className="op-input"
+                        style={{ maxWidth: 160 }}
+                        placeholder="Reason (required)"
+                        value={cc[p.id]!.reason}
+                        onChange={(e) => setCc((c) => ({ ...c, [p.id]: { value: c[p.id]!.value, reason: e.target.value } }))}
+                      />
+                      <button
+                        type="button"
+                        className="op-btn primary"
+                        style={{ marginTop: 6 }}
+                        disabled={!cc[p.id]!.reason.trim() || reclassify.isPending}
+                        onClick={() => {
+                          reclassify.mutate(
+                            {
+                              productId: p.id,
+                              controlledCategory: (cc[p.id]!.value || null) as "meat" | "poultry" | "fish" | "dairy" | null,
+                              reason: cc[p.id]!.reason.trim(),
+                            },
+                            { onSuccess: () => setCc((c) => { const n = { ...c }; delete n[p.id]; return n; }) },
+                          );
+                        }}
+                      >
+                        Save
+                      </button>
+                      {reclassify.variables?.productId === p.id && reclassify.isError ? (
+                        <div className="op-err">{reclassify.error.message}</div>
+                      ) : null}
+                    </div>
+                  )}
+                </td>
                 <td>
                   <div className="op-actions">
                     {p.aliases.map((a) => (
@@ -742,6 +852,16 @@ function NewCanonicalProduct() {
           <input id="cp" className="op-input" value={form.packSize} onChange={set("packSize")} placeholder="200g" />
         </div>
         <div>
+          <label htmlFor="ccat">Meat, poultry, fish or dairy</label>
+          <select id="ccat" className="op-select" value={form.controlledCategory} onChange={set("controlledCategory")}>
+            <option value="">none</option>
+            <option value="meat">meat</option>
+            <option value="poultry">poultry</option>
+            <option value="fish">fish (including dried, smoked, crayfish)</option>
+            <option value="dairy">dairy</option>
+          </select>
+        </div>
+        <div>
           <label htmlFor="ct">Temperature</label>
           <select id="ct" className="op-select" value={form.temperatureClass} onChange={set("temperatureClass")}>
             <option value="ambient">ambient</option>
@@ -791,6 +911,7 @@ function NewCanonicalProduct() {
               cuisine: form.cuisine,
               packSize: form.packSize,
               temperatureClass: form.temperatureClass as "ambient" | "refrigerated" | "frozen",
+              controlledCategory: (form.controlledCategory || null) as "meat" | "poultry" | "fish" | "dairy" | null,
               shippingWeightOz: Number(form.shippingWeightOz) || 8,
               lengthIn: Number(form.lengthIn) || 8,
               widthIn: Number(form.widthIn) || 6,

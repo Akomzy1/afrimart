@@ -28,6 +28,13 @@ export const PERMISSIONS = [
   "finance:write",
   "staff:manage",
   "audit:read",
+  /**
+   * Platform-wide settings that change what every seller of a kind may do, such
+   * as switching a food category off for all home-based sellers at once. Held by
+   * admin only: the blast radius is the whole tier, so it is not an operations
+   * day-to-day lever the way a per-seller switch is.
+   */
+  "settings:write",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

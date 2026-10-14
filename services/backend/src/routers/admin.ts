@@ -75,6 +75,7 @@ export const adminRouter = router({
       return drafts.map((d) => ({
         id: d.id,
         storeName: d.store.name,
+        sellerType: d.store.sellerType,
         metro: d.store.hubMetro.name,
         rawText: d.rawText,
         suggestedName: d.suggestedName,
@@ -164,6 +165,8 @@ export const adminRouter = router({
     const stores = await prisma.store.findMany({
       include: {
         hubMetro: true,
+        kitchenLicence: { select: { status: true } },
+        categoryControls: { where: { disabled: true }, select: { category: true } },
         _count: { select: { listings: true, catalogueDrafts: true } },
       },
       orderBy: [{ onboardingStatus: "asc" }, { name: "asc" }],
@@ -179,6 +182,10 @@ export const adminRouter = router({
       hubMetroId: s.hubMetroId,
       listingCount: s._count.listings,
       pendingDrafts: s._count.catalogueDrafts,
+      /** QC-1 — null for a seller who has never applied. */
+      kitchenLicence: s.kitchenLicence?.status ?? null,
+      /** QC-1 — controlled categories switched off for this seller. */
+      disabledCategories: s.categoryControls.map((c) => c.category),
       /** SEL-2 — a store cannot be routed orders until this is true. */
       canReceiveOrders: s.verificationStatus === "verified" && s.onboardingStatus === "live",
     }));
@@ -633,7 +640,13 @@ export const adminRouter = router({
   auditLog: staffProcedure("audit:read")
     .input(
       z
-        .object({ subjectType: z.string().optional(), subjectId: z.string().optional(), limit: z.number().max(500).default(100) })
+        .object({
+          subjectType: z.string().optional(),
+          subjectId: z.string().optional(),
+          /** Only these actions, e.g. the QC-1 seller-rule changes. */
+          actions: z.array(z.string()).optional(),
+          limit: z.number().max(500).default(100),
+        })
         .optional(),
     )
     .query(async ({ input }) => {
@@ -641,6 +654,7 @@ export const adminRouter = router({
         where: {
           ...(input?.subjectType ? { subjectType: input.subjectType } : {}),
           ...(input?.subjectId ? { subjectId: input.subjectId } : {}),
+          ...(input?.actions?.length ? { action: { in: input.actions } } : {}),
         },
         orderBy: { createdAt: "desc" },
         take: input?.limit ?? 100,
@@ -652,8 +666,10 @@ export const adminRouter = router({
         action: e.action,
         subjectType: e.subjectType,
         subjectId: e.subjectId,
-        before: e.before,
-        after: e.after,
+        // Arbitrary snapshots. Typed unknown on purpose: Prisma's recursive
+        // JsonValue makes tRPC's inferred client type blow the compiler's depth limit.
+        before: e.before as unknown,
+        after: e.after as unknown,
         note: e.note,
         createdAt: e.createdAt,
       }));
@@ -770,9 +786,11 @@ export const adminRouter = router({
     }),
 
   /** CAT-8 — badge applications waiting on a reviewer. */
-  badgeApplications: staffProcedure("stores:read").query(async () => {
+  badgeApplications: staffProcedure("stores:read")
+    .input(z.object({ status: z.enum(["applied", "approved", "rejected", "revoked"]).default("applied") }).optional())
+    .query(async ({ input }) => {
     const badges = await prisma.sellerBadge.findMany({
-      where: { status: "applied" },
+      where: { status: input?.status ?? "applied" },
       include: { store: { select: { name: true, sellerType: true } } },
       orderBy: { createdAt: "asc" },
     });
@@ -781,7 +799,9 @@ export const adminRouter = router({
       storeName: b.store.name,
       sellerType: b.store.sellerType,
       kind: b.kind,
+      status: b.status,
       evidence: b.evidence,
+      reviewNote: b.reviewNote,
       createdAt: b.createdAt,
     }));
   }),
@@ -1002,9 +1022,11 @@ export const adminRouter = router({
    * QC-1 — switch one controlled category off (or back on) for every
    * home-based and aspiring seller at once. A setting, not a deploy, so it can
    * move the day legal advice changes. Hidden listings return the moment it is
-   * switched back on; nothing is deleted.
+   * switched back on; nothing is deleted. Admin only (`settings:write`): it
+   * reaches every seller in the tier at once. Per-seller switches stay with
+   * operations.
    */
-  setPlatformCategory: staffProcedure("stores:write")
+  setPlatformCategory: staffProcedure("settings:write")
     .input(z.object({ category: controlledCategoryInput, disabled: z.boolean(), reason: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       return prisma.$transaction(async (tx) => {
