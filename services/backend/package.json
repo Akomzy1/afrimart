@@ -19,7 +19,8 @@
     "verify:auth": "tsx src/scripts/verify-ops-auth.ts",
     "verify:lockout": "tsx src/scripts/verify-lockout.ts",
     "build:emails": "tsx src/scripts/build-email-templates.ts",
-    "verify:notifications": "tsx src/scripts/verify-notifications.ts"
+    "verify:notifications": "tsx src/scripts/verify-notifications.ts",
+    "verify:quality-controls": "tsx src/scripts/verify-quality-controls.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

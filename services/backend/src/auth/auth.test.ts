@@ -105,6 +105,11 @@ describe("audited actions", () => {
       "releasePayout",
       "recordChargeback",
       "resolveRefundClaim",
+      // QC-1 — each of these changes what a seller may list.
+      "reviewKitchenLicence",
+      "setSellerCategory",
+      "setPlatformCategory",
+      "setControlledCategory",
     ];
 
     for (const name of mustAudit) {

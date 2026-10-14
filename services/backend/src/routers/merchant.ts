@@ -2,6 +2,11 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
 import { publicProcedure, router } from "../trpc.js";
+import { PERMIT_STATEMENT_VERSION } from "../config.js";
+import { sellerCategoryNotices } from "../quality/categoryAccess.js";
+import { CONTROLLED_CATEGORY_LABEL, isHomeTier, permitStatement } from "../quality/listingStandards.js";
+
+const CONTROLLED = ["meat", "poultry", "fish", "dairy"] as const;
 
 /**
  * PRD 6.2 — the merchant app's order surface (MCH-2 accept, MCH-4 fulfil).
@@ -103,6 +108,117 @@ export const merchantRouter = router({
     .mutation(({ input }) =>
       prisma.shipment.update({ where: { id: input.shipmentId }, data: { status: "picked_up" } }),
     ),
+
+  /* ------------------------------------------------------------ QC-1 */
+
+  /**
+   * QC-1 — apply to have a licensed commercial kitchen recognised, which lifts
+   * the chilled-and-frozen restriction. This only ever creates an application:
+   * the status is `applied` until a reviewer who has checked the licence moves
+   * it, so a seller cannot grant it to themselves. Stores have no use for it.
+   */
+  applyForKitchenLicence: publicProcedure
+    .input(
+      z.object({
+        storeId: z.string(),
+        licenceNumber: z.string().trim().min(1),
+        issuingAuthority: z.string().trim().min(1),
+        evidence: z.string().trim().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const store = await prisma.store.findUnique({ where: { id: input.storeId } });
+      if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "We couldn't find that account." });
+      if (!isHomeTier(store.sellerType)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This applies to home-based and aspiring sellers. Stores can already list chilled and frozen goods.",
+        });
+      }
+
+      const existing = await prisma.kitchenLicence.findUnique({ where: { storeId: input.storeId } });
+      if (existing && (existing.status === "applied" || existing.status === "approved")) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            existing.status === "approved"
+              ? "Your licensed kitchen is already approved."
+              : "Your application is already with our team. We'll be in touch once it has been reviewed.",
+        });
+      }
+
+      // A fresh application after a refusal or revocation reuses the row and
+      // goes back to the start of review. Every earlier decision stays in the
+      // audit log, which is where the history lives.
+      const fields = {
+        status: "applied" as const,
+        licenceNumber: input.licenceNumber,
+        issuingAuthority: input.issuingAuthority,
+        evidence: input.evidence || null,
+        reviewNote: null,
+        reviewedAt: null,
+        reviewedByEmail: null,
+      };
+      const row = await prisma.kitchenLicence.upsert({
+        where: { storeId: input.storeId },
+        create: { storeId: input.storeId, ...fields },
+        update: fields,
+      });
+      return { status: row.status };
+    }),
+
+  /**
+   * QC-1 — where this seller stands on each of meat, poultry, fish and dairy:
+   * the exact words they are asked to confirm, and when they did. Home-based
+   * and aspiring sellers only; for a store this is empty.
+   */
+  permitStatus: publicProcedure.input(storeInput).query(async ({ input }) => {
+    const store = await prisma.store.findUnique({ where: { id: input.storeId } });
+    if (!store || !isHomeTier(store.sellerType)) return [];
+    const confirmations = await prisma.permitConfirmation.findMany({ where: { storeId: input.storeId } });
+    const confirmedAt = new Map(confirmations.map((c) => [c.category, c.confirmedAt]));
+    return CONTROLLED.map((category) => ({
+      category,
+      label: CONTROLLED_CATEGORY_LABEL[category],
+      statement: permitStatement(category),
+      confirmedAt: confirmedAt.get(category) ?? null,
+    }));
+  }),
+
+  /**
+   * QC-1 — the one-time confirmation that the seller holds any permit their
+   * state requires for a category, asked when they first list it. Needs an
+   * explicit `acknowledged: true`, so it cannot be recorded by a default or an
+   * empty call. Idempotent: confirming again keeps the original timestamp.
+   */
+  confirmPermit: publicProcedure
+    .input(z.object({ storeId: z.string(), category: z.enum(CONTROLLED), acknowledged: z.literal(true) }))
+    .mutation(async ({ input }) => {
+      const store = await prisma.store.findUnique({ where: { id: input.storeId } });
+      if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "We couldn't find that account." });
+      if (!isHomeTier(store.sellerType)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A permit confirmation is only asked of home-based and aspiring sellers.",
+        });
+      }
+      const row = await prisma.permitConfirmation.upsert({
+        where: { storeId_category: { storeId: input.storeId, category: input.category } },
+        create: { storeId: input.storeId, category: input.category, statementVersion: PERMIT_STATEMENT_VERSION },
+        update: {},
+      });
+      return { category: row.category, confirmedAt: row.confirmedAt };
+    }),
+
+  /**
+   * QC-1 — why some of this seller's listings are hidden, in plain words, and
+   * how to reach support. Empty when nothing is switched off.
+   */
+  categoryNotices: publicProcedure.input(storeInput).query(async ({ input }) => {
+    const store = await prisma.store.findUnique({ where: { id: input.storeId } });
+    if (!store) return [];
+    return sellerCategoryNotices(prisma, store.id, store.sellerType);
+  }),
 
   /** What this store has earned, per PAY-6 payout statements. */
   earnings: publicProcedure.input(storeInput).query(async ({ input }) => {

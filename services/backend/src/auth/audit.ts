@@ -18,6 +18,10 @@ export const AUDITED_ACTIONS = [
   "store.delist",
   "store.reinstate",
   "store.verification_change",
+  "store.kitchen_licence_change",
+  "store.category_restriction_change",
+  "platform.category_restriction_change",
+  "product.reclassify",
   "payout.hold",
   "payout.release",
   "payout.adjustment_applied",
@@ -31,7 +35,7 @@ export type AuditedAction = (typeof AUDITED_ACTIONS)[number];
 
 export interface AuditInput {
   action: AuditedAction;
-  subjectType: "store" | "payout" | "refund" | "shipment" | "adjustment";
+  subjectType: "store" | "payout" | "refund" | "shipment" | "adjustment" | "platform_setting" | "product";
   subjectId: string;
   before?: unknown;
   after?: unknown;

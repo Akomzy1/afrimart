@@ -115,6 +115,7 @@ describe("QC-1 listing standards", () => {
     category: "Legumes & seeds",
     temperatureClass: "ambient" as const,
     sellerType: "store" as const,
+    seller: { licensedKitchen: false, disabledForSeller: [], disabledPlatformWide: [], permitConfirmed: [] },
   };
 
   test("a home seller cannot list chilled or frozen goods", () => {

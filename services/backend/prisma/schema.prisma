@@ -87,6 +87,9 @@ model Store {
   catalogueDrafts       CatalogueDraft[]
   badges                SellerBadge[]
   enforcements          SellerEnforcement[]
+  kitchenLicence        KitchenLicence?
+  categoryControls      SellerCategoryControl[]
+  permitConfirmations   PermitConfirmation[]
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 }
@@ -103,6 +106,12 @@ model CanonicalProduct {
   packSize          String
   images            String[]
   temperatureClass  TemperatureClass
+  /// QC-1 — set when the product is meat, poultry, fish or dairy, shelf-stable
+  /// or not (dried fish, crayfish, stockfish and kilishi are all controlled).
+  /// Classified here rather than inferred from `category` text, because a
+  /// control that depends on a free-text label misses whatever is filed
+  /// under a different one. Null means none of the four.
+  controlledCategory ControlledCategory?
   shippingWeightOz  Float
   /// CAT-5 — carriers bill the greater of actual and dimensional weight.
   lengthIn          Float            @default(8)
@@ -593,4 +602,89 @@ model SellerEnforcement {
   createdAt   DateTime         @default(now())
 
   @@index([storeId, createdAt])
+}
+
+/// QC-1 — the food categories that carry their own permit and that operations
+/// can switch off. Home-based and aspiring sellers may list all four by
+/// default; stores are never subject to any of this.
+enum ControlledCategory {
+  meat
+  poultry
+  fish
+  dairy
+}
+
+enum KitchenLicenceStatus {
+  applied
+  approved
+  rejected
+  revoked
+}
+
+/// QC-1 — a seller's claim to produce in a licensed commercial kitchen, which
+/// is what lifts the chilled-and-frozen restriction.
+///
+/// Applied for, never self-declared: the row starts as `applied` and only a
+/// reviewer who has checked the licence moves it to `approved`. The decision
+/// is audited in the same transaction, like a CAT-8 badge. One row per
+/// store; a fresh application after a rejection reuses it, and the audit
+/// trail keeps every earlier decision.
+model KitchenLicence {
+  id              String               @id @default(cuid())
+  store           Store                @relation(fields: [storeId], references: [id])
+  storeId         String               @unique
+  status          KitchenLicenceStatus @default(applied)
+  licenceNumber   String
+  issuingAuthority String
+  /// What the seller submitted in support (a document link or reference).
+  evidence        String?
+  reviewNote      String?
+  reviewedAt      DateTime?
+  reviewedByEmail String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+}
+
+/// QC-1 — operations has switched one controlled category off for one seller.
+/// Their existing listings in it are hidden and new ones are refused. The row
+/// is the current state; every change is written to the audit log with who,
+/// when and why.
+model SellerCategoryControl {
+  id         String             @id @default(cuid())
+  store      Store              @relation(fields: [storeId], references: [id])
+  storeId    String
+  category   ControlledCategory
+  disabled   Boolean
+  reason     String
+  actorEmail String
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([storeId, category])
+}
+
+/// QC-1 — the platform-wide switch for a controlled category, applying to
+/// every home-based and aspiring seller at once. A database setting rather
+/// than a constant so it can be flipped the day legal advice changes, without
+/// a deploy. No row means enabled, which is the default.
+model PlatformCategoryControl {
+  category   ControlledCategory @id
+  disabled   Boolean
+  reason     String
+  actorEmail String
+  updatedAt  DateTime           @updatedAt
+}
+
+/// QC-1 — a home-based or aspiring seller's one-time statement that they hold
+/// whatever permit their state requires for a controlled category, stored
+/// with when they made it. Per category: a meat permit says nothing about
+/// dairy. `statementVersion` records which wording they agreed to.
+model PermitConfirmation {
+  id               String             @id @default(cuid())
+  store            Store              @relation(fields: [storeId], references: [id])
+  storeId          String
+  category         ControlledCategory
+  statementVersion String
+  confirmedAt      DateTime           @default(now())
+
+  @@unique([storeId, category])
 }

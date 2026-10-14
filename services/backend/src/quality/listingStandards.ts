@@ -1,5 +1,5 @@
-import type { SellerType, TemperatureClass } from "@prisma/client";
-import { SHORT_DATED_DAYS } from "../config.js";
+import type { ControlledCategory, SellerType, TemperatureClass } from "@prisma/client";
+import { SHORT_DATED_DAYS, SUPPORT_CONTACT } from "../config.js";
 
 /**
  * QC-1 — what may be listed, enforced at listing rather than described in a
@@ -11,7 +11,37 @@ import { SHORT_DATED_DAYS } from "../config.js";
  * inspection a home seller does not have. A policy document does not stop
  * anyone listing frozen goat meat from a domestic freezer; a check at the
  * point of listing does.
+ *
+ * Meat, poultry, fish and dairy are a different kind of rule. They are open to
+ * home-based and aspiring sellers by default — dried fish, crayfish, stockfish
+ * and kilishi are staples of exactly this tier — and are governed by operations
+ * switches and a one-time permit confirmation rather than by a ban. Stores are
+ * outside every one of these rules.
  */
+
+/** Plain-English names, used in every message a seller reads. */
+export const CONTROLLED_CATEGORY_LABEL: Record<ControlledCategory, string> = {
+  meat: "meat",
+  poultry: "poultry",
+  fish: "fish and seafood",
+  dairy: "dairy",
+};
+
+/**
+ * Everything about a seller, other than their type, that the QC-1 rules need.
+ * Required on a candidate rather than optional: a caller that forgot to load it
+ * would otherwise skip the licence, switch and permit rules without any error.
+ */
+export interface SellerListingContext {
+  /** An ops-approved licensed commercial kitchen. Never self-declared. */
+  licensedKitchen: boolean;
+  /** Switched off for this seller by operations. */
+  disabledForSeller: readonly ControlledCategory[];
+  /** Switched off for every home-based and aspiring seller by operations. */
+  disabledPlatformWide: readonly ControlledCategory[];
+  /** Categories this seller has made their one-time permit confirmation for. */
+  permitConfirmed: readonly ControlledCategory[];
+}
 
 export const PROHIBITED_CATEGORIES = [
   "alcohol",
@@ -31,6 +61,9 @@ export interface ListingCandidate {
   category: string;
   temperatureClass: TemperatureClass;
   sellerType: SellerType;
+  /** Meat, poultry, fish or dairy, however it is preserved; null or absent for anything else. */
+  controlledCategory?: ControlledCategory | null;
+  seller: SellerListingContext;
   expiresOn?: Date | null;
   shortDatedDisclosed?: boolean;
   /** QC-1 — labelling: what the pack actually states. */
@@ -42,6 +75,32 @@ export interface ListingCandidate {
 export interface StandardsResult {
   ok: boolean;
   violations: { code: string; message: string }[];
+}
+
+/** Home-based and aspiring sellers: the tier the QC-1 seller rules apply to. Stores are not in it. */
+export function isHomeTier(sellerType: SellerType): boolean {
+  return sellerType !== "store";
+}
+
+/** The exact words a seller confirms. Versioned by PERMIT_STATEMENT_VERSION. */
+export function permitStatement(group: ControlledCategory): string {
+  return `I confirm that I hold any permit my state requires for me to sell ${CONTROLLED_CATEGORY_LABEL[group]}.`;
+}
+
+export function sellerDisabledMessage(group: ControlledCategory): string {
+  const label = CONTROLLED_CATEGORY_LABEL[group];
+  return (
+    `Listing ${label} is switched off on your account, so your existing ${label} listings are hidden ` +
+    `and new ones can't be added. To find out why, or to ask for a review, contact ${SUPPORT_CONTACT}.`
+  );
+}
+
+export function platformDisabledMessage(group: ControlledCategory): string {
+  const label = CONTROLLED_CATEGORY_LABEL[group];
+  return (
+    `AfriMart has paused ${label} listings from home-based and aspiring sellers for now, so your existing ` +
+    `${label} listings are hidden and new ones can't be added. If you have questions, contact ${SUPPORT_CONTACT}.`
+  );
 }
 
 export function checkListingStandards(c: ListingCandidate, now = new Date()): StandardsResult {
@@ -56,18 +115,49 @@ export function checkListingStandards(c: ListingCandidate, now = new Date()): St
   }
 
   /**
-   * The cottage-food rule. Not a preference and not configurable: a
-   * home-based seller may list shelf-stable goods only, because anything
-   * needing refrigeration requires a licensed kitchen they do not have.
-   * SEL-5 (fresh and prepared home food) is Phase 2 and gated on a defined
-   * food-safety posture — until then this is a hard stop.
+   * The cottage-food rule. Not a preference: a home-based seller may list
+   * shelf-stable goods only, because anything needing refrigeration requires a
+   * licensed kitchen. The one way past it is an ops-approved licensed
+   * commercial kitchen (`seller.licensedKitchen`), which a seller applies for
+   * and a reviewer grants after checking the licence. SEL-5 (fresh and
+   * prepared home food) stays Phase 2; this is the narrower route for sellers
+   * who already hold the licence.
    */
-  if (c.sellerType !== "store" && c.temperatureClass !== "ambient") {
-    violations.push({
-      code: "home_seller_perishable",
-      message:
-        "Home-based sellers can list shelf-stable items only. Chilled and frozen goods need a commercial kitchen.",
-    });
+  if (isHomeTier(c.sellerType)) {
+    if (c.temperatureClass !== "ambient" && !c.seller.licensedKitchen) {
+      violations.push({
+        code: "home_seller_perishable",
+        message:
+          "Home-based sellers can list shelf-stable items only. Chilled and frozen goods need a commercial kitchen. " +
+          "If you produce in a licensed commercial kitchen, apply to have it approved.",
+      });
+    }
+
+    const group = c.controlledCategory;
+    if (group) {
+      const label = CONTROLLED_CATEGORY_LABEL[group];
+      let blocked = false;
+
+      if (c.seller.disabledPlatformWide.includes(group)) {
+        blocked = true;
+        violations.push({ code: "category_disabled_platform", message: platformDisabledMessage(group) });
+      }
+      if (c.seller.disabledForSeller.includes(group)) {
+        blocked = true;
+        violations.push({ code: "category_disabled_for_seller", message: sellerDisabledMessage(group) });
+      }
+
+      // Asking for a permit confirmation on something that cannot be listed
+      // anyway would send the seller round a loop that ends in a refusal.
+      if (!blocked && !c.seller.permitConfirmed.includes(group)) {
+        violations.push({
+          code: "permit_confirmation_required",
+          message:
+            `Before you list ${label}, please confirm that you hold any permit your state requires to sell it. ` +
+            "You only need to do this once.",
+        });
+      }
+    }
   }
 
   if (c.expiresOn) {

@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { publicProcedure, router } from "../trpc.js";
+import { visibleListings } from "../quality/categoryAccess.js";
 import type { AlsoAvailableData, LangAliasData, ProductCardData, ProductDetailData, ReviewData } from "@afrimart/shared";
 
 /**
@@ -58,6 +60,7 @@ export const catalogueRouter = router({
   /** Home page "Featured staples" — a small curated slice, quick-add cards. */
   featured: publicProcedure.query(async () => {
     const listings = await prisma.listing.findMany({
+      where: await visibleListings(prisma),
       take: 4,
       include: listingWithRelations,
       orderBy: { createdAt: "asc" },
@@ -75,7 +78,7 @@ export const catalogueRouter = router({
     .input(z.object({ names: z.array(z.string()).min(1).max(20) }))
     .query(async ({ input }: { input: { names: string[] } }) => {
       const listings = await prisma.listing.findMany({
-        where: { canonicalProduct: { is: { canonicalName: { in: input.names } } } },
+        where: await visibleListings(prisma, { canonicalProduct: { is: { canonicalName: { in: input.names } } } }),
         include: listingWithRelations,
         orderBy: { priceCents: "asc" },
       });
@@ -103,13 +106,19 @@ export const catalogueRouter = router({
     if (Object.keys(productFilters).length) where.canonicalProduct = { is: productFilters };
     if (input.verifiedOnly) where.store = { is: { verificationStatus: "verified" } };
 
-    const listings = await prisma.listing.findMany({ where, include: listingWithRelations });
+    const listings = await prisma.listing.findMany({
+      where: await visibleListings(prisma, where),
+      include: listingWithRelations,
+    });
     return listings.map(toCardData);
   }),
 
   /** Categories/cuisines with listing counts, for the shop chips and filters slide-over. */
   facets: publicProcedure.query(async () => {
-    const listings = await prisma.listing.findMany({ include: { canonicalProduct: { select: { category: true, cuisine: true } } } });
+    const listings = await prisma.listing.findMany({
+      where: await visibleListings(prisma),
+      include: { canonicalProduct: { select: { category: true, cuisine: true } } },
+    });
     const categoryCounts = new Map<string, number>();
     const cuisineCounts = new Map<string, number>();
     for (const l of listings) {
@@ -132,7 +141,7 @@ export const catalogueRouter = router({
     if (!term) return { hit: null, related: [] as ProductCardData[] };
 
     const hit = await prisma.listing.findFirst({
-      where: {
+      where: await visibleListings(prisma, {
         canonicalProduct: {
           is: {
             OR: [
@@ -141,14 +150,14 @@ export const catalogueRouter = router({
             ],
           },
         },
-      },
+      }),
       include: listingWithRelations,
     });
 
     if (!hit) return { hit: null, related: [] as ProductCardData[] };
 
     const related = await prisma.listing.findMany({
-      where: { canonicalProduct: { is: { cuisine: hit.canonicalProduct.cuisine } } },
+      where: await visibleListings(prisma, { canonicalProduct: { is: { cuisine: hit.canonicalProduct.cuisine } } }),
       include: listingWithRelations,
       take: 6,
     });
@@ -162,13 +171,15 @@ export const catalogueRouter = router({
 
   /** SRCH-3 — full product detail: cross-store availability, language names, reviews. */
   detail: publicProcedure.input(listingIdInput).query(async ({ input }: { input: ListingIdInput }) => {
-    const listing = await prisma.listing.findUniqueOrThrow({
-      where: { id: input.listingId },
+    // A hidden listing is not found, whether reached from a link or a stale cart.
+    const listing = await prisma.listing.findFirst({
+      where: await visibleListings(prisma, { id: input.listingId }),
       include: { ...listingWithRelations, reviews: true },
     });
+    if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "That listing is no longer available." });
 
     const others = await prisma.listing.findMany({
-      where: { canonicalProductId: listing.canonicalProductId, id: { not: listing.id } },
+      where: await visibleListings(prisma, { canonicalProductId: listing.canonicalProductId, id: { not: listing.id } }),
       include: listingWithRelations,
     });
 

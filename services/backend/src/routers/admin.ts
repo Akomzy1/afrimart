@@ -6,6 +6,8 @@ import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
 import { computeHold } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
+import { checkListingForStore } from "../quality/categoryAccess.js";
+import { CONTROLLED_CATEGORY_LABEL, isHomeTier } from "../quality/listingStandards.js";
 
 /**
  * PRD 6.11 — the internal operations console's API (ADM-1 to ADM-5).
@@ -18,6 +20,8 @@ import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/sco
  */
 
 const idInput = z.object({ id: z.string() });
+
+const controlledCategoryInput = z.enum(["meat", "poultry", "fish", "dairy"]);
 
 /**
  * Which store changes count as a change of standing. A hub reassignment or a
@@ -108,6 +112,20 @@ export const adminRouter = router({
       }
       const product = await prisma.canonicalProduct.findUnique({ where: { id: input.canonicalProductId } });
       if (!product) throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown canonical product." });
+
+      // QC-1 — the listing standards are enforced here, at the one place a
+      // public listing is created, not described in a policy page. Refusing
+      // leaves the draft pending so the reviewer can reject it with a note.
+      const standards = await checkListingForStore(prisma, draft.storeId, product);
+      if (!standards.ok) {
+        const permitOnly = standards.violations.every((v) => v.code === "permit_confirmation_required");
+        throw new TRPCError({
+          // A missing permit confirmation is something the seller can supply;
+          // every other violation is a refusal.
+          code: permitOnly ? "PRECONDITION_FAILED" : "FORBIDDEN",
+          message: standards.violations.map((v) => v.message).join(" "),
+        });
+      }
 
       return prisma.$transaction(async (tx) => {
         const listing = await tx.listing.create({
@@ -297,6 +315,7 @@ export const adminRouter = router({
       cuisine: p.cuisine,
       packSize: p.packSize,
       temperatureClass: p.temperatureClass,
+      controlledCategory: p.controlledCategory,
       listingCount: p._count.listings,
       aliases: p.aliases.map((a) => ({ id: a.id, alias: a.alias, language: a.language, confidence: a.confidence })),
     }));
@@ -312,6 +331,8 @@ export const adminRouter = router({
         cuisine: z.string().min(1),
         packSize: z.string().min(1),
         temperatureClass: z.enum(["ambient", "refrigerated", "frozen"]),
+        /** QC-1 — set for meat, poultry, fish and dairy, including dried and smoked. */
+        controlledCategory: controlledCategoryInput.nullish(),
         shippingWeightOz: z.number().positive(),
         lengthIn: z.number().positive(),
         widthIn: z.number().positive(),
@@ -319,6 +340,40 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input }) => prisma.canonicalProduct.create({ data: { ...input, images: [] } })),
+
+  /**
+   * QC-1 — reclassify a product as meat, poultry, fish or dairy (or none).
+   * Audited because it moves listings in and out of the category controls: a
+   * product reclassified into a switched-off category disappears for the
+   * sellers it applies to.
+   */
+  setControlledCategory: staffProcedure("graph:write")
+    .input(
+      z.object({
+        productId: z.string(),
+        controlledCategory: controlledCategoryInput.nullable(),
+        reason: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const before = await prisma.canonicalProduct.findUnique({ where: { id: input.productId } });
+      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such product." });
+      return prisma.$transaction(async (tx) => {
+        const after = await tx.canonicalProduct.update({
+          where: { id: input.productId },
+          data: { controlledCategory: input.controlledCategory },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: "product.reclassify",
+          subjectType: "product",
+          subjectId: input.productId,
+          before: { controlledCategory: before.controlledCategory },
+          after: { controlledCategory: after.controlledCategory },
+          note: input.reason,
+        });
+        return after;
+      });
+    }),
 
   addAlias: staffProcedure("graph:write")
     .input(
@@ -766,6 +821,211 @@ export const adminRouter = router({
           before: { badge: badge.kind, status: badge.status },
           after: { badge: after.kind, status: after.status },
           note: input.note ?? `CAT-8 badge ${input.decision}`,
+        });
+        return after;
+      });
+    }),
+
+  /* ------------------------------------------------------------ QC-1 */
+
+  /**
+   * QC-1 — kitchen licence applications. Defaults to what is waiting on a
+   * reviewer; pass a status to see approvals (to revoke one) or refusals.
+   */
+  kitchenLicences: staffProcedure("stores:read")
+    .input(z.object({ status: z.enum(["applied", "approved", "rejected", "revoked"]).default("applied") }).optional())
+    .query(async ({ input }) => {
+      const rows = await prisma.kitchenLicence.findMany({
+        where: { status: input?.status ?? "applied" },
+        include: { store: { select: { name: true, sellerType: true } } },
+        orderBy: { createdAt: "asc" },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        storeId: r.storeId,
+        storeName: r.store.name,
+        sellerType: r.store.sellerType,
+        status: r.status,
+        licenceNumber: r.licenceNumber,
+        issuingAuthority: r.issuingAuthority,
+        evidence: r.evidence,
+        reviewNote: r.reviewNote,
+        reviewedByEmail: r.reviewedByEmail,
+        reviewedAt: r.reviewedAt,
+        createdAt: r.createdAt,
+      }));
+    }),
+
+  /**
+   * QC-1 — approve, refuse or revoke a licensed-kitchen status. Approval lifts
+   * the chilled-and-frozen restriction for that seller, so it is granted only
+   * by a reviewer, only after they say they have checked the licence, and is
+   * audited in the same transaction. Revoking restores the restriction and
+   * hides the seller's chilled and frozen listings again.
+   */
+  reviewKitchenLicence: staffProcedure("stores:write")
+    .input(
+      z.object({
+        id: z.string(),
+        decision: z.enum(["approve", "reject", "revoke"]),
+        /** The reviewer's attestation that they have checked the licence itself. */
+        licenceChecked: z.boolean().default(false),
+        note: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const licence = await prisma.kitchenLicence.findUnique({ where: { id: input.id } });
+      if (!licence) throw new TRPCError({ code: "NOT_FOUND", message: "No such application." });
+
+      if (input.decision === "approve" && !input.licenceChecked) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Check the licence before approving, then confirm that you have.",
+        });
+      }
+      // Approve and refuse decide an open application; revoke ends an approval.
+      const allowedFrom = input.decision === "revoke" ? "approved" : "applied";
+      if (licence.status !== allowedFrom) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `That application is ${licence.status}, so it cannot be ${
+            { approve: "approved", reject: "refused", revoke: "revoked" }[input.decision]
+          }.`,
+        });
+      }
+
+      const status = input.decision === "approve" ? "approved" : input.decision === "reject" ? "rejected" : "revoked";
+      return prisma.$transaction(async (tx) => {
+        const after = await tx.kitchenLicence.update({
+          where: { id: input.id },
+          data: { status, reviewNote: input.note, reviewedAt: new Date(), reviewedByEmail: ctx.staff.email },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: "store.kitchen_licence_change",
+          subjectType: "store",
+          subjectId: licence.storeId,
+          before: { kitchenLicence: licence.status },
+          after: { kitchenLicence: after.status, licenceNumber: after.licenceNumber },
+          note: input.note,
+        });
+        return after;
+      });
+    }),
+
+  /** QC-1 — the current state of every category switch, platform-wide and per seller. */
+  categoryControls: staffProcedure("stores:read").query(async () => {
+    const [platform, sellers] = await Promise.all([
+      prisma.platformCategoryControl.findMany(),
+      prisma.sellerCategoryControl.findMany({
+        where: { disabled: true },
+        include: { store: { select: { name: true, sellerType: true } } },
+        orderBy: { updatedAt: "desc" },
+      }),
+    ]);
+    const platformByCategory = new Map(platform.map((p) => [p.category, p]));
+    return {
+      platform: (["meat", "poultry", "fish", "dairy"] as const).map((category) => {
+        const row = platformByCategory.get(category);
+        return {
+          category,
+          label: CONTROLLED_CATEGORY_LABEL[category],
+          disabled: row?.disabled ?? false,
+          reason: row?.disabled ? row.reason : null,
+          changedBy: row?.actorEmail ?? null,
+          changedAt: row?.updatedAt ?? null,
+        };
+      }),
+      sellers: sellers.map((r) => ({
+        storeId: r.storeId,
+        storeName: r.store.name,
+        category: r.category,
+        reason: r.reason,
+        changedBy: r.actorEmail,
+        changedAt: r.updatedAt,
+      })),
+    };
+  }),
+
+  /**
+   * QC-1 — switch one controlled category off (or back on) for one home-based
+   * or aspiring seller. Their existing listings in it are hidden and new ones
+   * refused, with a plain message to the seller. Refused outright for a store:
+   * stores are outside these rules, and a switch that silently did nothing
+   * would let ops believe it had acted.
+   */
+  setSellerCategory: staffProcedure("stores:write")
+    .input(
+      z.object({
+        storeId: z.string(),
+        category: controlledCategoryInput,
+        disabled: z.boolean(),
+        reason: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const store = await prisma.store.findUnique({ where: { id: input.storeId } });
+      if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "No such store." });
+      if (!isHomeTier(store.sellerType)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Category controls apply to home-based and aspiring sellers only. Stores are not affected by them.",
+        });
+      }
+
+      return prisma.$transaction(async (tx) => {
+        const key = { storeId_category: { storeId: input.storeId, category: input.category } };
+        const before = await tx.sellerCategoryControl.findUnique({ where: key });
+        const after = await tx.sellerCategoryControl.upsert({
+          where: key,
+          create: {
+            storeId: input.storeId,
+            category: input.category,
+            disabled: input.disabled,
+            reason: input.reason,
+            actorEmail: ctx.staff.email,
+          },
+          update: { disabled: input.disabled, reason: input.reason, actorEmail: ctx.staff.email },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: "store.category_restriction_change",
+          subjectType: "store",
+          subjectId: input.storeId,
+          before: { category: input.category, disabled: before?.disabled ?? false },
+          after: { category: input.category, disabled: after.disabled },
+          note: input.reason,
+        });
+        return after;
+      });
+    }),
+
+  /**
+   * QC-1 — switch one controlled category off (or back on) for every
+   * home-based and aspiring seller at once. A setting, not a deploy, so it can
+   * move the day legal advice changes. Hidden listings return the moment it is
+   * switched back on; nothing is deleted.
+   */
+  setPlatformCategory: staffProcedure("stores:write")
+    .input(z.object({ category: controlledCategoryInput, disabled: z.boolean(), reason: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      return prisma.$transaction(async (tx) => {
+        const before = await tx.platformCategoryControl.findUnique({ where: { category: input.category } });
+        const after = await tx.platformCategoryControl.upsert({
+          where: { category: input.category },
+          create: {
+            category: input.category,
+            disabled: input.disabled,
+            reason: input.reason,
+            actorEmail: ctx.staff.email,
+          },
+          update: { disabled: input.disabled, reason: input.reason, actorEmail: ctx.staff.email },
+        });
+        await writeAudit(tx, ctx.staff, {
+          action: "platform.category_restriction_change",
+          subjectType: "platform_setting",
+          subjectId: `category:${input.category}`,
+          before: { disabled: before?.disabled ?? false },
+          after: { disabled: after.disabled },
+          note: input.reason,
         });
         return after;
       });

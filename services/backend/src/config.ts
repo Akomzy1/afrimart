@@ -135,3 +135,18 @@ export const QUALITY_REVIEW_DEFECT_RATE = Number(process.env.QUALITY_REVIEW_DEFE
 
 /** QC-1 — below this many days to expiry, a listing must disclose it. */
 export const SHORT_DATED_DAYS = Number(process.env.SHORT_DATED_DAYS ?? 30);
+
+/**
+ * Where a seller is told to go when a rule stops them listing something. There
+ * is no support address in the repo yet, so this reads from the environment and
+ * falls back to a name rather than inventing an address. Set SUPPORT_CONTACT
+ * (an email or a phone number) before any seller sees these messages.
+ */
+export const SUPPORT_CONTACT = process.env.SUPPORT_CONTACT ?? "AfriMart support";
+
+/**
+ * QC-1 — which wording of the permit statement a seller agreed to. Bump this
+ * when the statement changes: the confirmation row records the version, so a
+ * later change of wording never silently rewrites what someone confirmed.
+ */
+export const PERMIT_STATEMENT_VERSION = "2026-10-v1";

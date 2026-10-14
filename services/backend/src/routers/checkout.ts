@@ -8,6 +8,7 @@ import { priceOrder } from "../routing/pricing.js";
 import { splitPayment } from "../payments/split.js";
 import { queueMerchantAlerts, queueOrderConfirmation } from "../notifications/pipeline.js";
 import { drain } from "../notifications/outbox.js";
+import { visibleListings } from "../quality/categoryAccess.js";
 import type { BasketLine, CandidateListing } from "../routing/types.js";
 
 /**
@@ -38,6 +39,10 @@ type BasketInput = z.infer<typeof basketInput>;
  * requested quantity and the canonical identity, and discard the store choice.
  */
 async function resolveBasket(input: BasketInput) {
+  // visibility-exempt: this only maps a cart line to its canonical product. A
+  // hidden listing therefore still resolves, and the line is then routed from
+  // whichever visible seller stocks that product (or reported unavailable) by
+  // the pool below, which is filtered.
   const requested = await prisma.listing.findMany({
     where: { id: { in: input.items.map((i) => i.listingId) } },
     select: { id: true, canonicalProductId: true },
@@ -60,8 +65,11 @@ async function resolveBasket(input: BasketInput) {
   }));
 
   // CART-2 needs every store's offer for these products, not just the chosen ones.
+  // QC-1 — hidden listings are not offered to routing at all, so a basket can
+  // never be filled from a listing a buyer could not see. If another seller
+  // stocks the same product, the line routes there instead.
   const rows = await prisma.listing.findMany({
-    where: { canonicalProductId: { in: lines.map((l) => l.canonicalProductId) } },
+    where: await visibleListings(prisma, { canonicalProductId: { in: lines.map((l) => l.canonicalProductId) } }),
     include: { store: { include: { hubMetro: true } } },
   });
 
