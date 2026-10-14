@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "@afrimart/ui/global.css";
 import "./globals.css";
 import "./reports.css";
+import "./signin.css";
 import { Providers } from "./providers";
 import { ToastProvider } from "@afrimart/ui";
 import { CartProvider } from "./cart-context";

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { trpc } from "@afrimart/api-client";
 import { glyphForCategory } from "../../lib/glyph";
+import { tokenStore } from "../providers";
 import {
   PageHeader,
   ProductGlyph,
@@ -40,6 +41,9 @@ export default function AccountPage() {
   const { show } = useToast();
   const [added, setAdded] = useState<string | null>(null);
   const orders = trpc.orders.list.useQuery();
+  const me = trpc.userAuth.buyerMe.useQuery();
+  // Ending the session on the server first, then forgetting it here either way.
+  const signOut = trpc.userAuth.signOut.useMutation({ onSettled: () => tokenStore.set(null) });
 
   /**
    * SRCH-4 one-tap reorder. The orders API now exists, so the lines are
@@ -60,10 +64,14 @@ export default function AccountPage() {
 
       <div className="acct-layout">
         <div className="acct-top">
-          <div className="av">A</div>
+          <div className="av">{me.data ? me.data.email.charAt(0).toUpperCase() : ""}</div>
           <div className="m">
-            <div className="nm">Amara Okafor</div>
-            <div className="s">Houston, TX · member since 2024</div>
+            <div className="nm">{me.data?.email ?? " "}</div>
+            <div className="s">
+              <button type="button" className="bsi-link" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
 

@@ -1,0 +1,375 @@
+/**
+ * Buyer and store sign-in, private evidence photos, and payouts in the seller's
+ * thread, end to end against the real database and the real routers.
+ *
+ * Every request goes through `createContext`, the function the server uses, with
+ * a real bearer token, so what is proved is what a browser's request gets. The
+ * picture route is exercised through Fastify's `inject`, the real handler.
+ * Creates throwaway buyers, stores, orders and photos and removes them after;
+ * audit entries are append-only by design and stay.
+ *   npm run verify:sign-in --workspace=@afrimart/backend
+ */
+import Fastify from "fastify";
+import sharp from "sharp";
+import { TRPCError } from "@trpc/server";
+import { prisma } from "../db.js";
+import { callerFor } from "./callers.js";
+import { issueUserSession, resolveUserSession, revokeAllForUser } from "../auth/userSession.js";
+import { resetAllIpLimits } from "../auth/rateLimit.js";
+import { FileEmailSender, MemoryEmailSender, setSenders, type SmsMessage, type SmsSender } from "../notifications/senders.js";
+import { photoStore } from "../storage/photos.js";
+import { photoLinkIsValid, signedPhotoUrl } from "../storage/access.js";
+import { registerPhotoRoute } from "../storage/route.js";
+import { setPayoutDashboard } from "../payments/dashboard.js";
+import type { ResolvedSession } from "../auth/session.js";
+
+const P = "sgn-";
+const run = Date.now().toString(36);
+const id = (s: string) => `${P}${run}-${s}`;
+const emailOf = (s: string) => `${s}-${run}@sgn.test`;
+const PHONE = { a: "+15555550101", b: "+15555550102", unknown: "+15555550199" };
+
+let failures = 0;
+const check = (label: string, pass: boolean, detail = "") => {
+  if (!pass) failures++;
+  console.log(`${pass ? "  ok  " : "  FAIL"}  ${label}${detail ? `  — ${detail}` : ""}`);
+};
+async function outcome<T>(p: Promise<T>): Promise<{ code: string; message: string; value?: T }> {
+  try {
+    return { code: "ok", message: "", value: await p };
+  } catch (e) {
+    if (e instanceof TRPCError) return { code: e.code, message: e.message };
+    throw e;
+  }
+}
+async function sessionFor(email: string): Promise<ResolvedSession> {
+  const u = await prisma.staffUser.findUniqueOrThrow({ where: { email } });
+  return { sessionId: "verify", staffUserId: u.id, email: u.email, name: u.name, role: u.role, mfaVerified: true, mfaEnrolled: true };
+}
+
+/* A sender that captures instead of delivering, so the test can read the code. */
+const mail = new MemoryEmailSender();
+class CapturingSms implements SmsSender {
+  readonly name = "capture";
+  enabled = true;
+  readonly sent: SmsMessage[] = [];
+  async send(m: SmsMessage) {
+    this.sent.push(m);
+  }
+}
+const sms = new CapturingSms();
+setSenders({ email: mail, sms });
+const codeFrom = (text: string) => /\b(\d{6})\b/.exec(text.replace(/<[^>]+>/g, " "))![1]!;
+const lastEmailCode = () => codeFrom(mail.captured.at(-1)!.html);
+const lastSmsCode = () => codeFrom(sms.sent.at(-1)!.body);
+
+/** Pretend the pacing window has passed, so the next request is not "too soon". */
+const ageCodes = (where: { identifier: string }, seconds = 7200) =>
+  prisma.authCode.updateMany({ where, data: { createdAt: new Date(Date.now() - seconds * 1000) } });
+
+// Each call from its own address, so the per-address limit does not fire in the middle of a test (it has its own check below).
+let ipN = 0;
+const anon = () => callerFor({ ip: `10.1.${Math.floor(++ipN / 250)}.${ipN % 250}` });
+const finance = callerFor({ staff: await sessionFor("finance@afrimart.test") });
+const ops = callerFor({ staff: await sessionFor("ops@afrimart.test") });
+const reviewer = callerFor({ staff: await sessionFor("reviewer@afrimart.test") });
+
+async function sweep() {
+  const stores = { storeId: { startsWith: P } };
+  await prisma.sellerMessage.deleteMany({ where: stores });
+  await prisma.payout.deleteMany({ where: stores });
+  await prisma.userSession.deleteMany({ where: { OR: [stores, { buyerId: { startsWith: P } }, { buyer: { email: { endsWith: "@sgn.test" } } }] } });
+  await prisma.authCode.deleteMany({ where: { OR: [{ identifier: { endsWith: "@sgn.test" } }, { identifier: { in: Object.values(PHONE) } }] } });
+  await prisma.refundClaim.deleteMany({ where: { buyerId: { startsWith: P } } });
+  await prisma.shipmentItem.deleteMany({ where: { shipmentId: { startsWith: P } } });
+  await prisma.shipment.deleteMany({ where: { id: { startsWith: P } } });
+  await prisma.order.deleteMany({ where: { buyerId: { startsWith: P } } });
+  await prisma.kitchenLicence.deleteMany({ where: stores });
+  await prisma.sellerBadge.deleteMany({ where: stores });
+  await prisma.store.deleteMany({ where: { id: { startsWith: P } } });
+  await prisma.buyer.deleteMany({ where: { OR: [{ id: { startsWith: P } }, { email: { endsWith: "@sgn.test" } }] } });
+}
+
+await sweep();
+resetAllIpLimits();
+
+try {
+  const hub = await prisma.hubMetro.findFirstOrThrow();
+  const makeStore = (tag: string, phone: string | null, payoutAccountId: string | null = null) =>
+    prisma.store.create({
+      data: { id: id(tag), name: `SGN ${tag}`, ownerName: tag, ownerPhone: phone, payoutAccountId, sellerType: "store", hubMetroId: hub.id, onboardingStatus: "live", verificationStatus: "verified" },
+    });
+  const storeA = await makeStore("a", PHONE.a, "acct_SGNA1");
+  const storeB = await makeStore("b", PHONE.b, null);
+
+  /* -------------------------------------------------------------- buyers */
+  console.log("=== buyer sign-in: a code by email ===");
+  const email = emailOf("amara");
+  check("an invalid address is refused before anything is sent", (await outcome(anon().userAuth.requestBuyerCode({ email: "not-an-email" }))).code === "BAD_REQUEST" && mail.captured.length === 0);
+  const asked = await outcome(anon().userAuth.requestBuyerCode({ email: `  ${email.toUpperCase()} ` }));
+  check("asking for a code succeeds and sends one email to the normalised address", asked.code === "ok" && mail.captured.length === 1 && mail.captured[0]!.to === email, mail.captured[0]?.to);
+  const code1 = lastEmailCode();
+  const row1 = await prisma.authCode.findFirstOrThrow({ where: { identifier: email }, orderBy: { createdAt: "desc" } });
+  check("a six-digit code", /^\d{6}$/.test(code1));
+  check("only a salted hash is stored, not the code", !JSON.stringify(row1).includes(code1) && row1.codeHash.length === 64 && row1.salt.length > 8);
+  check("asking again straight away is turned away (paced)", (await outcome(anon().userAuth.requestBuyerCode({ email }))).code === "TOO_MANY_REQUESTS");
+
+  const wrong = await outcome(anon().userAuth.verifyBuyerCode({ email, code: code1 === "000000" ? "111111" : "000000" }));
+  check("a wrong code is refused with one generic message", wrong.code === "UNAUTHORIZED" && /didn't work/i.test(wrong.message), wrong.message);
+  check("and creates no account", (await prisma.buyer.count({ where: { email } })) === 0);
+  check("a code for one address does not work for another", (await outcome(anon().userAuth.verifyBuyerCode({ email: emailOf("someone-else"), code: code1 }))).code === "UNAUTHORIZED");
+  check("a malformed code is refused at the door", (await outcome(anon().userAuth.verifyBuyerCode({ email, code: "12ab56" }))).code === "BAD_REQUEST");
+
+  const signedIn = await outcome(anon().userAuth.verifyBuyerCode({ email, code: code1 }));
+  check("the right code signs the buyer in, creating the account on first use", signedIn.code === "ok" && (await prisma.buyer.count({ where: { email } })) === 1);
+  const token = signedIn.value!.token;
+  check("the session token is opaque and only its hash is stored", (await prisma.userSession.count({ where: { tokenHash: token } })) === 0 && (await prisma.userSession.count({ where: { buyer: { email } } })) === 1);
+  check("the token identifies this buyer, and nobody else", (await callerFor({ rawToken: token }).userAuth.buyerMe()).email === email);
+  check("the same code cannot be used twice", (await outcome(anon().userAuth.verifyBuyerCode({ email, code: code1 }))).code === "UNAUTHORIZED");
+
+  console.log("\n=== buyer sign-in: guessing, replay, expiry, pacing ===");
+  await ageCodes({ identifier: email });
+  await anon().userAuth.requestBuyerCode({ email });
+  const old = lastEmailCode();
+  await ageCodes({ identifier: email });
+  await anon().userAuth.requestBuyerCode({ email });
+  const fresh = lastEmailCode();
+  check("asking for a new code replaces the old one", (await outcome(anon().userAuth.verifyBuyerCode({ email, code: old }))).code === "UNAUTHORIZED" || old === fresh);
+
+  const bad = fresh === "123456" ? "654321" : "123456";
+  for (let i = 0; i < 5; i++) await outcome(anon().userAuth.verifyBuyerCode({ email, code: bad }));
+  const burnt = await outcome(anon().userAuth.verifyBuyerCode({ email, code: fresh }));
+  check("after five wrong guesses even the right code no longer works", burnt.code === "UNAUTHORIZED", burnt.code);
+
+  await ageCodes({ identifier: email });
+  await anon().userAuth.requestBuyerCode({ email });
+  const target = lastEmailCode();
+  const volley = await Promise.all(Array.from({ length: 25 }, (_, i) => outcome(anon().userAuth.verifyBuyerCode({ email, code: String(100000 + ((Number(target) + 1 + i) % 900000)) }))));
+  check("a parallel volley of guesses gets no more tries than one at a time", volley.every((v) => v.code === "UNAUTHORIZED"));
+  const afterVolley = await prisma.authCode.findFirstOrThrow({ where: { identifier: email }, orderBy: { createdAt: "desc" } });
+  check("the guesses were all counted", afterVolley.attempts >= 5, String(afterVolley.attempts));
+  check("and the real code is now burnt too", (await outcome(anon().userAuth.verifyBuyerCode({ email, code: target }))).code === "UNAUTHORIZED");
+
+  await ageCodes({ identifier: email });
+  await anon().userAuth.requestBuyerCode({ email });
+  const raceCode = lastEmailCode();
+  const both = await Promise.all([outcome(anon().userAuth.verifyBuyerCode({ email, code: raceCode })), outcome(anon().userAuth.verifyBuyerCode({ email, code: raceCode }))]);
+  check("two simultaneous correct submissions cannot both succeed", both.filter((b) => b.code === "ok").length === 1, both.map((b) => b.code).join());
+
+  await ageCodes({ identifier: email });
+  await anon().userAuth.requestBuyerCode({ email });
+  const lateCode = lastEmailCode();
+  await prisma.authCode.updateMany({ where: { identifier: email, consumedAt: null }, data: { expiresAt: new Date(Date.now() - 1000) } });
+  check("an expired code is refused", (await outcome(anon().userAuth.verifyBuyerCode({ email, code: lateCode }))).code === "UNAUTHORIZED");
+
+  await ageCodes({ identifier: email }); // start from a clean hour
+  for (let i = 0; i < 6; i++) {
+    await ageCodes({ identifier: email }, 120); // past the resend wait, but still inside the hour
+    await outcome(anon().userAuth.requestBuyerCode({ email }));
+  }
+  await prisma.authCode.updateMany({ where: { identifier: email }, data: { createdAt: new Date(Date.now() - 1_800_000) } });
+  check("only a few codes an hour can be asked for", (await outcome(anon().userAuth.requestBuyerCode({ email }))).code === "TOO_MANY_REQUESTS");
+
+  console.log("\n=== buyer sessions: revoke, idle, cap, wrong audience ===");
+  const buyerRow = await prisma.buyer.findUniqueOrThrow({ where: { email } });
+  const s2 = await issueUserSession({ kind: "buyer", buyerId: buyerRow.id });
+  check("a fresh session resolves", (await resolveUserSession(s2.token))?.buyerId === buyerRow.id);
+  check("a buyer's token is not a store's", (await outcome(callerFor({ rawToken: s2.token }).merchant.me())).code === "UNAUTHORIZED");
+  check("no token, and a made-up token, are both signed out", (await resolveUserSession(null)) === null && (await resolveUserSession("made-up")) === null);
+  await callerFor({ rawToken: s2.token }).userAuth.signOut();
+  check("signing out ends the session on the server", (await resolveUserSession(s2.token)) === null);
+  const s3 = await issueUserSession({ kind: "buyer", buyerId: buyerRow.id });
+  await prisma.userSession.updateMany({ where: { buyerId: buyerRow.id, revokedAt: null }, data: { lastSeenAt: new Date(Date.now() - 40 * 86_400_000) } });
+  check("a session idle for too long is gone, and stays gone", (await resolveUserSession(s3.token)) === null && (await resolveUserSession(s3.token)) === null);
+  const s4 = await issueUserSession({ kind: "buyer", buyerId: buyerRow.id });
+  await prisma.userSession.updateMany({ where: { buyerId: buyerRow.id, revokedAt: null }, data: { expiresAt: new Date(Date.now() - 1000) } });
+  check("a session past its absolute limit is gone", (await resolveUserSession(s4.token)) === null);
+  const s5 = await issueUserSession({ kind: "buyer", buyerId: buyerRow.id });
+  const s6 = await issueUserSession({ kind: "buyer", buyerId: buyerRow.id });
+  const revoked = await revokeAllForUser({ buyerId: buyerRow.id });
+  check("every session of one buyer can be ended at once", revoked >= 2 && (await resolveUserSession(s5.token)) === null && (await resolveUserSession(s6.token)) === null, String(revoked));
+
+  /* -------------------------------------------------------------- stores */
+  console.log("\n=== store sign-in: a code by text to the number on file ===");
+  const askedStore = await outcome(anon().userAuth.requestStoreCode({ phone: "(555) 555-0101" }));
+  check("a number in any form reaches the shop it belongs to", askedStore.code === "ok" && sms.sent.length === 1 && sms.sent[0]!.to === PHONE.a, sms.sent[0]?.to);
+  const sCode = lastSmsCode();
+  check("the text says how long it lasts and what to do if unasked, without exclamation marks", /minutes/.test(sms.sent[0]!.body) && /ignore/i.test(sms.sent[0]!.body) && !sms.sent[0]!.body.includes("!"));
+
+  const unknownAsk = await outcome(anon().userAuth.requestStoreCode({ phone: PHONE.unknown }));
+  check("a number with no shop gets the same answer, and nothing is sent", unknownAsk.code === "ok" && JSON.stringify(unknownAsk.value) === JSON.stringify(askedStore.value) && sms.sent.length === 1);
+  check("and the same pacing, so the pacing does not say who is a seller", (await outcome(anon().userAuth.requestStoreCode({ phone: PHONE.unknown }))).code === (await outcome(anon().userAuth.requestStoreCode({ phone: PHONE.a }))).code);
+  check("a number with a code row but no shop cannot sign in with any code", (await outcome(anon().userAuth.verifyStoreCode({ phone: PHONE.unknown, code: "123456" }))).code === "UNAUTHORIZED");
+
+  check("a wrong code is refused", (await outcome(anon().userAuth.verifyStoreCode({ phone: PHONE.a, code: sCode === "000000" ? "111111" : "000000" }))).code === "UNAUTHORIZED");
+  check("a buyer's emailed code does not open a shop", (await outcome(anon().userAuth.verifyStoreCode({ phone: PHONE.b, code: lastEmailCode() }))).code === "UNAUTHORIZED");
+  const storeIn = await outcome(anon().userAuth.verifyStoreCode({ phone: "555-555-0101", code: sCode }));
+  check("the right code signs the owner in to their shop", storeIn.code === "ok");
+  const me = await callerFor({ rawToken: storeIn.value!.token }).merchant.me();
+  check("the session is that shop's, by name", me.name === "SGN a", me.name);
+  check("a shop's token is not a buyer's", (await outcome(callerFor({ rawToken: storeIn.value!.token }).userAuth.buyerMe())).code === "UNAUTHORIZED");
+  check("and the shop's token gives it only its own inbox", (await callerFor({ rawToken: storeIn.value!.token }).merchant.inbox()).every((j) => typeof j.shipmentId === "string"));
+
+  console.log("\n=== sending codes only where they can arrive ===");
+  setSenders({ sms: Object.assign(new CapturingSms(), { enabled: false }) });
+  check("with texting switched off, a shop is told so rather than that a code is on its way", (await outcome(anon().userAuth.requestStoreCode({ phone: PHONE.b }))).code === "SERVICE_UNAVAILABLE");
+  setSenders({ sms });
+  const prodEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  setSenders({ email: new FileEmailSender("/tmp/sgn-mail") });
+  const noMail = await outcome(anon().userAuth.requestBuyerCode({ email: emailOf("nobody") }));
+  if (prodEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = prodEnv;
+  setSenders({ email: mail });
+  check("in production, a file instead of a real mail sender is refused, not pretended", noMail.code === "SERVICE_UNAVAILABLE", noMail.code);
+
+
+  console.log("\n=== one address cannot spray requests ===");
+  const spray = callerFor({ ip: "203.0.113.9" });
+  const results: string[] = [];
+  for (let i = 0; i < 25; i++) results.push((await outcome(spray.userAuth.requestBuyerCode({ email: "nope" }))).code);
+  check("after a run of requests from one address, it is turned away", results.slice(0, 20).every((c) => c === "BAD_REQUEST") && results.slice(20).every((c) => c === "TOO_MANY_REQUESTS"), [...new Set(results)].join());
+
+  /* ------------------------------------------------------ private photos */
+  console.log("\n=== private photos: only a signed, short-lived link opens one ===");
+  const jpeg = `data:image/jpeg;base64,${(await sharp({ create: { width: 64, height: 48, channels: 3, background: "#cc9966" } }).jpeg().toBuffer()).toString("base64")}`;
+  const { decodeUpload } = await import("../storage/photos.js");
+  const packingPath = await photoStore.put("packing", decodeUpload(jpeg));
+  const claimPath = await photoStore.put("claim", decodeUpload(jpeg));
+  const docPath = await photoStore.put("document", decodeUpload(jpeg));
+
+  const buyerOwner = await prisma.buyer.create({ data: { id: id("buyer"), email: emailOf("owner") } });
+  const orderId = id("order");
+  await prisma.order.create({ data: { id: orderId, buyerId: buyerOwner.id, status: "placed", totalCents: 5000, shippingCents: 800, taxCents: 100 } });
+  const shipmentId = id("ship");
+  await prisma.shipment.create({ data: { id: shipmentId, orderId, storeId: storeA.id, temperatureClass: "ambient", status: "in_transit", packingPhotoUrl: packingPath, packingPhotoAt: new Date() } });
+  const claim = await prisma.refundClaim.create({
+    data: { buyerId: buyerOwner.id, orderId, shipmentId, kind: "item", reason: "missing_items", amountCents: 900, photoUrl: claimPath, status: "manual_review" },
+  });
+  const lic = await prisma.kitchenLicence.create({ data: { storeId: storeB.id, status: "applied", evidence: docPath } });
+  const badge = await prisma.sellerBadge.create({ data: { storeId: storeB.id, kind: "diaspora_owned", status: "applied", evidence: docPath } });
+
+  const route = Fastify();
+  registerPhotoRoute(route);
+  const get = (url: string) => route.inject({ method: "GET", url });
+  const name = (p: string) => p.split("/").pop()!;
+
+  check("a stored path on its own opens nothing", (await get(packingPath)).statusCode === 404 && (await get(claimPath)).statusCode === 404 && (await get(docPath)).statusCode === 404);
+
+  const sellerInbox = await callerFor({ identity: `store:${storeA.id}` }).merchant.inbox();
+  const link = sellerInbox.find((j) => j.shipmentId === shipmentId)?.packingPhotoUrl;
+  check("the seller who packed it is given a signed link, not the stored path", Boolean(link) && link!.includes("sig=") && link!.includes("exp="), link ?? "");
+  const served = await get(link!);
+  check("and the link serves the image, as an image, never cached", served.statusCode === 200 && served.headers["content-type"] === "image/jpeg" && String(served.headers["cache-control"]).includes("no-store") && served.headers["x-content-type-options"] === "nosniff");
+  check("the other seller's inbox has no such photo", !(await callerFor({ identity: `store:${storeB.id}` }).merchant.inbox()).some((j) => j.shipmentId === shipmentId));
+
+  const u = new URL(link!, "http://x");
+  const tampered = `${u.pathname}?exp=${Number(u.searchParams.get("exp")) + 86400}&sig=${u.searchParams.get("sig")}`;
+  check("an extended expiry is refused", (await get(tampered)).statusCode === 404);
+  const swapped = `/photos/claim/${name(claimPath)}?${u.searchParams.toString()}`;
+  check("a link for one photo does not open another", (await get(swapped)).statusCode === 404);
+  const expired = signedPhotoUrl(packingPath, { now: Date.now() - 400_000 })!;
+  check("an expired link is refused", (await get(expired)).statusCode === 404 && !photoLinkIsValid("packing", name(packingPath), new URL(expired, "http://x").searchParams.get("exp")!, new URL(expired, "http://x").searchParams.get("sig")!));
+  check("a request for a file that does not exist is the same 404", (await get("/photos/claim/0123456789abcdef0123456789abcdef.jpg?exp=9999999999&sig=" + "0".repeat(64))).statusCode === 404);
+
+  console.log("\n=== staff: opening a private photo needs a role, and is audited ===");
+  const startedAt = new Date();
+  const queue = await finance.admin.refundClaims();
+  const queued = queue.find((c) => c.id === claim.id);
+  check("the reports table carries no photo paths or links", Boolean(queued) && queued!.hasPhoto === true && queued!.hasPackingPhoto === true && !JSON.stringify(queued).includes("/photos/"));
+  const licList = await ops.admin.kitchenLicences({ status: "applied" });
+  const licRow = licList.find((r) => r.id === lic.id);
+  check("the licence table carries no photo path either, only that there is one", licRow?.hasEvidencePhoto === true && licRow?.evidence === null && !JSON.stringify(licList).includes("/photos/"));
+  const badgeList = await ops.admin.badgeApplications({ status: "applied" });
+  check("nor the badge table", badgeList.find((r) => r.id === badge.id)?.hasEvidencePhoto === true && !JSON.stringify(badgeList).includes("/photos/"));
+
+  const views = () => prisma.auditLogEntry.findMany({ where: { action: "photo.view", createdAt: { gte: startedAt } }, orderBy: { createdAt: "asc" } });
+  const noRole = await outcome(reviewer.admin.claimPhotoLinks({ claimId: claim.id }));
+  const noRoleDoc = await outcome(reviewer.admin.evidencePhotoLink({ subject: "kitchen_licence", id: lic.id }));
+  check("a catalogue reviewer can open neither claim photos nor licences", noRole.code === "FORBIDDEN" && noRoleDoc.code === "FORBIDDEN", `${noRole.code} ${noRoleDoc.code}`);
+  check("nobody signed in can either", (await outcome(anon().admin.claimPhotoLinks({ claimId: claim.id }))).code !== "ok" && (await outcome(anon().admin.evidencePhotoLink({ subject: "kitchen_licence", id: lic.id }))).code !== "ok");
+  check("and a refused attempt leaves no view on record, because none was granted", (await views()).length === 0);
+
+  const opened = await finance.admin.claimPhotoLinks({ claimId: claim.id });
+  check("finance is given links for the buyer's photo and the seller's packing photo", Boolean(opened.photo) && Boolean(opened.packingPhoto) && (await get(opened.photo!)).statusCode === 200 && (await get(opened.packingPhoto!)).statusCode === 200);
+  const afterClaim = await views();
+  check("each photo opened is in the audit log, by whom", afterClaim.length === 2 && afterClaim.every((v) => v.actorEmail === "finance@afrimart.test" && v.actorRole === "finance"), `${afterClaim.length}`);
+  check("one entry names the report, the other the parcel", afterClaim.some((v) => v.subjectType === "claim" && v.subjectId === claim.id) && afterClaim.some((v) => v.subjectType === "shipment" && v.subjectId === shipmentId));
+
+  const lnk = await ops.admin.evidencePhotoLink({ subject: "kitchen_licence", id: lic.id });
+  check("operations opens a licence photo through a signed link", (await get(lnk.url)).statusCode === 200);
+  const licView = (await views()).filter((v) => v.subjectType === "kitchen_licence");
+  check("the licence view is audited with the licence, the store and who", licView.length === 1 && licView[0]!.subjectId === lic.id && licView[0]!.actorEmail === "ops@afrimart.test" && (licView[0]!.after as { storeId?: string })?.storeId === storeB.id);
+  await ops.admin.evidencePhotoLink({ subject: "kitchen_licence", id: lic.id });
+  check("opening it again is recorded again", (await views()).filter((v) => v.subjectType === "kitchen_licence").length === 2);
+  const badgeLnk = await ops.admin.evidencePhotoLink({ subject: "seller_badge", id: badge.id });
+  check("a badge document is the same", (await get(badgeLnk.url)).statusCode === 200 && (await views()).some((v) => v.subjectType === "seller_badge"));
+  check("an application with no photo has nothing to open", (await outcome(ops.admin.evidencePhotoLink({ subject: "kitchen_licence", id: "no-such" }))).code === "NOT_FOUND");
+
+  /* ------------------------------------------------------------- payouts */
+  console.log("\n=== a payout is posted to the seller's thread, once ===");
+  const payout = await prisma.payout.create({
+    data: { storeId: storeA.id, orderId: id("order-x-AB12"), grossCents: 10000, takeRateBps: 1300, fulfilmentFeeCents: 199, netCents: 8501, status: "scheduled" },
+  });
+  const aThread = () => callerFor({ identity: `store:${storeA.id}` }).merchant.thread();
+  check("before it is paid there is nothing in the thread", (await aThread()).messages.length === 0);
+  check("only finance can release a payout", (await outcome(ops.admin.releasePayout({ payoutId: payout.id }))).code === "FORBIDDEN");
+  const released = await outcome(finance.admin.releasePayout({ payoutId: payout.id, note: "weekly run" }));
+  check("finance releases it", released.code === "ok");
+  const th = await aThread();
+  const msg = th.messages[0];
+  check("the seller has one new message", th.messages.length === 1 && th.unread === 1);
+  check("it carries the amount, the date and the order", msg?.kind === "payout" && msg.amountCents === 8501 && Boolean(msg.paidOn) && msg.orderRefs.length === 1 && msg.orderRefs[0] === `#${payout.orderId.slice(-4).toUpperCase()}`, JSON.stringify(msg));
+  check("in plain words", /\$85\.01/.test(msg!.body) && /sent on/.test(msg!.body) && msg!.body.includes(msg!.orderRefs[0]!) && !msg!.body.includes("!"), msg!.body);
+  check("another seller's thread has nothing", (await callerFor({ identity: `store:${storeB.id}` }).merchant.thread()).messages.length === 0);
+  check("a buyer cannot read a seller's thread", (await outcome(callerFor({ identity: `buyer:${buyerOwner.id}` }).merchant.thread())).code === "UNAUTHORIZED");
+  check("paying the same payout again is refused", (await outcome(finance.admin.releasePayout({ payoutId: payout.id }))).code === "BAD_REQUEST");
+  check("and does not post a second message", (await prisma.sellerMessage.count({ where: { payoutId: payout.id } })) === 1);
+  await callerFor({ identity: `store:${storeA.id}` }).merchant.markThreadRead();
+  check("opening the thread marks it read", (await aThread()).unread === 0);
+
+  console.log("\n=== See all payouts: a fresh link, made on request, never stored ===");
+  const asked2: string[] = [];
+  let n = 0;
+  setPayoutDashboard({ loginLink: async (accountId) => (asked2.push(accountId), { url: `https://dashboard.test/${accountId}/${++n}` }) });
+  const sellerA = callerFor({ identity: `store:${storeA.id}` });
+  const l1 = await sellerA.merchant.payoutDashboardLink();
+  const l2 = await sellerA.merchant.payoutDashboardLink();
+  check("the link is made for the signed-in shop's own account", asked2.every((a) => a === "acct_SGNA1") && l1.url.includes("acct_SGNA1"));
+  check("each request makes a new link (single-use links are not reused)", l1.url !== l2.url);
+  const storeJson = JSON.stringify(await prisma.store.findUniqueOrThrow({ where: { id: storeA.id } })) + JSON.stringify(await prisma.sellerMessage.findMany({ where: { storeId: storeA.id } }));
+  check("no link is kept anywhere", !storeJson.includes("dashboard.test"));
+  const noAccount = await outcome(callerFor({ identity: `store:${storeB.id}` }).merchant.payoutDashboardLink());
+  check("a shop with no payout account is told so, and nothing is requested for it", noAccount.code === "BAD_REQUEST" && asked2.length === 2, noAccount.message);
+  check("someone who is not signed in as a shop gets nowhere", (await outcome(anon().merchant.payoutDashboardLink())).code === "UNAUTHORIZED" && (await outcome(callerFor({ identity: `buyer:${buyerOwner.id}` }).merchant.payoutDashboardLink())).code === "UNAUTHORIZED");
+
+  console.log("\n=== the number a shop signs in with: set by staff, audited, ends old sessions ===");
+  const phoneStart = new Date();
+  const bSession = await issueUserSession({ kind: "store", storeId: storeB.id });
+  check("before the change, the shop's session works", (await resolveUserSession(bSession.token))?.storeId === storeB.id);
+  const NEW = "+15555550142";
+  check("a catalogue reviewer cannot set it", (await outcome(reviewer.admin.setStoreOwnerPhone({ id: storeB.id, phone: NEW, reason: "x" }))).code === "FORBIDDEN");
+  check("a seller cannot set it for themselves", (await outcome(callerFor({ identity: `store:${storeB.id}` }).admin.setStoreOwnerPhone({ id: storeB.id, phone: NEW, reason: "x" }))).code !== "ok");
+  check("a reason is required", (await outcome(ops.admin.setStoreOwnerPhone({ id: storeB.id, phone: NEW, reason: "  " }))).code === "BAD_REQUEST");
+  check("and a real number", (await outcome(ops.admin.setStoreOwnerPhone({ id: storeB.id, phone: "12345", reason: "x" }))).code === "BAD_REQUEST");
+  check("another shop's number cannot be taken over", (await outcome(ops.admin.setStoreOwnerPhone({ id: storeB.id, phone: PHONE.a, reason: "x" }))).code === "CONFLICT");
+  check("none of that changed anything", (await prisma.store.findUniqueOrThrow({ where: { id: storeB.id } })).ownerPhone === PHONE.b && (await resolveUserSession(bSession.token)) !== null);
+  const changed = await outcome(ops.admin.setStoreOwnerPhone({ id: storeB.id, phone: "(555) 555-0142", reason: "Owner replaced their phone; checked ID on a call" }));
+  check("operations sets it", changed.code === "ok" && changed.value?.ownerPhoneLast4 === "0142" && changed.value?.sessionsEnded >= 1, JSON.stringify(changed.value));
+  check("every session the shop had is ended", (await resolveUserSession(bSession.token)) === null);
+  const phoneAudit = await prisma.auditLogEntry.findMany({ where: { action: "store.owner_phone_change", subjectId: storeB.id, createdAt: { gte: phoneStart } } });
+  check("it is audited with who, why, and the old and new number", phoneAudit.length === 1 && phoneAudit[0]!.actorEmail === "ops@afrimart.test" && /checked ID/.test(phoneAudit[0]!.note ?? "") && (phoneAudit[0]!.before as { ownerPhone?: string })?.ownerPhone === PHONE.b && (phoneAudit[0]!.after as { ownerPhone?: string })?.ownerPhone === NEW);
+  await anon().userAuth.requestStoreCode({ phone: PHONE.b });
+  check("the old number no longer reaches the shop: no text is sent to it", sms.sent.every((m) => m.to !== PHONE.b));
+  await anon().userAuth.requestStoreCode({ phone: NEW });
+  check("the new number does", sms.sent.at(-1)?.to === NEW);
+  const viaNew = await outcome(anon().userAuth.verifyStoreCode({ phone: NEW, code: lastSmsCode() }));
+  check("and signs in to that shop", viaNew.code === "ok" && (await callerFor({ rawToken: viaNew.value!.token }).merchant.me()).name === "SGN b");
+  check("the store list shows only the last four digits", (await ops.admin.stores()).find((s) => s.id === storeB.id)?.ownerPhoneLast4 === "0142" && !JSON.stringify(await ops.admin.stores()).includes(NEW));
+} finally {
+  await sweep();
+  await prisma.$disconnect();
+}
+
+console.log(failures === 0 ? "\nAll sign-in, private-photo and payout checks passed." : `\n${failures} check(s) FAILED.`);
+process.exit(failures === 0 ? 0 : 1);

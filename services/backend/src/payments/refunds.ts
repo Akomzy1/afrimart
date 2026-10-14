@@ -1,4 +1,4 @@
-import { assertDevIdentityAllowed } from "../identity.js";
+import { assertDevOnlyAllowed } from "../runtime.js";
 
 /**
  * The port through which money goes back to a buyer.
@@ -40,7 +40,7 @@ export interface RefundIssuer {
 export class LocalRefundIssuer implements RefundIssuer {
   async issue(request: RefundRequest): Promise<RefundReceipt> {
     // Same three production signals as the dev identity stub and the staff seed.
-    assertDevIdentityAllowed();
+    assertDevOnlyAllowed();
     if (!Number.isInteger(request.amountCents) || request.amountCents <= 0) {
       throw new Error("A refund must be a positive whole number of cents.");
     }

@@ -103,6 +103,57 @@ export function Claims({ canResolve }: { canResolve: boolean }) {
 
 type Row = RouterOutputs["admin"]["refundClaims"][number];
 
+/**
+ * The photos on a report are private (the buyer's can show their address), so
+ * they are not loaded with the table. Opening them is a deliberate step, and
+ * each one opened is written to the audit log with who opened it. The links that
+ * come back are signed and last minutes, so a copied link soon stops working.
+ */
+function ClaimPhotos({ claim: c }: { claim: Row }) {
+  const open = trpc.admin.claimPhotoLinks.useMutation();
+  const links = open.data;
+  const thumb = { objectFit: "cover", borderRadius: 4, border: "1px solid var(--line)" } as const;
+  const hasAny = c.hasPhoto || c.hasPackingPhoto;
+
+  return (
+    <div className="op-actions">
+      {!links && hasAny && (
+        <button type="button" className="op-btn" disabled={open.isPending} onClick={() => open.mutate({ claimId: c.id })}>
+          {open.isPending ? "Opening…" : "Show photos"}
+        </button>
+      )}
+      {!links && hasAny && <div className="muted">Opening a photo is recorded.</div>}
+      {open.isError && <div className="op-note">{open.error.message}</div>}
+
+      {c.hasPhoto ? (
+        links?.photo ? (
+          <a href={photo(links.photo)} target="_blank" rel="noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photo(links.photo)} alt="The buyer's photo" width={96} height={72} style={thumb} />
+            <div className="muted">Buyer&apos;s photo</div>
+          </a>
+        ) : null
+      ) : c.kind === "item" ? (
+        <span className="muted">no buyer photo</span>
+      ) : null}
+
+      {c.kind === "item" || c.hasPackingPhoto ? (
+        c.hasPackingPhoto ? (
+          links?.packingPhoto ? (
+            <a href={photo(links.packingPhoto)} target="_blank" rel="noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photo(links.packingPhoto)} alt="The seller's packing photo" width={96} height={72} style={thumb} />
+              <div className="muted">Seller packed{c.packingPhotoAt ? ` · ${when(c.packingPhotoAt)}` : ""}</div>
+            </a>
+          ) : null
+        ) : (
+          <span className="op-pill bad">no packing photo on record</span>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function ClaimTable({
   rows,
   canResolve,
@@ -156,28 +207,7 @@ function ClaimTable({
                 {c.note ? <div className="muted">“{c.note}”</div> : null}
               </td>
               <td>
-                <div className="op-actions">
-                  {c.photoUrl ? (
-                    <a href={photo(c.photoUrl)} target="_blank" rel="noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={photo(c.photoUrl)} alt="The buyer's photo" width={96} height={72} style={{ objectFit: "cover", borderRadius: 4, border: "1px solid var(--line)" }} />
-                      <div className="muted">Buyer&apos;s photo</div>
-                    </a>
-                  ) : c.kind === "item" ? (
-                    <span className="muted">no buyer photo</span>
-                  ) : null}
-                  {c.kind === "item" || c.packingPhotoUrl ? (
-                    c.packingPhotoUrl ? (
-                      <a href={photo(c.packingPhotoUrl)} target="_blank" rel="noreferrer">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo(c.packingPhotoUrl)} alt="The seller's packing photo" width={96} height={72} style={{ objectFit: "cover", borderRadius: 4, border: "1px solid var(--line)" }} />
-                        <div className="muted">Seller packed{c.packingPhotoAt ? ` · ${when(c.packingPhotoAt)}` : ""}</div>
-                      </a>
-                    ) : (
-                      <span className="op-pill bad">no packing photo on record</span>
-                    )
-                  ) : null}
-                </div>
+                <ClaimPhotos claim={c} />
               </td>
               <td className="num">{money(c.amountCents)}</td>
               <td>

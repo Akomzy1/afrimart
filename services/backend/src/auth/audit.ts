@@ -19,6 +19,12 @@ export const AUDITED_ACTIONS = [
   "store.reinstate",
   "store.verification_change",
   "store.kitchen_licence_change",
+  /**
+   * The mobile number a shop signs in with. Whoever controls that number
+   * controls the shop's orders and payouts, so changing it is audited with a
+   * reason and ends every session the shop has.
+   */
+  "store.owner_phone_change",
   "store.category_restriction_change",
   "platform.category_restriction_change",
   "product.reclassify",
@@ -29,13 +35,29 @@ export const AUDITED_ACTIONS = [
   "refund.reject",
   "refund.recovery_recorded",
   "chargeback.record",
+  /**
+   * A staff member opened a private photo: a licence or badge document, a
+   * buyer's claim photo (which can show their address), or a packing photo.
+   * Recorded when the link is issued, which is the moment access is granted.
+   */
+  "photo.view",
 ] as const;
 
 export type AuditedAction = (typeof AUDITED_ACTIONS)[number];
 
 export interface AuditInput {
   action: AuditedAction;
-  subjectType: "store" | "payout" | "refund" | "shipment" | "adjustment" | "platform_setting" | "product";
+  subjectType:
+    | "store"
+    | "payout"
+    | "refund"
+    | "shipment"
+    | "adjustment"
+    | "platform_setting"
+    | "product"
+    | "kitchen_licence"
+    | "seller_badge"
+    | "claim";
   subjectId: string;
   before?: unknown;
   after?: unknown;

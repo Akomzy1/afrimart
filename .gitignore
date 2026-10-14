@@ -20,3 +20,6 @@ prisma/dev.db
 
 # Evidence photos written by the local photo store (QC-2/QC-3)
 .uploads/
+
+# Locally captured sign-in texts from the dev SMS sender
+.sms/

@@ -14,31 +14,63 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>;
 export const trpc: CreateTRPCReact<AppRouter, unknown> = createTRPCReact<AppRouter>();
 
 /**
- * Development-only identity, sent as `x-dev-identity: buyer:<id>` or `store:<id>`.
- * The backend's identity stub reads it and refuses to run anywhere that looks
- * like production; real buyer and merchant sign-in replaces both ends of this.
+ * Every request carries the signed-in session token as a bearer token, and
+ * nothing else says who is asking: the server resolves the buyer or store from
+ * that session, never from anything the page claims.
  */
-export const DEV_IDENTITY_HEADER = "x-dev-identity";
-
-export function createTrpcClientConfig(opts: {
-  apiUrl: string;
-  getAuthToken?: () => string | null;
-  getDevIdentity?: () => string | null;
-}) {
+export function createTrpcClientConfig(opts: { apiUrl: string; getAuthToken?: () => string | null }) {
   return {
     links: [
       httpBatchLink({
         url: opts.apiUrl,
         headers() {
           const token = opts.getAuthToken?.();
-          const identity = opts.getDevIdentity?.();
-          return {
-            ...(token ? { authorization: `Bearer ${token}` } : {}),
-            ...(identity ? { [DEV_IDENTITY_HEADER]: identity } : {}),
-          };
+          return token ? { authorization: `Bearer ${token}` } : {};
         },
       }),
     ],
+  };
+}
+
+/**
+ * Where a signed-in app keeps its session token in the browser.
+ *
+ * localStorage, because a buyer or a shop phone should still be signed in
+ * tomorrow (the session itself is what bounds how long: idle and absolute
+ * clocks, and revocable on the server). Every read and write is guarded, since
+ * storage can be blocked or throw in a private window; without it the person
+ * just signs in again. `subscribe` lets the tree react to a sign-in or sign-out
+ * made anywhere, including another tab.
+ */
+export function createTokenStore(key: string) {
+  const listeners = new Set<() => void>();
+  const read = (): string | null => {
+    try {
+      return typeof window === "undefined" ? null : window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+  let memory: string | null = null; // keeps working for this tab when storage is blocked
+  const get = () => read() ?? memory;
+  const notify = () => listeners.forEach((l) => l());
+  if (typeof window !== "undefined") window.addEventListener("storage", (e) => e.key === key && notify());
+  return {
+    get,
+    set(token: string | null) {
+      memory = token;
+      try {
+        if (token) window.localStorage.setItem(key, token);
+        else window.localStorage.removeItem(key);
+      } catch {
+        /* blocked storage: the in-memory copy still signs this tab in */
+      }
+      notify();
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
   };
 }
 

@@ -198,11 +198,18 @@ describe("QC-3 the buyer's identity and photos cannot be bypassed", () => {
     assert.ok(!/packingPhotoUrl:/.test(orders), "the packing photo url is returned to the buyer");
   });
 
-  test("the ops claim queue carries both photos, so a reviewer can compare them", async () => {
+  test("the ops claim queue says both photos exist, and opening them gives both to compare, audited", async () => {
     const admin = await src("../routers/admin.ts");
-    const q = admin.slice(admin.indexOf("refundClaims: staffProcedure"), admin.indexOf("resolveRefundClaim: staffProcedure"));
-    assert.match(q, /packingPhotoUrl: shipment\?\.packingPhotoUrl/);
-    assert.match(q, /photoUrl: c\.photoUrl/);
+    const q = admin.slice(admin.indexOf("refundClaims: staffProcedure"), admin.indexOf("claimPhotoLinks: staffProcedure"));
+    // The queue carries whether there are photos, never the photos or their paths.
+    assert.match(q, /hasPhoto: c\.photoUrl !== null/);
+    assert.match(q, /hasPackingPhoto:/);
+    assert.ok(!/\bphotoUrl: c\.photoUrl|packingPhotoUrl: shipment/.test(q), "the queue hands out a stored photo path");
+    // Opening them returns both, signed, with an audit entry for each.
+    const open = admin.slice(admin.indexOf("claimPhotoLinks: staffProcedure"), admin.indexOf("evidencePhotoLink: staffProcedure"));
+    assert.match(open, /photo: signedPhotoUrl\(/);
+    assert.match(open, /packingPhoto: signedPhotoUrl\(/);
+    assert.match(open, /action: "photo\.view"/);
   });
 
   test("approving a claim issues the refund after the decision is recorded and audited", async () => {

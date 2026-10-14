@@ -3,13 +3,24 @@
  * quote -> place -> each seller's merchant inbox -> accept -> ship.
  *
  * Uses a multi-seller basket on purpose. Run with: npx tsx src/loop.ts
+ *
+ * Buyers and stores are identified the way the apps are: a real session token
+ * in the Authorization header. `identity` ("buyer:<id>" or "store:<id>") says
+ * whose session to issue for the call; the server never sees it as a name.
  */
+import { prisma } from "../db.js";
+import { bearerFor } from "./callers.js";
+
 const API = "http://localhost:4000/trpc";
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
+async function authHeader(identity?: string): Promise<Record<string, string>> {
+  return identity ? { authorization: `Bearer ${await bearerFor(identity)}` } : {};
+}
+
 async function query(path: string, input: unknown, identity?: string) {
   const res = await fetch(`${API}/${path}?input=${encodeURIComponent(JSON.stringify(input))}`, {
-    headers: identity ? { "x-dev-identity": identity } : {},
+    headers: await authHeader(identity),
   });
   const body = await res.json();
   if (body.error) throw new Error(`${path}: ${body.error.message}`);
@@ -18,7 +29,7 @@ async function query(path: string, input: unknown, identity?: string) {
 async function mutate(path: string, input: unknown, identity?: string) {
   const res = await fetch(`${API}/${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", ...(identity ? { "x-dev-identity": identity } : {}) },
+    headers: { "content-type": "application/json", ...(await authHeader(identity)) },
     body: JSON.stringify(input),
   });
   const body = await res.json();
@@ -42,7 +53,7 @@ const placed = await mutate("checkout.place", { items, destination }, "buyer:dem
 console.log(`\nPLACED: order ${placed.orderId}, ${placed.parcelCount} parcels, total ${money(placed.pricing.totalCents)}`);
 
 // Every seller that should now see work.
-const stores = await query("merchant.stores", undefined);
+const stores = await prisma.store.findMany({ where: { onboardingStatus: "live" }, select: { id: true, name: true } });
 const sellerNames = [...new Set(quote.parcels.map((p: { storeName: string }) => p.storeName))] as string[];
 console.log(`\nMERCHANT INBOXES (${sellerNames.length} sellers expected to have work):`);
 
@@ -63,6 +74,7 @@ console.log(`  -> ${totalItemsSeen} lines visible to sellers vs ${items.length} 
 
 // Cross-store leakage check: no seller may see another seller's lines.
 const first = stores.find((s: { name: string }) => s.name === sellerNames[0]);
+if (!first) throw new Error(`no store record for ${sellerNames[0]}`);
 const firstInbox = await query("merchant.inbox", undefined, `store:${first.id}`);
 const firstJob = firstInbox.find((j: { orderRef: string }) => j.orderRef === `#${placed.orderId.slice(-4).toUpperCase()}`);
 const othersLines = quote.parcels
@@ -95,3 +107,5 @@ if (firstJob) {
   const earn = await query("merchant.earnings", undefined, `store:${first.id}`);
   console.log(`EARNINGS for ${sellerNames[0]}: ${earn.orderCount} orders, gross ${money(earn.grossCents)}, net ${money(earn.netCents)}`);
 }
+
+await prisma.$disconnect();

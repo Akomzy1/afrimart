@@ -16,6 +16,7 @@ import {
 } from "@afrimart/ui";
 import { trpc } from "@afrimart/api-client";
 import { useCart } from "../cart-context";
+import { SignInPanel, useBuyerToken } from "../sign-in";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const dayShort = (offset: number) =>
@@ -39,6 +40,10 @@ export default function CheckoutPage() {
   const [placed, setPlaced] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const place = trpc.checkout.place.useMutation();
+  // Looking at the basket needs no account; placing the order does. The panel
+  // appears at that moment and the form (and the basket) are exactly as left.
+  const token = useBuyerToken();
+  const [askSignIn, setAskSignIn] = useState(false);
 
   const zipValid = /^\d{5}$/.test(zip);
   const invalid = {
@@ -58,6 +63,10 @@ export default function CheckoutPage() {
   async function placeOrder() {
     setAttempted(true);
     if (!formValid) return;
+    if (!token) {
+      setAskSignIn(true);
+      return;
+    }
     try {
       const result = await place.mutateAsync({
         items: lines.map((l) => ({ listingId: l.listingId, quantity: l.qty })),
@@ -68,6 +77,15 @@ export default function CheckoutPage() {
     } catch {
       // The mutation's error is rendered below; don't show a false confirmation.
     }
+  }
+
+  if (askSignIn && !token) {
+    return (
+      <SignInPanel
+        heading="Sign in to place your order"
+        lede="Enter your email address and we'll send you a code. Your basket and delivery details are kept."
+      />
+    );
   }
 
   if (placed) {

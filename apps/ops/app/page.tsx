@@ -256,6 +256,53 @@ function ReviewQueue() {
 
 /* ------------------------------------------------------------------ ADM-2 */
 
+/**
+ * The mobile number a shop signs in with. Whoever can receive a text there can
+ * open the shop's orders and payouts, so setting it takes a reason, is recorded
+ * with who did it, and signs the shop out everywhere. Only the last four digits
+ * are shown.
+ */
+function OwnerPhone({ storeId, last4 }: { storeId: string; last4: string | null }) {
+  const utils = trpc.useUtils();
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [reason, setReason] = useState("");
+  const set = trpc.admin.setStoreOwnerPhone.useMutation({
+    onSuccess: () => {
+      utils.admin.stores.invalidate();
+      utils.admin.auditLog.invalidate();
+      setOpen(false);
+      setPhone("");
+      setReason("");
+    },
+  });
+  if (!open) {
+    return (
+      <div className="muted">
+        Sign-in phone: {last4 ? `••• ${last4}` : "none"}{" "}
+        <button type="button" className="op-btn" onClick={() => setOpen(true)}>
+          {last4 ? "Change" : "Set"}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gap: 4, marginTop: 4 }}>
+      <input className="op-input" aria-label="Owner mobile number" placeholder="Mobile, with area code" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      <input className="op-input" aria-label="Reason" placeholder="Reason (required)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <div className="op-actions">
+        <button type="button" className="op-btn primary" disabled={!phone.trim() || !reason.trim() || set.isPending} onClick={() => set.mutate({ id: storeId, phone, reason: reason.trim() })}>
+          Save
+        </button>
+        <button type="button" className="op-btn" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+      {set.isError && <div className="op-note">{set.error.message}</div>}
+    </div>
+  );
+}
+
 const ONBOARDING_STATES = ["pending", "filming", "reviewing", "kit_issued", "live", "suspended", "delisted"] as const;
 
 function Onboarding() {
@@ -294,6 +341,7 @@ function Onboarding() {
               <td>
                 {s.name}
                 <div className="muted">{s.ownerName}</div>
+                <OwnerPhone storeId={s.id} last4={s.ownerPhoneLast4} />
               </td>
               <td className="muted">{s.sellerType}</td>
               <td>

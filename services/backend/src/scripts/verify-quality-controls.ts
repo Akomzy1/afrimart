@@ -15,12 +15,10 @@
 import { TRPCError } from "@trpc/server";
 import sharp from "sharp";
 import { prisma } from "../db.js";
-import { appRouter } from "../router.js";
-import { createCallerFactory } from "../trpc.js";
+import { callerFor } from "./callers.js";
 import type { ResolvedSession } from "../auth/session.js";
 import { SUPPORT_CONTACT } from "../config.js";
 
-const createCaller = createCallerFactory(appRouter);
 const run = Date.now().toString(36);
 const id = (s: string) => `qc1v-${run}-${s}`;
 
@@ -42,14 +40,11 @@ async function sessionFor(email: string): Promise<ResolvedSession> {
     mfaEnrolled: true,
   };
 }
-/** A caller as the request context would build it: staff from a session, buyer/store from the dev identity header. */
-const as = (staff: ResolvedSession | null, identity?: string) =>
-  createCaller({
-    req: { headers: identity ? { "x-dev-identity": identity } : {} } as never,
-    staff,
-    ip: "127.0.0.1",
-    userAgent: "verify",
-  });
+/**
+ * A caller as the server builds one: staff from a session, buyer or store from
+ * a real session token on the request (see callers.ts), never a client-chosen id.
+ */
+const as = (staff: ResolvedSession | null, identity?: string) => callerFor({ staff, identity });
 const asStore = (storeId: string) => as(null, `store:${storeId}`);
 
 /** Run a call and report the tRPC error code, or "ok". */
@@ -92,6 +87,8 @@ async function sweep() {
   await prisma.sellerCategoryControl.deleteMany({ where: stores });
   await prisma.kitchenLicence.deleteMany({ where: stores });
   await prisma.sellerBadge.deleteMany({ where: stores });
+  await prisma.userSession.deleteMany({ where: { OR: [stores, { buyerId: { startsWith: "qc1v-" } }] } });
+  await prisma.buyer.deleteMany({ where: { id: { startsWith: "qc1v-" } } });
   await prisma.store.deleteMany({ where: { id: { startsWith: "qc1v-" } } });
   await prisma.listing.deleteMany({ where: { canonicalProductId: { startsWith: "qc1v-" } } });
   await prisma.canonicalProduct.deleteMany({ where: { id: { startsWith: "qc1v-" } } });
@@ -180,10 +177,11 @@ try {
   console.log("\n=== 2b. identity comes from the request, never from input ===");
   const anonymous = await outcome(as(null).merchant.permitStatus());
   check("an unidentified caller is refused", anonymous.code === "UNAUTHORIZED", anonymous.code);
-  const wrongKind = await outcome(as(null, `buyer:demo-buyer`).merchant.permitStatus());
-  check("a buyer identity cannot act as a store", wrongKind.code === "UNAUTHORIZED", wrongKind.code);
-  const unknown = await outcome(as(null, "store:no-such-store").merchant.permitStatus());
-  check("an identity that does not exist gets nowhere", unknown.code === "UNAUTHORIZED", unknown.code);
+  const aBuyer = await prisma.buyer.create({ data: { id: id("buyer"), email: `${run}@qc1.test` } });
+  const wrongKind = await outcome(as(null, `buyer:${aBuyer.id}`).merchant.permitStatus());
+  check("a buyer's session cannot act as a store", wrongKind.code === "UNAUTHORIZED", wrongKind.code);
+  const unknown = await outcome(callerFor({ rawToken: "not-a-real-session-token" }).merchant.permitStatus());
+  check("a token that is not a session gets nowhere", unknown.code === "UNAUTHORIZED", unknown.code);
   const smuggled = await outcome((asStore(home).merchant.confirmPermit as unknown as (i: unknown) => Promise<unknown>)({ storeId: aspiring, category: "fish", acknowledged: true }));
   check("a store id smuggled into the input is ignored: the confirmation lands on the caller", smuggled.code === "ok" &&
     (await prisma.permitConfirmation.count({ where: { storeId: aspiring, category: "fish" } })) === 0 &&
@@ -212,13 +210,41 @@ try {
   const noNote = await outcome(ops.admin.reviewKitchenLicence({ id: appRow.id, decision: "approve", licenceChecked: true, note: "" }));
   check("approval without a note is refused", noNote.code === "BAD_REQUEST", noNote.code);
 
-  const approved = await outcome(ops.admin.reviewKitchenLicence({ id: appRow.id, decision: "approve", licenceChecked: true, note: "Licence CK-1234 checked against county register" }));
+  // Approval records what the reviewer read, and refuses without all three.
+  const base = { id: appRow.id, decision: "approve", licenceChecked: true, note: "Checked against county register" } as const;
+  const noNumber = await outcome(ops.admin.reviewKitchenLicence({ ...base, issuingAuthority: "County Health Dept", expiresOn: "2030-06-30" as never }));
+  check("approval without the licence number is refused, and says so", noNumber.code === "BAD_REQUEST" && /licence number/i.test(noNumber.message), noNumber.message);
+  const noAuthority = await outcome(ops.admin.reviewKitchenLicence({ ...base, licenceNumber: "CK-1234", expiresOn: "2030-06-30" as never }));
+  check("approval without the issuing authority is refused", noAuthority.code === "BAD_REQUEST" && /who issued/i.test(noAuthority.message), noAuthority.message);
+  const noExpiry = await outcome(ops.admin.reviewKitchenLicence({ ...base, licenceNumber: "CK-1234", issuingAuthority: "County Health Dept" }));
+  check("approval without the expiry date is refused", noExpiry.code === "BAD_REQUEST" && /expiry/i.test(noExpiry.message), noExpiry.message);
+  const blankNumber = await outcome(ops.admin.reviewKitchenLicence({ ...base, licenceNumber: "   ", issuingAuthority: "County Health Dept", expiresOn: "2030-06-30" as never }));
+  check("a blank number counts as missing", blankNumber.code === "BAD_REQUEST", blankNumber.code);
+  const lapsed = await outcome(ops.admin.reviewKitchenLicence({ ...base, licenceNumber: "CK-1234", issuingAuthority: "County Health Dept", expiresOn: "2020-01-01" as never }));
+  check("a licence that has already expired cannot be approved", lapsed.code === "BAD_REQUEST" && /expired/i.test(lapsed.message), lapsed.message);
+  check("none of those refusals changed the application", (await prisma.kitchenLicence.findUniqueOrThrow({ where: { id: appRow.id } })).status === "applied");
+
+  const approved = await outcome(
+    ops.admin.reviewKitchenLicence({ ...base, licenceNumber: "CK-1234", issuingAuthority: "County Health Dept", expiresOn: "2030-06-30" as never, note: "Licence CK-1234 checked against county register" }),
+  );
   check("operations approves after checking", approved.code === "ok" && approved.value?.status === "approved");
+  const storedLicence = await prisma.kitchenLicence.findUniqueOrThrow({ where: { id: appRow.id } });
+  check(
+    "the approval record holds the number, the authority and the expiry date",
+    storedLicence.verifiedLicenceNumber === "CK-1234" && storedLicence.verifiedIssuingAuthority === "County Health Dept" && storedLicence.licenceExpiresOn?.toISOString().slice(0, 10) === "2030-06-30",
+    `${storedLicence.verifiedLicenceNumber} / ${storedLicence.verifiedIssuingAuthority} / ${storedLicence.licenceExpiresOn?.toISOString()}`,
+  );
   const licenceAudit = await auditFor(home, "store.kitchen_licence_change");
+  const auditAfter = licenceAudit[0]?.after as { licenceNumber?: string; issuingAuthority?: string; expiresOn?: string } | undefined;
   check(
     "the approval is audited with who and why",
     licenceAudit.length === 1 && licenceAudit[0]!.actorEmail === "ops@afrimart.test" && /CK-1234/.test(licenceAudit[0]!.note ?? ""),
     JSON.stringify(licenceAudit.map((a) => [a.actorEmail, a.note])),
+  );
+  check(
+    "and the audit entry carries what was checked",
+    auditAfter?.licenceNumber === "CK-1234" && auditAfter?.issuingAuthority === "County Health Dept" && String(auditAfter?.expiresOn).startsWith("2030-06-30"),
+    JSON.stringify(auditAfter),
   );
 
   // The licensed seller can now list chilled and frozen, but still must confirm the permit for meat.

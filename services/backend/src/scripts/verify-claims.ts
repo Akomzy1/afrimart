@@ -11,11 +11,9 @@
 import { TRPCError } from "@trpc/server";
 import sharp from "sharp";
 import { prisma } from "../db.js";
-import { appRouter } from "../router.js";
-import { createCallerFactory } from "../trpc.js";
+import { callerFor } from "./callers.js";
 import type { ResolvedSession } from "../auth/session.js";
 
-const createCaller = createCallerFactory(appRouter);
 const P = "qc3v-";
 const run = Date.now().toString(36);
 const id = (s: string) => `${P}${run}-${s}`;
@@ -30,8 +28,7 @@ async function sessionFor(email: string): Promise<ResolvedSession> {
   const u = await prisma.staffUser.findUniqueOrThrow({ where: { email } });
   return { sessionId: "verify", staffUserId: u.id, email: u.email, name: u.name, role: u.role, mfaVerified: true, mfaEnrolled: true };
 }
-const as = (staff: ResolvedSession | null, identity?: string) =>
-  createCaller({ req: { headers: identity ? { "x-dev-identity": identity } : {} } as never, staff, ip: "127.0.0.1", userAgent: "verify" });
+const as = (staff: ResolvedSession | null, identity?: string) => callerFor({ staff, identity });
 
 async function outcome<T>(p: Promise<T>): Promise<{ code: string; message: string; value?: T }> {
   try {
@@ -55,10 +52,15 @@ async function photoWithLocation(): Promise<string> {
   return `data:image/jpeg;base64,${buf.toString("base64")}`;
 }
 
+/** A signed link (`/photos/kind/name?exp=..&sig=..`) back to the stored path (`/photos/kind/name`). */
+function stripLink<T extends string | null | undefined>(link: T): T extends string ? string : null {
+  return (link ? link.split("?")[0]! : null) as never;
+}
+
 /** Fetch a stored photo back over the same path the server serves it from. */
 async function storedBytes(url: string): Promise<Buffer> {
   const { photoStore } = await import("../storage/photos.js");
-  const [, , kind, name] = url.split("/");
+  const [, , kind, name] = stripLink(url).split("/");
   const bytes = await photoStore.read(kind as "packing" | "claim", name!);
   if (!bytes) throw new Error(`photo not found: ${url}`);
   return bytes;
@@ -66,6 +68,7 @@ async function storedBytes(url: string): Promise<Buffer> {
 
 async function sweep() {
   const b = { buyerId: { startsWith: P } };
+  await prisma.userSession.deleteMany({ where: { OR: [{ buyerId: { startsWith: P } }, { storeId: { startsWith: P } }] } });
   await prisma.refundClaim.deleteMany({ where: b });
   await prisma.notification.deleteMany({ where: { orderId: { startsWith: P } } });
   await prisma.shipmentItem.deleteMany({ where: { shipmentId: { startsWith: P } } });
@@ -151,11 +154,11 @@ try {
   const bytes = await storedBytes(saved.value!.photoUrl);
   check("the stored packing photo carries no camera, no description and no GPS", !bytes.includes(Buffer.from("ZZVERIFYMAKE")) && !bytes.includes(Buffer.from("ZZVERIFYHOME")) && !bytes.includes(Buffer.from("GPS")) && (await sharp(bytes).metadata()).exif === undefined);
   const row = await prisma.shipment.findUniqueOrThrow({ where: { id: packing.shipmentId } });
-  check("the photo and when it was taken are on the shipment", row.packingPhotoUrl === saved.value!.photoUrl && row.packingPhotoAt !== null);
+  check("the photo and when it was taken are on the shipment", row.packingPhotoUrl === stripLink(saved.value!.photoUrl) && row.packingPhotoAt !== null);
   const inbox = await store.merchant.inbox();
-  check("the merchant's inbox reports it", inbox.find((j) => j.shipmentId === packing.shipmentId)?.packingPhotoUrl === saved.value!.photoUrl);
+  check("the merchant's inbox reports it", stripLink(inbox.find((j) => j.shipmentId === packing.shipmentId)?.packingPhotoUrl) === stripLink(saved.value!.photoUrl));
   const retake = await outcome(store.merchant.packingPhoto({ shipmentId: packing.shipmentId, image: withLocation }));
-  check("a retake replaces the photo", retake.code === "ok" && retake.value!.photoUrl !== saved.value!.photoUrl);
+  check("a retake replaces the photo", retake.code === "ok" && stripLink(retake.value!.photoUrl) !== stripLink(saved.value!.photoUrl));
   const shipped = await outcome(store.merchant.markShipped({ shipmentId: packing.shipmentId }));
   check("with the photo on record it ships", shipped.code === "ok");
   const afterShip = await outcome(store.merchant.packingPhoto({ shipmentId: packing.shipmentId, image: withLocation }));
@@ -166,7 +169,7 @@ try {
     status: "delivered",
     items: [{ name: "Egusi", qty: 1, unitCents: 900 }, { name: "Garri", qty: 2, unitCents: 700 }, { name: "Palm oil", qty: 1, unitCents: 1500 }, { name: "Berbere", qty: 1, unitCents: 800 }],
   });
-  await prisma.shipment.update({ where: { id: del.shipmentId }, data: { packingPhotoUrl: saved.value!.photoUrl, packingPhotoAt: new Date() } });
+  await prisma.shipment.update({ where: { id: del.shipmentId }, data: { packingPhotoUrl: stripLink(saved.value!.photoUrl), packingPhotoAt: new Date() } });
   const [egusi, garri, oil, berbere] = del.itemIds as [string, string, string, string];
 
   const view = await a.orders.detail({ orderId: del.orderId });
@@ -217,7 +220,7 @@ try {
   console.log("\n=== QC-3 reviewing and refunding ===");
   const queue = await finance.admin.refundClaims();
   const queued = queue.find((c) => c.id === missing.value!.claimId);
-  check("the report is in the finance queue with the buyer's photo and the seller's packing photo", Boolean(queued?.photoUrl) && queued?.packingPhotoUrl === saved.value!.photoUrl);
+  check("the report is in the finance queue with the buyer's photo and the seller's packing photo", queued?.hasPhoto === true && queued?.hasPackingPhoto === true);
   const byOps = await outcome(ops.admin.resolveRefundClaim({ claimId: missing.value!.claimId, decision: "approve", recoveryTarget: "seller" }));
   check("operations cannot decide a claim: that is finance's", byOps.code === "FORBIDDEN", byOps.code);
   const rejectRefunded = await outcome(finance.admin.resolveRefundClaim({ claimId: small.value!.claimId, decision: "reject" }));
@@ -264,6 +267,42 @@ try {
 
   const list = await a.orders.list();
   check("the buyer's list carries all of it, newest first", list.length >= 4 && list.every((o, i, arr) => i === 0 || new Date(arr[i - 1]!.placedAt) >= new Date(o.placedAt)));
+  console.log("\n=== identity: nobody can act as, or on behalf of, another account ===");
+  const photoForClaim = await photoWithLocation();
+  const aDelivered = await makeOrder("idA", buyerA, { status: "delivered", items: [{ name: "Egusi", qty: 1, unitCents: 900 }] });
+  const aLate = await makeOrder("idLate", buyerA, { status: "in_transit", eta: new Date(Date.now() - 86_400_000), items: [{ name: "Egusi", qty: 1, unitCents: 900 }] });
+  const claimRows = (shipmentId: string) => prisma.refundClaim.count({ where: { shipmentId } });
+
+  const stealItem = await outcome(b.claims.submitItemReport({ shipmentId: aDelivered.shipmentId, itemIds: aDelivered.itemIds, reason: "damaged", photo: photoForClaim }));
+  check("another buyer cannot file an item report on this order's parcel", stealItem.code === "NOT_FOUND", stealItem.code);
+  const smuggleOwner = await outcome(
+    (b.claims.submitItemReport as unknown as (i: unknown) => Promise<unknown>)({ shipmentId: aDelivered.shipmentId, itemIds: aDelivered.itemIds, reason: "damaged", photo: photoForClaim, buyerId: buyerA }),
+  );
+  check("naming the owner in the input does not help", smuggleOwner.code === "NOT_FOUND", smuggleOwner.code);
+  const stealParcel = await outcome(b.claims.submitParcelReport({ shipmentId: aLate.shipmentId }));
+  check("nor a parcel report on it", stealParcel.code === "NOT_FOUND", stealParcel.code);
+  check("no report was created against either parcel, and no photo kept for the attempt", (await claimRows(aDelivered.shipmentId)) === 0 && (await claimRows(aLate.shipmentId)) === 0);
+  check("it does not even confirm the order exists: same answer as an order that is not there", (await outcome(b.orders.detail({ orderId: aDelivered.orderId }))).message === (await outcome(b.orders.detail({ orderId: "no-such-order" }))).message);
+
+  const ownClaim = await outcome(
+    (a.claims.submitItemReport as unknown as (i: unknown) => Promise<{ claimId: string }>)({ shipmentId: aDelivered.shipmentId, itemIds: aDelivered.itemIds, reason: "damaged", photo: photoForClaim, buyerId: buyerB }),
+  );
+  const ownRow = ownClaim.value ? await prisma.refundClaim.findUnique({ where: { id: ownClaim.value.claimId } }) : null;
+  check("naming someone else as the buyer is ignored: the report is the caller's", ownClaim.code === "ok" && ownRow?.buyerId === buyerA, `${ownClaim.code} ${ownRow?.buyerId}`);
+
+  const aPacking = await makeOrder("idPack", buyerA, { status: "label_created", items: [{ name: "Egusi", qty: 1, unitCents: 900 }] });
+  const steal = await outcome(otherStore.merchant.packingPhoto({ shipmentId: aPacking.shipmentId, image: withLocation }));
+  const stealSmuggled = await outcome(
+    (otherStore.merchant.packingPhoto as unknown as (i: unknown) => Promise<unknown>)({ shipmentId: aPacking.shipmentId, image: withLocation, storeId }),
+  );
+  check("another seller cannot upload a packing photo for this seller's parcel", steal.code === "NOT_FOUND", steal.code);
+  check("naming the owning store in the input does not help", stealSmuggled.code === "NOT_FOUND", stealSmuggled.code);
+  const untouched = await prisma.shipment.findUniqueOrThrow({ where: { id: aPacking.shipmentId } });
+  check("the parcel has no photo and no change after the attempts", untouched.packingPhotoUrl === null && untouched.packingPhotoAt === null && untouched.status === "label_created");
+  check("another seller cannot accept or ship it either", (await outcome(otherStore.merchant.accept({ shipmentId: aPacking.shipmentId }))).code === "NOT_FOUND" && (await outcome(otherStore.merchant.markShipped({ shipmentId: aPacking.shipmentId }))).code === "NOT_FOUND");
+  check("its inbox does not list it", !(await otherStore.merchant.inbox()).some((j) => j.shipmentId === aPacking.shipmentId));
+  check("a buyer's session is not a seller's", (await outcome(a.merchant.packingPhoto({ shipmentId: aPacking.shipmentId, image: withLocation }))).code === "UNAUTHORIZED");
+  check("and a seller's session is not a buyer's", (await outcome(store.claims.submitParcelReport({ shipmentId: aLate.shipmentId }))).code === "UNAUTHORIZED");
 } finally {
   await sweep();
   await prisma.$disconnect();

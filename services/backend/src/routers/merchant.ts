@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
-import { devProcedure, merchantProcedure, router } from "../trpc.js";
+import { merchantProcedure, router } from "../trpc.js";
 import { PERMIT_STATEMENT_VERSION } from "../config.js";
 import { sellerCategoryNotices, visibleListings } from "../quality/categoryAccess.js";
-import { PhotoRejected, decodeUpload, photoStore } from "../storage/photos.js";
+import { PhotoRejected, assertCanKeepDocuments, decodeUpload, photoStore } from "../storage/photos.js";
+import { signedPhotoUrl } from "../storage/access.js";
+import { DashboardUnavailable, payoutDashboard } from "../payments/dashboard.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier, permitStatement } from "../quality/listingStandards.js";
 
 const CONTROLLED = ["meat", "poultry", "fish", "dairy"] as const;
@@ -18,11 +20,9 @@ const CONTROLLED = ["meat", "poultry", "fish", "dairy"] as const;
  * what enforces that — there is no query here that can return another store's
  * items, because the relation does not lead there.
  *
- * Which store is asking comes from the request (`ctx.storeId`, resolved in
- * identity.ts), never from input: no procedure here accepts a store id. Until
- * real merchant sign-in lands the resolver is a development stub that refuses
- * to run on anything that looks like production, so nothing in this file is
- * reachable in a deployment until sign-in replaces it.
+ * Which store is asking comes from the signed-in session on the request
+ * (`ctx.storeId`, resolved in trpc.ts from the texted-code sign-in), never from
+ * input: no procedure here accepts a store id.
  */
 
 function minutesAgo(from: Date): string {
@@ -50,6 +50,8 @@ function merchantStatus(status: string): "new" | "packing" | "ready" {
  */
 async function storeDocument(photo: string): Promise<string> {
   try {
+    // Not from real sellers until documents have durable, private storage.
+    assertCanKeepDocuments();
     return await photoStore.put("document", decodeUpload(photo));
   } catch (e) {
     if (e instanceof PhotoRejected) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
@@ -58,23 +60,10 @@ async function storeDocument(photo: string): Promise<string> {
 }
 
 export const merchantRouter = router({
-  /**
-   * Which stores exist, so the app can pick one while there is no sign-in.
-   * Development only: it lists every store to anyone, which sign-in makes
-   * unnecessary, and it fails closed anywhere that looks like production.
-   */
-  stores: devProcedure.query(async () => {
-    const stores = await prisma.store.findMany({
-      where: { onboardingStatus: "live" },
-      include: { hubMetro: true },
-      orderBy: { name: "asc" },
-    });
-    return stores.map((s) => ({
-      id: s.id,
-      name: s.name,
-      ownerName: s.ownerName,
-      metro: `${s.hubMetro.name}, ${s.hubMetro.state}`,
-    }));
+  /** The signed-in shop, for the app's header. UNAUTHORIZED is how the app learns it has to ask for a code. */
+  me: merchantProcedure.query(async ({ ctx }) => {
+    const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, include: { hubMetro: true } });
+    return { name: store.name, ownerName: store.ownerName, metro: `${store.hubMetro.name}, ${store.hubMetro.state}` };
   }),
 
   /** MCH-2 — this store's inbox: one card per shipment it has to fulfil. */
@@ -94,8 +83,8 @@ export const merchantRouter = router({
       ago: minutesAgo(s.createdAt),
       status: merchantStatus(s.status),
       temperatureClass: s.temperatureClass,
-      /** QC-2 — null until the box has been photographed. */
-      packingPhotoUrl: s.packingPhotoUrl,
+      /** QC-2 — null until the box has been photographed. A short-lived signed link: this store packed it. */
+      packingPhotoUrl: signedPhotoUrl(s.packingPhotoUrl),
       carrier: s.carrier,
       estimatedDelivery: s.estimatedDelivery,
       /** This parcel's value only — not the buyer's order total. */
@@ -160,7 +149,7 @@ export const merchantRouter = router({
         where: { id: shipment.id },
         data: { packingPhotoUrl: url, packingPhotoAt: new Date() },
       });
-      return { photoUrl: url };
+      return { photoUrl: signedPhotoUrl(url)! };
     }),
 
   /** MCH-4 — everything is packed, photographed and handed to the carrier. */
@@ -233,6 +222,11 @@ export const merchantRouter = router({
         reviewNote: null,
         reviewedAt: null,
         reviewedByEmail: null,
+        // A fresh application is a fresh review: nothing a reviewer recorded
+        // against the last one carries over (it stays in the audit log).
+        verifiedLicenceNumber: null,
+        verifiedIssuingAuthority: null,
+        licenceExpiresOn: null,
       };
       const row = await prisma.kitchenLicence.upsert({
         where: { storeId: ctx.storeId },
@@ -418,6 +412,62 @@ export const merchantRouter = router({
       });
       return { id: listing.id };
     }),
+
+  /* ------------------------------------------------ the AfriMart thread */
+
+  /**
+   * Messages AfriMart has posted to this store's thread, oldest first, and how
+   * many are unread. Payouts are posted here when they are made (the amount,
+   * the date, the order), which is where a seller sees what they have earned.
+   */
+  thread: merchantProcedure.query(async ({ ctx }) => {
+    const rows = await prisma.sellerMessage.findMany({
+      where: { storeId: ctx.storeId },
+      orderBy: { createdAt: "asc" },
+      take: 200,
+    });
+    return {
+      unread: rows.filter((m) => m.readAt === null).length,
+      messages: rows.map((m) => ({
+        id: m.id,
+        kind: m.kind,
+        body: m.body,
+        amountCents: m.amountCents,
+        paidOn: m.paidOn,
+        orderRefs: m.orderRefs,
+        createdAt: m.createdAt,
+        unread: m.readAt === null,
+      })),
+    };
+  }),
+
+  /** Mark everything in the thread as read, which is what opening it does. */
+  markThreadRead: merchantProcedure.mutation(async ({ ctx }) => {
+    const result = await prisma.sellerMessage.updateMany({
+      where: { storeId: ctx.storeId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { marked: result.count };
+  }),
+
+  /**
+   * A fresh link into this store's Stripe Express dashboard, where the full
+   * payout history lives ("See all payouts"). Made on request for the signed-in
+   * store's own connected account and returned; it is never stored, since a
+   * login link is single-use and expires within minutes.
+   */
+  payoutDashboardLink: merchantProcedure.mutation(async ({ ctx }) => {
+    const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, select: { payoutAccountId: true } });
+    if (!store.payoutAccountId) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Your payout account isn't set up yet. We'll message you here when it is." });
+    }
+    try {
+      return await payoutDashboard.loginLink(store.payoutAccountId);
+    } catch (e) {
+      if (e instanceof DashboardUnavailable) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+      throw e;
+    }
+  }),
 
   /** What this store has earned, per PAY-6 payout statements. */
   earnings: merchantProcedure.query(async ({ ctx }) => {

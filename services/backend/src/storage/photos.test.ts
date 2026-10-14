@@ -243,7 +243,7 @@ describe("there is no way to store bytes without sanitising them", () => {
   });
 
   test("the server serves photos as images only, with nosniff", async () => {
-    const server = await readFile(new URL("../server.ts", import.meta.url), "utf8");
+    const server = await readFile(new URL("./route.ts", import.meta.url), "utf8");
     assert.match(server, /x-content-type-options", "nosniff"/);
     assert.match(server, /content-type", "image\/jpeg"/);
     assert.match(server, /photoStore\.read\(/);

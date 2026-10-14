@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { productionSignals } from "../runtime.js";
 
 /**
  * Photo evidence: the seller's packing photo (QC-2) and the buyer's claim
@@ -21,10 +22,15 @@ import sharp from "sharp";
  *    method that stores bytes as they arrived.
  *
  * 2. Storage is a port. `LocalPhotoStore` writes to disk for development; an
- *    object store (S3, R2) replaces it without touching a caller. Files are named
- *    by 128 random bits, so a URL is a capability and cannot be guessed — which
- *    is acceptable for MVP evidence and is not a substitute for access control
- *    once real sign-in exists.
+ *    object store (S3, R2) replaces it without touching a caller. Photos are
+ *    private: nothing here is served by its path. Access is decided by the
+ *    procedure that returns a photo and expressed as a short-lived signed link
+ *    (access.ts), which the picture route requires.
+ *
+ *    The file name is 128 random bits and that is only defence in depth. A disk
+ *    on a single server is not where licence documents belong, so a store says
+ *    whether it is `durable`, and documents are refused where it is not (see
+ *    `assertCanKeepDocuments`).
  */
 
 export type PhotoKind = "packing" | "claim" | "document";
@@ -99,14 +105,31 @@ async function assertNoMetadata(jpeg: Buffer): Promise<void> {
 }
 
 export interface PhotoStore {
+  /**
+   * True for storage that survives a redeploy and is private by construction
+   * (an object store with no public access). A directory on the web server is
+   * neither, so the local store is not.
+   */
+  readonly durable: boolean;
   /** Sanitises, stores, and returns the path the photo is served from. */
   put(kind: PhotoKind, upload: Buffer): Promise<string>;
   read(kind: PhotoKind, name: string): Promise<Buffer | null>;
 }
 
+/**
+ * Licence documents are not accepted from real sellers until they have
+ * somewhere durable and private to live. On a development machine the local
+ * store is fine; anywhere else it is refused, with a message a seller can read.
+ */
+export function assertCanKeepDocuments(store: PhotoStore = photoStore, env: NodeJS.ProcessEnv = process.env): void {
+  if (store.durable || productionSignals(env).length === 0) return;
+  throw new PhotoRejected("We can't take documents yet. We'll tell you here when we can.");
+}
+
 const NAME = /^[a-f0-9]{32}\.jpg$/;
 
 export class LocalPhotoStore implements PhotoStore {
+  readonly durable = false;
   constructor(private readonly root: string) {}
 
   async put(kind: PhotoKind, upload: Buffer): Promise<string> {

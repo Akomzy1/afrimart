@@ -1,0 +1,16 @@
+/* Buyer sign-in (no prototype screen; design-system tokens and the checkout's form patterns). */
+.bsi { max-width: 440px; margin: 0 auto; padding: 40px 20px 60px; display: flex; flex-direction: column; gap: 10px; }
+.bsi h1 { font-size: 34px; line-height: 1.08; margin: 0 0 4px; }
+.bsi .lede { font-size: 16px; line-height: 1.5; color: var(--ink-2); margin: 0 0 18px; }
+.bsi label { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.bsi input { height: 52px; border: 1.5px solid var(--line); border-radius: var(--r-md); background: var(--card); padding: 0 14px; font-family: var(--sans); font-size: 17px; color: var(--ink); outline: 0; }
+.bsi input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(156, 107, 46, 0.16); }
+.bsi .bsi-code { font-family: var(--serif); font-size: 30px; letter-spacing: 0.4em; text-align: center; }
+.bsi-go { height: 54px; margin-top: 8px; border: 0; border-radius: var(--r-md); background: var(--green); color: #f4ede1; font-size: 16px; font-weight: 700; }
+.bsi-go:disabled { background: var(--cream); color: var(--ink-3); border: 1.5px solid var(--line); }
+.bsi-err { padding: 10px 14px; border-radius: var(--r-md); background: var(--amber-50); border: 1.5px solid var(--amber); font-size: 14px; font-weight: 600; line-height: 1.35; }
+.bsi-note { font-size: 14px; color: var(--ink-2); }
+.bsi-alt { font-size: 14px; color: var(--ink-2); margin-top: 6px; }
+.bsi-alt button { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--green); text-decoration: underline; text-underline-offset: 2px; }
+.bsi-alt button:disabled { opacity: 0.5; }
+.bsi-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--green); text-decoration: underline; text-underline-offset: 2px; }

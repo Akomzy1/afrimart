@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { assertDevOnlyAllowed, isDevelopment } from "../runtime.js";
 
 /**
  * Delivery channels, each behind an interface.
@@ -113,6 +114,72 @@ export class DisabledSmsSender implements SmsSender {
   }
 }
 
+/**
+ * Development SMS: writes each text to a file so a sign-in code can be read
+ * off the disk instead of a phone. Refuses to run anywhere that looks like
+ * production, where a text that is "sent" to a file would be a code that never
+ * arrives.
+ */
+export class FileSmsSender implements SmsSender {
+  readonly name = "file";
+  readonly enabled = true;
+  private readonly dir: string;
+
+  constructor(dir = path.resolve(".sms")) {
+    this.dir = dir;
+  }
+
+  async send(message: SmsMessage): Promise<void> {
+    assertDevOnlyAllowed();
+    await mkdir(this.dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await writeFile(path.join(this.dir, `${stamp}_${message.to.replace(/\D/g, "")}.txt`), message.body, "utf8");
+  }
+}
+
+/**
+ * Twilio over its REST API, with no SDK. Switched on only when the account is
+ * configured AND `SMS_ENABLED=yes`, which is set once the A2P 10DLC campaign has
+ * cleared (NTF-4): sending unregistered traffic gets the number filtered.
+ *
+ * Not exercised against Twilio from this repo, since it needs credentials and a
+ * registered sender; the request shape follows Twilio's Messages API.
+ */
+export class TwilioSmsSender implements SmsSender {
+  readonly name = "twilio";
+  readonly enabled = true;
+
+  constructor(
+    private readonly accountSid: string,
+    private readonly authToken: string,
+    private readonly from: { messagingServiceSid: string } | { number: string },
+  ) {}
+
+  async send(message: SmsMessage): Promise<void> {
+    const body = new URLSearchParams({ To: message.to, Body: message.body });
+    if ("messagingServiceSid" in this.from) body.set("MessagingServiceSid", this.from.messagingServiceSid);
+    else body.set("From", this.from.number);
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        authorization: `Basic ${Buffer.from(`${this.accountSid}:${this.authToken}`).toString("base64")}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+    if (!res.ok) throw new Error(`Twilio refused the message (${res.status})`);
+  }
+}
+
+/** Twilio if it is configured and switched on; a file on a development machine; otherwise nothing is sent. */
+export function defaultSmsSender(env: NodeJS.ProcessEnv = process.env): SmsSender {
+  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_MESSAGING_SERVICE_SID: service, TWILIO_FROM_NUMBER: number } = env;
+  if (env.SMS_ENABLED === "yes" && sid && token && (service || number)) {
+    return new TwilioSmsSender(sid, token, service ? { messagingServiceSid: service } : { number: number! });
+  }
+  return isDevelopment(env) ? new FileSmsSender() : new DisabledSmsSender();
+}
+
 export interface Senders {
   email: EmailSender;
   push: PushSender;
@@ -122,7 +189,7 @@ export interface Senders {
 let senders: Senders = {
   email: new FileEmailSender(),
   push: new MemoryPushSender(),
-  sms: new DisabledSmsSender(),
+  sms: defaultSmsSender(),
 };
 
 export function getSenders(): Senders {

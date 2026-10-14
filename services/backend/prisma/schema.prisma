@@ -71,6 +71,12 @@ model Store {
   id                    String            @id @default(cuid())
   name                  String
   ownerName             String
+  /// The owner's mobile number in E.164, which is how the owner signs in to the
+  /// merchant app (a code is texted to it). Set at onboarding. Null until then,
+  /// and a store with none cannot sign in.
+  ownerPhone            String?           @unique
+  userSessions          UserSession[]
+  messages              SellerMessage[]
   sellerType            SellerType
   hubMetro              HubMetro          @relation(fields: [hubMetroId], references: [id])
   hubMetroId            String
@@ -179,6 +185,7 @@ model Buyer {
   id            String         @id @default(cuid())
   email         String         @unique
   phone         String?
+  userSessions  UserSession[]
   addresses     Address[]
   carts         Cart[]
   refundClaims  RefundClaim[]
@@ -301,8 +308,76 @@ model Payout {
   adjustmentsCents   Int       @default(0)
   scheduledFor       DateTime?
   paidAt             DateTime?
+  /// The note posted to the seller's AfriMart thread when this was paid.
+  message            SellerMessage?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+}
+
+/// A message from AfriMart in a seller's thread. Today only payouts post here
+/// (the amount, the date and the orders it covers); the seller's earnings live
+/// in this thread rather than on a screen of their own.
+model SellerMessage {
+  id          String    @id @default(cuid())
+  store       Store     @relation(fields: [storeId], references: [id])
+  storeId     String
+  kind        String
+  body        String
+  /// One message per payout, so paying the same payout twice cannot post twice.
+  payout      Payout?   @relation(fields: [payoutId], references: [id])
+  payoutId    String?   @unique
+  amountCents Int?
+  paidOn      DateTime?
+  orderRefs   String[]
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([storeId, createdAt])
+}
+
+enum UserKind {
+  buyer
+  store
+}
+
+/// A one-time sign-in code for a buyer (emailed) or a store owner (texted).
+/// Only a salted hash is kept, and a code is good for one successful use, a few
+/// wrong guesses and a few minutes.
+model AuthCode {
+  id         String    @id @default(cuid())
+  kind       UserKind
+  /// Normalised: a lower-case email for a buyer, an E.164 number for a store.
+  identifier String
+  salt       String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([kind, identifier, createdAt])
+}
+
+/// A signed-in buyer or store. Opaque token, only its hash stored, revocable —
+/// the same shape as a staff session, with a longer life because the owner of a
+/// shop phone should not be asked for a texted code every morning.
+model UserSession {
+  id         String    @id @default(cuid())
+  kind       UserKind
+  buyer      Buyer?    @relation(fields: [buyerId], references: [id])
+  buyerId    String?
+  store      Store?    @relation(fields: [storeId], references: [id])
+  storeId    String?
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([buyerId])
+  @@index([storeId])
 }
 
 model Subscription {
@@ -655,6 +730,13 @@ model KitchenLicence {
   reviewNote      String?
   reviewedAt      DateTime?
   reviewedByEmail String?
+  /// What the reviewer read off the licence when approving, entered by them and
+  /// not taken from the seller: the number, who issued it, and when it lapses.
+  /// All three are required to approve. The expiry is stored so a warning can be
+  /// raised before it lapses; nothing enforces it yet.
+  verifiedLicenceNumber     String?
+  verifiedIssuingAuthority  String?
+  licenceExpiresOn          DateTime? @db.Date
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }

@@ -111,6 +111,11 @@ describe("audited actions", () => {
       "resolveRefundClaim",
       // QC-1 — each of these changes what a seller may list.
       "reviewKitchenLicence",
+      // A staff view of a private photo is itself an auditable act.
+      "claimPhotoLinks",
+      "evidencePhotoLink",
+      // Whoever holds this number can sign in as the shop.
+      "setStoreOwnerPhone",
       "setSellerCategory",
       "setPlatformCategory",
       "setControlledCategory",

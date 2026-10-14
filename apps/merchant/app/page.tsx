@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useSyncExternalStore } from "react";
 import {
   ProductGlyph,
   CheckIcon,
@@ -16,8 +15,9 @@ import {
   LogoMark,
 } from "@afrimart/ui";
 import { trpc } from "@afrimart/api-client";
-import { MESSAGES, glyphForCategory, type MerchantOrder } from "./orders";
-import { photoUrl, setDevStoreId } from "./providers";
+import { glyphForCategory, type MerchantOrder } from "./orders";
+import { photoUrl, tokenStore } from "./providers";
+import { SignIn } from "./SignIn";
 import { BOX_PHOTO, PhotoCamera } from "./PhotoCamera";
 import { SupportThread } from "./SupportThread";
 import { WhatsListed } from "./WhatsListed";
@@ -44,14 +44,13 @@ type Tab = "camera" | "orders" | "messages";
  * than a UI one. Flagged, not built.
  */
 export default function MerchantApp() {
-  // useSearchParams opts the tree into client rendering, which the static
-  // export needs a boundary for. The fallback is the shell, not a spinner —
-  // a merchant on a slow phone should see furniture, not a blank screen.
-  return (
-    <Suspense fallback={<div className="mr-shell" />}>
-      <MerchantAppInner />
-    </Suspense>
-  );
+  // Signed in or not is decided on the device and confirmed by the server: a
+  // token is only a hint, and the first request that comes back UNAUTHORIZED
+  // clears it (providers.tsx). Until the browser has been asked, show the
+  // shell rather than flashing the sign-in screen at someone who is signed in.
+  const token = useSyncExternalStore(tokenStore.subscribe, tokenStore.get, () => undefined);
+  if (token === undefined) return <div className="mr-shell" />;
+  return token ? <MerchantAppInner /> : <SignIn />;
 }
 
 function MerchantAppInner() {
@@ -60,21 +59,10 @@ function MerchantAppInner() {
   // Two screens reached from inside the tabs: What's listed (Camera) and the AfriMart thread (Messages).
   const [sub, setSub] = useState<"listed" | "support" | null>(null);
 
-  /**
-   * There is no merchant sign-in yet. Rather than add a store picker — which
-   * would be a fourth surface the prototype doesn't have — the store comes from
-   * `?store=<id>`, defaulting to the first live one. Replace with the session's
-   * store when auth lands; every query below is already scoped by it.
-   */
-  const params = useSearchParams();
-  const storesQuery = trpc.merchant.stores.useQuery();
-  const storeId = params.get("store") ?? storesQuery.data?.[0]?.id ?? "";
-  const store = storesQuery.data?.find((s) => s.id === storeId) ?? storesQuery.data?.[0];
-
-  // Set before the first identified request is made: the queries below are only
-  // enabled once there is a store, and every request reads this at send time.
-  setDevStoreId(storeId || null);
-  const inbox = trpc.merchant.inbox.useQuery(undefined, { enabled: Boolean(storeId) });
+  // Which shop this is comes from the session the server holds, not from the page.
+  const store = trpc.merchant.me.useQuery().data;
+  const inbox = trpc.merchant.inbox.useQuery();
+  const thread = trpc.merchant.thread.useQuery();
   const utils = trpc.useUtils();
   const acceptJob = trpc.merchant.accept.useMutation({
     onSuccess: () => utils.merchant.inbox.invalidate(),
@@ -115,7 +103,7 @@ function MerchantAppInner() {
 
   const open = orders.find((o) => o.id === openId) ?? null;
   const newCount = orders.filter((o) => o.status === "new").length;
-  const unread = MESSAGES.filter((m) => m.unread).length;
+  const unread = thread.data?.unread ?? 0;
 
   function update(id: string, patch: Partial<MerchantOrder>) {
     if (patch.step !== undefined) setStepBy((prev) => ({ ...prev, [id]: patch.step as number }));
@@ -339,7 +327,13 @@ function MerchantAppInner() {
       <div className="mr-scroll">
         {tab === "orders" && <OrdersInbox orders={orders} onOpen={setOpenId} onAccept={(id) => update(id, { status: "packing", step: 0 })} />}
         {tab === "camera" && <CameraSurface onListed={() => setSub("listed")} />}
-        {tab === "messages" && <MessagesSurface onSupport={() => setSub("support")} />}
+        {tab === "messages" && (
+          <MessagesSurface
+            onSupport={() => setSub("support")}
+            latest={thread.data?.messages.at(-1)?.body ?? null}
+            unread={unread > 0}
+          />
+        )}
         <div className="mr-spacer" />
       </div>
 
@@ -560,20 +554,25 @@ function CameraSurface({ onListed }: { onListed: () => void }) {
   );
 }
 
-function MessagesSurface({ onSupport }: { onSupport: () => void }) {
+/**
+ * The only conversation there is today is with AfriMart: payouts as they are
+ * made, and applying for licensed-kitchen status or a badge. Buyer-to-seller
+ * messages are not built, and the prototype's sample conversations (invented
+ * customers) are not shown to a real seller.
+ */
+function MessagesSurface({
+  onSupport, latest, unread,
+}: { onSupport: () => void; latest: string | null; unread: boolean }) {
   return (
     <div className="mr-msglist">
-      {MESSAGES.map((m) => (
-        <button type="button" className={`mr-msgrow${m.support ? " support" : ""}`} key={m.id} onClick={m.support ? onSupport : undefined}>
-          <span className="av">{m.initial}</span>
-          <span className="m">
-            <span className="nm">{m.from}</span>
-            <span className="snippet">{m.snippet}</span>
-          </span>
-          <span className="when">{m.when}</span>
-          {m.unread && <span className="unread" />}
-        </button>
-      ))}
+      <button type="button" className="mr-msgrow support" onClick={onSupport}>
+        <span className="av">AM</span>
+        <span className="m">
+          <span className="nm">AfriMart</span>
+          <span className="snippet">{latest ?? "Chilled food or a badge? Apply here."}</span>
+        </span>
+        {unread && <span className="unread" />}
+      </button>
     </div>
   );
 }

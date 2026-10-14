@@ -10,6 +10,11 @@ import { checkListingForStore } from "../quality/categoryAccess.js";
 import { refundClaim } from "../quality/claimService.js";
 import { claimRef } from "../quality/claims.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier } from "../quality/listingStandards.js";
+import { parsePhotoPath, signedPhotoUrl } from "../storage/access.js";
+import { postPayoutMessage } from "../payments/payoutMessage.js";
+import { normalisePhone } from "../auth/signInCodes.js";
+
+const isPhotoPath = (v: string | null): v is string => v !== null && parsePhotoPath(v) !== null;
 
 /**
  * PRD 6.11 — the internal operations console's API (ADM-1 to ADM-5).
@@ -182,6 +187,8 @@ export const adminRouter = router({
       verificationStatus: s.verificationStatus,
       metro: `${s.hubMetro.name}, ${s.hubMetro.state}`,
       hubMetroId: s.hubMetroId,
+      /** The number the shop signs in with, shown as its last four digits only. */
+      ownerPhoneLast4: s.ownerPhone ? s.ownerPhone.slice(-4) : null,
       listingCount: s._count.listings,
       pendingDrafts: s._count.catalogueDrafts,
       /** QC-1 — null for a seller who has never applied. */
@@ -196,6 +203,40 @@ export const adminRouter = router({
   hubs: staffProcedure("stores:read").query(() =>
     prisma.hubMetro.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, state: true } }),
   ),
+
+  /**
+   * Set the mobile number a shop signs in to the merchant app with. This is how
+   * an owner gets in, so it is not a routine edit: whoever can receive a text at
+   * that number can reach the shop's orders and payouts. It needs the
+   * permission to write stores, a reason, and it is audited. Changing it ends
+   * every session the shop already has, so the previous holder of the old
+   * number (or of a stolen session) is signed out at once.
+   */
+  setStoreOwnerPhone: staffProcedure("stores:write")
+    .input(z.object({ id: z.string(), phone: z.string(), reason: z.string().trim().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const phone = normalisePhone(input.phone);
+      if (!phone) throw new TRPCError({ code: "BAD_REQUEST", message: "Enter the owner's mobile number with its area code." });
+      const before = await prisma.store.findUnique({ where: { id: input.id }, select: { ownerPhone: true } });
+      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such store." });
+      const taken = await prisma.store.findUnique({ where: { ownerPhone: phone }, select: { id: true } });
+      if (taken && taken.id !== input.id) {
+        throw new TRPCError({ code: "CONFLICT", message: "Another store already signs in with that number." });
+      }
+      return prisma.$transaction(async (tx) => {
+        await tx.store.update({ where: { id: input.id }, data: { ownerPhone: phone } });
+        const ended = await tx.userSession.updateMany({ where: { storeId: input.id, revokedAt: null }, data: { revokedAt: new Date() } });
+        await writeAudit(tx, ctx.staff, {
+          action: "store.owner_phone_change",
+          subjectType: "store",
+          subjectId: input.id,
+          before: { ownerPhone: before.ownerPhone },
+          after: { ownerPhone: phone, sessionsEnded: ended.count },
+          note: input.reason,
+        });
+        return { ownerPhoneLast4: phone.slice(-4), sessionsEnded: ended.count };
+      });
+    }),
 
   updateStore: staffProcedure("stores:write")
     .input(
@@ -519,6 +560,9 @@ export const adminRouter = router({
           where: { id: input.payoutId },
           data: { heldUntil: null, holdReason: null, status: "released", paidAt: new Date() },
         });
+        // The seller learns of it in their AfriMart thread, in the same
+        // transaction: a payout cannot be marked paid without the note.
+        await postPayoutMessage(tx, after, after.paidAt!);
         await writeAudit(tx, ctx.staff, {
           action: "payout.release",
           subjectType: "payout",
@@ -596,11 +640,14 @@ export const adminRouter = router({
         reason: c.reason,
         note: c.note,
         amountCents: c.amountCents,
-        /** The buyer's photo of the problem. */
-        photoUrl: c.photoUrl,
+        /**
+         * Whether there are photos, not the photos: they are private, and opening
+         * them is its own audited step (`claimPhotoLinks`).
+         */
+        hasPhoto: c.photoUrl !== null,
         storeName: shipment?.store.name ?? null,
-        /** The seller's photo of the open box before sealing (QC-2). */
-        packingPhotoUrl: shipment?.packingPhotoUrl ?? null,
+        /** The seller packed it and photographed the open box before sealing (QC-2). */
+        hasPackingPhoto: (shipment?.packingPhotoUrl ?? null) !== null,
         packingPhotoAt: shipment?.packingPhotoAt ?? null,
         parcelStatus: shipment?.status ?? null,
         items: c.items.map((i) => ({ name: i.shipmentItem.nameSnapshot, quantity: i.shipmentItem.quantity, lineTotalCents: i.lineTotalCents })),
@@ -611,6 +658,69 @@ export const adminRouter = router({
       };
     });
   }),
+
+  /**
+   * Open the photos on a claim: the buyer's photo of the problem and, beside it,
+   * the seller's packing photo. Both are private (the buyer's can show their
+   * address), so this is the only way staff get a link, and every photo opened
+   * is written to the audit log with who opened it, in the same transaction as
+   * the link being issued. A mutation, not a query, because it records something.
+   */
+  claimPhotoLinks: staffProcedure("finance:read")
+    .input(z.object({ claimId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const claim = await prisma.refundClaim.findUnique({ where: { id: input.claimId } });
+      if (!claim) throw new TRPCError({ code: "NOT_FOUND", message: "No such report." });
+      const shipment = claim.shipmentId ? await prisma.shipment.findUnique({ where: { id: claim.shipmentId } }) : null;
+
+      const viewed: { key: "photo" | "packingPhoto"; path: string; subjectType: "claim" | "shipment"; subjectId: string }[] = [];
+      if (claim.photoUrl) viewed.push({ key: "photo", path: claim.photoUrl, subjectType: "claim", subjectId: claim.id });
+      if (shipment?.packingPhotoUrl) {
+        viewed.push({ key: "packingPhoto", path: shipment.packingPhotoUrl, subjectType: "shipment", subjectId: shipment.id });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        for (const v of viewed) {
+          await writeAudit(tx, ctx.staff, {
+            action: "photo.view",
+            subjectType: v.subjectType,
+            subjectId: v.subjectId,
+            after: { photo: v.key, claimId: claim.id },
+            note: v.key === "photo" ? "Opened the buyer's photo on a report" : "Opened the seller's packing photo",
+          });
+        }
+      });
+      return {
+        photo: signedPhotoUrl(viewed.find((v) => v.key === "photo")?.path),
+        packingPhoto: signedPhotoUrl(viewed.find((v) => v.key === "packingPhoto")?.path),
+      };
+    }),
+
+  /**
+   * Open the document a seller sent with a licence or badge application. Needs
+   * the permission to read stores; the view is audited; the link is signed and
+   * short-lived. This is the only way staff see a licence photo.
+   */
+  evidencePhotoLink: staffProcedure("stores:read")
+    .input(z.object({ subject: z.enum(["kitchen_licence", "seller_badge"]), id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const row =
+        input.subject === "kitchen_licence"
+          ? await prisma.kitchenLicence.findUnique({ where: { id: input.id }, select: { evidence: true, storeId: true } })
+          : await prisma.sellerBadge.findUnique({ where: { id: input.id }, select: { evidence: true, storeId: true } });
+      if (!row || !isPhotoPath(row.evidence)) throw new TRPCError({ code: "NOT_FOUND", message: "There is no photo on that application." });
+
+      await prisma.$transaction((tx) =>
+        writeAudit(tx, ctx.staff, {
+          action: "photo.view",
+          subjectType: input.subject,
+          subjectId: input.id,
+          after: { storeId: row.storeId },
+          note: input.subject === "kitchen_licence" ? "Opened a kitchen licence photo" : "Opened a badge document",
+        }),
+      );
+      return { url: signedPhotoUrl(row.evidence)! };
+    }),
 
   /**
    * QC-8 — resolve a claim and say where the cost lands.
@@ -854,7 +964,9 @@ export const adminRouter = router({
       sellerType: b.store.sellerType,
       kind: b.kind,
       status: b.status,
-      evidence: b.evidence,
+      // Text the seller wrote is shown; a photo is not, it is opened (audited) with `evidencePhotoLink`.
+      evidence: isPhotoPath(b.evidence) ? null : b.evidence,
+      hasEvidencePhoto: isPhotoPath(b.evidence),
       reviewNote: b.reviewNote,
       createdAt: b.createdAt,
     }));
@@ -922,7 +1034,11 @@ export const adminRouter = router({
         status: r.status,
         licenceNumber: r.licenceNumber,
         issuingAuthority: r.issuingAuthority,
-        evidence: r.evidence,
+        evidence: isPhotoPath(r.evidence) ? null : r.evidence,
+        hasEvidencePhoto: isPhotoPath(r.evidence),
+        verifiedLicenceNumber: r.verifiedLicenceNumber,
+        verifiedIssuingAuthority: r.verifiedIssuingAuthority,
+        licenceExpiresOn: r.licenceExpiresOn,
         reviewNote: r.reviewNote,
         reviewedByEmail: r.reviewedByEmail,
         reviewedAt: r.reviewedAt,
@@ -944,6 +1060,15 @@ export const adminRouter = router({
         decision: z.enum(["approve", "reject", "revoke"]),
         /** The reviewer's attestation that they have checked the licence itself. */
         licenceChecked: z.boolean().default(false),
+        /**
+         * What the reviewer read on the licence. Applications can be a photo and
+         * nothing else, so an approval is where the facts are recorded, by the
+         * person who checked them. Required to approve, and checked below rather
+         * than in the schema so the message says which one is missing.
+         */
+        licenceNumber: z.string().trim().optional(),
+        issuingAuthority: z.string().trim().optional(),
+        expiresOn: z.coerce.date().optional(),
         note: z.string().min(1),
       }),
     )
@@ -957,6 +1082,23 @@ export const adminRouter = router({
           message: "Check the licence before approving, then confirm that you have.",
         });
       }
+      if (input.decision === "approve") {
+        const missing = [
+          !input.licenceNumber && "the licence number",
+          !input.issuingAuthority && "who issued it",
+          !input.expiresOn && "its expiry date",
+        ].filter(Boolean);
+        if (missing.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Record ${missing.join(", ")} from the licence before approving.` });
+        }
+        // A licence that has already lapsed is not one to approve. Compared by
+        // calendar day: it is valid through its expiry date.
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        if (input.expiresOn!.getTime() < today.getTime()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "That licence has already expired, so it cannot be approved." });
+        }
+      }
       // Approve and refuse decide an open application; revoke ends an approval.
       const allowedFrom = input.decision === "revoke" ? "approved" : "applied";
       if (licence.status !== allowedFrom) {
@@ -969,17 +1111,42 @@ export const adminRouter = router({
       }
 
       const status = input.decision === "approve" ? "approved" : input.decision === "reject" ? "rejected" : "revoked";
+      const approving = input.decision === "approve";
       return prisma.$transaction(async (tx) => {
         const after = await tx.kitchenLicence.update({
           where: { id: input.id },
-          data: { status, reviewNote: input.note, reviewedAt: new Date(), reviewedByEmail: ctx.staff.email },
+          data: {
+            status,
+            reviewNote: input.note,
+            reviewedAt: new Date(),
+            reviewedByEmail: ctx.staff.email,
+            // Only an approval records what was checked. A refusal or a revocation
+            // leaves the earlier record as it was, so what was approved stays known.
+            ...(approving
+              ? {
+                  verifiedLicenceNumber: input.licenceNumber,
+                  verifiedIssuingAuthority: input.issuingAuthority,
+                  licenceExpiresOn: input.expiresOn,
+                }
+              : {}),
+          },
         });
         await writeAudit(tx, ctx.staff, {
           action: "store.kitchen_licence_change",
           subjectType: "store",
           subjectId: licence.storeId,
-          before: { kitchenLicence: licence.status },
-          after: { kitchenLicence: after.status, licenceNumber: after.licenceNumber },
+          before: {
+            kitchenLicence: licence.status,
+            licenceNumber: licence.verifiedLicenceNumber,
+            issuingAuthority: licence.verifiedIssuingAuthority,
+            expiresOn: licence.licenceExpiresOn,
+          },
+          after: {
+            kitchenLicence: after.status,
+            licenceNumber: after.verifiedLicenceNumber,
+            issuingAuthority: after.verifiedIssuingAuthority,
+            expiresOn: after.licenceExpiresOn,
+          },
           note: input.note,
         });
         return after;

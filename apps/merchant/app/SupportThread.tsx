@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { trpc } from "@afrimart/api-client";
 import { CameraIcon, CheckIcon, ChevronLeftIcon } from "@afrimart/ui";
 import { DOCUMENT_PHOTO, PhotoCamera } from "./PhotoCamera";
@@ -64,6 +64,34 @@ function Ic({ children, size = 1.7 }: { children: ReactNode; size?: number }) {
 export function SupportThread({ onBack }: { onBack: () => void }) {
   const utils = trpc.useUtils();
   const standing = trpc.merchant.standing.useQuery();
+  const thread = trpc.merchant.thread.useQuery();
+  // Opening the thread is what reads it.
+  const markRead = trpc.merchant.markThreadRead.useMutation({ onSuccess: () => utils.merchant.thread.invalidate() });
+  const unreadCount = thread.data?.unread ?? 0;
+  useEffect(() => {
+    if (unreadCount > 0 && !markRead.isPending) markRead.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadCount]);
+  const payouts = (thread.data?.messages ?? []).filter((m) => m.kind === "payout");
+  const dashboard = trpc.merchant.payoutDashboardLink.useMutation();
+
+  /**
+   * "See all payouts" opens the seller's Stripe Express dashboard. The link is
+   * made on request and is single-use, so a window is opened first (a popup
+   * opened after a network call is blocked) and pointed at it when it arrives.
+   */
+  function seeAllPayouts() {
+    const win = window.open("about:blank", "_blank");
+    dashboard.mutate(undefined, {
+      onSuccess: ({ url }) => {
+        if (win) {
+          win.opener = null;
+          win.location.href = url;
+        } else window.location.href = url;
+      },
+      onError: () => win?.close(),
+    });
+  }
   const [picked, setPicked] = useState<Kind | null>(null);
   const [camera, setCamera] = useState(false);
   const applyKitchen = trpc.merchant.applyForKitchenLicence.useMutation();
@@ -77,7 +105,7 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
     !s ? null : k === "kitchen" ? s.kitchen : (s.badges.find((b) => b.kind === k)?.status ?? null);
 
   const kinds = (Object.keys(OPTIONS) as Kind[]).filter((k) => k !== "kitchen" || s?.homeTier);
-  const open = kinds.filter((k) => status(k) !== "applied" && status(k) !== "approved");
+  const open = s ? kinds.filter((k) => status(k) !== "applied" && status(k) !== "approved") : [];
   const waiting = kinds.filter((k) => status(k) === "applied");
   const approved = kinds.filter((k) => status(k) === "approved");
 
@@ -90,6 +118,7 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
         setPicked(null);
       },
     };
+    // A refusal to take documents (storage not ready) lands in `error` and is shown as written.
     if (picked === "kitchen") applyKitchen.mutate({ document }, done);
     else applyBadge.mutate({ kind: picked, document }, done);
   }
@@ -105,11 +134,33 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
 
       <div className="mr-scroll">
         <div className="mr-thread">
-          <div className="b-in support">
-            {s?.homeTier
-              ? "Want to sell chilled food or show a badge? Tap one below, then send us a photo of your document."
-              : "Want to show a badge on your shop? Tap one below, then send us a photo of your document."}
-          </div>
+          {/* Which words, and which options, depend on the shop's standing; show neither until it has loaded. */}
+          {s && (
+            <div className="b-in support">
+              {s.homeTier
+                ? "Want to sell chilled food or show a badge? Tap one below, then send us a photo of your document."
+                : "Want to show a badge on your shop? Tap one below, then send us a photo of your document."}
+            </div>
+          )}
+
+          {payouts.map((p) => (
+            <div className="b-in support payout" key={p.id}>
+              <div className="k">Payout sent</div>
+              <div className="amt serif tnum">{p.amountCents === null ? "" : `$${(p.amountCents / 100).toFixed(2)}`}</div>
+              <div className="d">
+                {p.paidOn ? new Date(p.paidOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) : ""}
+              </div>
+              <div className="d">Covers order{p.orderRefs.length > 1 ? "s" : ""} {p.orderRefs.join(", ")}</div>
+            </div>
+          ))}
+          {payouts.length > 0 && (
+            <div className="mr-qrs">
+              {dashboard.isError && <div className="mr-sheet-err">{dashboard.error.message}</div>}
+              <button type="button" className="mr-bigbtn ghost" onClick={seeAllPayouts} disabled={dashboard.isPending}>
+                {dashboard.isPending ? "Opening…" : "See all payouts"}
+              </button>
+            </div>
+          )}
 
           {approved.map((k) => (
             <div className="b-in support approved" key={`ok-${k}`}>

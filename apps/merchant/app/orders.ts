@@ -27,11 +27,6 @@ export interface MerchantOrder {
 }
 
 
-export const MESSAGES: { id: string; from: string; initial: string; snippet: string; when: string; unread: boolean; support?: boolean }[] = [
-  { id: "m1", from: "Amara O.", initial: "A", snippet: "Is the egusi coarse or fine ground?", when: "5 min", unread: true },
-  { id: "m2", from: "AfriMart", initial: "AM", snippet: "Chilled food or a badge? Apply here.", when: "", unread: false, support: true },
-  { id: "m3", from: "Kofi B.", initial: "K", snippet: "Thank you — the suya spice was perfect.", when: "2 days", unread: false },
-];
 
 /** Category to glyph, so a real catalogue item still draws the right icon. */
 export function glyphForCategory(category: string): ProductGlyphKind {

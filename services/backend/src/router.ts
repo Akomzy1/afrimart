@@ -7,8 +7,10 @@ import { ordersRouter } from "./routers/orders.js";
 import { claimsRouter } from "./routers/claims.js";
 import { adminRouter } from "./routers/admin.js";
 import { staffAuthRouter } from "./routers/staffAuth.js";
+import { userAuthRouter } from "./routers/userAuth.js";
 
 export const appRouter = router({
+  userAuth: userAuthRouter,
   health: healthRouter,
   catalogue: catalogueRouter,
   checkout: checkoutRouter,

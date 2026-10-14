@@ -19,14 +19,31 @@ import { trpc } from "@afrimart/api-client";
 
 const API_ORIGIN = new URL(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/trpc").origin;
 
-/** What the seller sent: a photo of the document opens in a new tab, anything else is shown as written. */
-function Evidence({ value }: { value: string | null }) {
-  if (!value) return <>—</>;
-  if (!value.startsWith("/photos/")) return <>{value}</>;
+/**
+ * What the seller sent. Words are shown as written. A photo of a document is
+ * private, so it is not linked from the table: opening it asks the server for a
+ * short-lived signed link, and that request is written to the audit log with who
+ * made it. The link opens in a new tab.
+ */
+function Evidence({
+  text, hasPhoto, subject, id,
+}: { text: string | null; hasPhoto: boolean; subject: "kitchen_licence" | "seller_badge"; id: string }) {
+  const open = trpc.admin.evidencePhotoLink.useMutation({
+    onSuccess: ({ url }) => window.open(`${API_ORIGIN}${url}`, "_blank", "noopener,noreferrer"),
+  });
   return (
-    <a href={`${API_ORIGIN}${value}`} target="_blank" rel="noreferrer">
-      Open the photo
-    </a>
+    <>
+      {text ?? (hasPhoto ? null : "—")}
+      {hasPhoto && (
+        <div>
+          <button type="button" className="op-btn" disabled={open.isPending} onClick={() => open.mutate({ subject, id })}>
+            {open.isPending ? "Opening…" : "Open the photo"}
+          </button>
+          <div className="muted">Opening it is recorded.</div>
+          {open.isError && <div className="op-note">{open.error.message}</div>}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -90,6 +107,8 @@ function KitchenLicences({ canWrite }: { canWrite: boolean }) {
   });
   const [note, setNote] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  // What the reviewer reads off the licence; the server refuses an approval without all three.
+  const [detail, setDetail] = useState<Record<string, { number?: string; authority?: string; expires?: string }>>({});
 
   return (
     <div className="op-sec">
@@ -139,7 +158,7 @@ function KitchenLicences({ canWrite }: { canWrite: boolean }) {
                   <div className="muted">{r.issuingAuthority}</div>
                 </td>
                 <td className="muted">
-                  <Evidence value={r.evidence} />
+                  <Evidence text={r.evidence} hasPhoto={r.hasEvidencePhoto} subject="kitchen_licence" id={r.id} />
                 </td>
                 <td className="muted">
                   {when(status === "applied" ? r.createdAt : (r.reviewedAt ?? r.createdAt))}
@@ -161,6 +180,39 @@ function KitchenLicences({ canWrite }: { canWrite: boolean }) {
                           I have checked the licence itself
                         </label>
                       )}
+                      {status === "applied" && (
+                        <div style={{ display: "grid", gap: 6, marginBottom: 6 }}>
+                          <input
+                            className="op-input"
+                            aria-label="Licence number, as printed on the licence"
+                            placeholder="Licence number (from the licence)"
+                            value={detail[r.id]?.number ?? ""}
+                            onChange={(e) => setDetail((d) => ({ ...d, [r.id]: { ...d[r.id], number: e.target.value } }))}
+                          />
+                          <input
+                            className="op-input"
+                            aria-label="Who issued the licence"
+                            placeholder="Issuing authority"
+                            value={detail[r.id]?.authority ?? ""}
+                            onChange={(e) => setDetail((d) => ({ ...d, [r.id]: { ...d[r.id], authority: e.target.value } }))}
+                          />
+                          <label style={{ fontSize: 12 }}>
+                            Expires on
+                            <input
+                              className="op-input"
+                              type="date"
+                              value={detail[r.id]?.expires ?? ""}
+                              onChange={(e) => setDetail((d) => ({ ...d, [r.id]: { ...d[r.id], expires: e.target.value } }))}
+                            />
+                          </label>
+                        </div>
+                      )}
+                      {status === "approved" && (
+                        <div className="muted" style={{ marginBottom: 6 }}>
+                          {r.verifiedLicenceNumber} · {r.verifiedIssuingAuthority}
+                          <div>Expires {r.licenceExpiresOn ? new Date(r.licenceExpiresOn).toISOString().slice(0, 10) : "—"}</div>
+                        </div>
+                      )}
                       <input
                         className="op-input"
                         placeholder="Reason (required)"
@@ -173,9 +225,24 @@ function KitchenLicences({ canWrite }: { canWrite: boolean }) {
                             <button
                               type="button"
                               className="op-btn primary"
-                              disabled={!checked[r.id] || !note[r.id]?.trim() || review.isPending}
+                              disabled={
+                                !checked[r.id] ||
+                                !note[r.id]?.trim() ||
+                                !detail[r.id]?.number?.trim() ||
+                                !detail[r.id]?.authority?.trim() ||
+                                !detail[r.id]?.expires ||
+                                review.isPending
+                              }
                               onClick={() =>
-                                review.mutate({ id: r.id, decision: "approve", licenceChecked: true, note: note[r.id]!.trim() })
+                                review.mutate({
+                                  id: r.id,
+                                  decision: "approve",
+                                  licenceChecked: true,
+                                  licenceNumber: detail[r.id]!.number!.trim(),
+                                  issuingAuthority: detail[r.id]!.authority!.trim(),
+                                  expiresOn: new Date(`${detail[r.id]!.expires}T00:00:00.000Z`),
+                                  note: note[r.id]!.trim(),
+                                })
                               }
                             >
                               Approve
@@ -273,7 +340,7 @@ function Badges({ canWrite }: { canWrite: boolean }) {
                 </td>
                 <td>{BADGE_LABEL[b.kind] ?? b.kind}</td>
                 <td className="muted">
-                  <Evidence value={b.evidence} />
+                  <Evidence text={b.evidence} hasPhoto={b.hasEvidencePhoto} subject="seller_badge" id={b.id} />
                 </td>
                 <td className="muted">
                   {when(b.createdAt)}

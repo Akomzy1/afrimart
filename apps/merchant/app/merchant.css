@@ -527,6 +527,20 @@
 .mr-toast.show { transform: translateY(0); opacity: 1; visibility: visible; }
 .mr-toast svg { width: 22px; height: 22px; color: var(--gold-soft); flex: none; }
 
+/* sign in */
+.mr-otp.six { gap: 8px; }
+.mr-otp.six input { width: 48px; height: 64px; font-size: 30px; border-radius: var(--r-md); }
+.mr-signin-err { margin-top: 14px; padding: 10px 14px; border-radius: var(--r-md); background: var(--amber-50); border: 1.5px solid var(--amber); color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.35; }
+.mr-onb-dark .mr-signin-err { color: var(--ink); }
+.mr-linkbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--green); text-decoration: underline; text-underline-offset: 2px; }
+.mr-linkbtn:disabled { opacity: 0.5; }
+
+/* payouts in the AfriMart thread */
+.mr-thread .b-in.payout { display: block; }
+.mr-thread .b-in.payout .k { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold-soft); }
+.mr-thread .b-in.payout .amt { font-size: 34px; font-weight: 700; line-height: 1.1; margin: 4px 0 2px; }
+.mr-thread .b-in.payout .d { font-size: 15px; line-height: 1.4; }
+
 /* the AfriMart thread */
 .mr-thread { padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 12px; }
 .mr-thread-group { display: flex; flex-direction: column; gap: 12px; }

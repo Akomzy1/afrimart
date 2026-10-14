@@ -150,3 +150,30 @@ export const SUPPORT_CONTACT = process.env.SUPPORT_CONTACT ?? "AfriMart support"
  * later change of wording never silently rewrites what someone confirmed.
  */
 export const PERMIT_STATEMENT_VERSION = "2026-10-v1";
+
+/**
+ * Buyer and store sign-in. A six-digit code, emailed to a buyer or texted to a
+ * store owner. Short-lived, a few wrong guesses and then it is burned, and
+ * requests are paced per address and per person so the channel cannot be used to
+ * flood someone's phone. The numbers are the defaults; each can be tuned by env.
+ */
+export const SIGN_IN_CODE_MINUTES = Number(process.env.SIGN_IN_CODE_MINUTES ?? 10);
+export const SIGN_IN_CODE_MAX_GUESSES = Number(process.env.SIGN_IN_CODE_MAX_GUESSES ?? 5);
+export const SIGN_IN_CODE_RESEND_SECONDS = Number(process.env.SIGN_IN_CODE_RESEND_SECONDS ?? 30);
+export const SIGN_IN_CODES_PER_HOUR = Number(process.env.SIGN_IN_CODES_PER_HOUR ?? 5);
+
+/**
+ * How long a buyer or store stays signed in. Idle slides with use; the absolute
+ * cap does not. Far longer than a staff session: the person on a shop phone or a
+ * home computer should not be texted a code every morning, and a lost phone is
+ * dealt with by revoking its session, not by a short clock.
+ */
+export const USER_SESSION_IDLE_DAYS = Number(process.env.USER_SESSION_IDLE_DAYS ?? 30);
+export const USER_SESSION_ABSOLUTE_DAYS = Number(process.env.USER_SESSION_ABSOLUTE_DAYS ?? 90);
+
+/**
+ * Evidence photos (licences, claims, packing) are private. A link to one is
+ * signed, tied to one file, and good for this long; it is handed out only after
+ * the caller has been shown to be allowed to see that photo.
+ */
+export const PHOTO_URL_TTL_SECONDS = Number(process.env.PHOTO_URL_TTL_SECONDS ?? 300);
