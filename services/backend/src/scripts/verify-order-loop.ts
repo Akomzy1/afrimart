@@ -7,16 +7,18 @@
 const API = "http://localhost:4000/trpc";
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
-async function query(path: string, input: unknown) {
-  const res = await fetch(`${API}/${path}?input=${encodeURIComponent(JSON.stringify(input))}`);
+async function query(path: string, input: unknown, identity?: string) {
+  const res = await fetch(`${API}/${path}?input=${encodeURIComponent(JSON.stringify(input))}`, {
+    headers: identity ? { "x-dev-identity": identity } : {},
+  });
   const body = await res.json();
   if (body.error) throw new Error(`${path}: ${body.error.message}`);
   return body.result.data;
 }
-async function mutate(path: string, input: unknown) {
+async function mutate(path: string, input: unknown, identity?: string) {
   const res = await fetch(`${API}/${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(identity ? { "x-dev-identity": identity } : {}) },
     body: JSON.stringify(input),
   });
   const body = await res.json();
@@ -36,7 +38,7 @@ console.log(`\nQUOTE: ${quote.storeCount} stores, ${quote.pricing.parcelCount} p
   `items ${money(quote.pricing.itemsSubtotalCents)}, shipping ${money(quote.pricing.shippingCents)}, total ${money(quote.pricing.totalCents)}`);
 for (const p of quote.parcels) console.log(`   ${p.storeName} (${p.metro}) — ${p.lines.length} lines`);
 
-const placed = await mutate("checkout.place", { items, destination, buyerId: "demo-buyer" });
+const placed = await mutate("checkout.place", { items, destination }, "buyer:demo-buyer");
 console.log(`\nPLACED: order ${placed.orderId}, ${placed.parcelCount} parcels, total ${money(placed.pricing.totalCents)}`);
 
 // Every seller that should now see work.
@@ -48,7 +50,7 @@ let totalItemsSeen = 0;
 for (const name of sellerNames) {
   const store = stores.find((s: { name: string }) => s.name === name);
   if (!store) { console.log(`  !! no store record for ${name}`); continue; }
-  const inbox = await query("merchant.inbox", { storeId: store.id });
+  const inbox = await query("merchant.inbox", undefined, `store:${store.id}`);
   const mine = inbox.filter((j: { orderRef: string }) => j.orderRef === `#${placed.orderId.slice(-4).toUpperCase()}`);
   for (const job of mine) {
     totalItemsSeen += job.items.length;
@@ -61,7 +63,7 @@ console.log(`  -> ${totalItemsSeen} lines visible to sellers vs ${items.length} 
 
 // Cross-store leakage check: no seller may see another seller's lines.
 const first = stores.find((s: { name: string }) => s.name === sellerNames[0]);
-const firstInbox = await query("merchant.inbox", { storeId: first.id });
+const firstInbox = await query("merchant.inbox", undefined, `store:${first.id}`);
 const firstJob = firstInbox.find((j: { orderRef: string }) => j.orderRef === `#${placed.orderId.slice(-4).toUpperCase()}`);
 const othersLines = quote.parcels
   .filter((p: { storeName: string }) => p.storeName !== sellerNames[0])
@@ -71,15 +73,25 @@ console.log(`\nISOLATION: ${sellerNames[0]} sees ${leaked.length} line(s) belong
 
 // Fulfil one shipment end to end.
 if (firstJob) {
-  await mutate("merchant.accept", { shipmentId: firstJob.shipmentId });
-  const afterAccept = await query("merchant.inbox", { storeId: first.id });
+  await mutate("merchant.accept", { shipmentId: firstJob.shipmentId }, `store:${first.id}`);
+  const afterAccept = await query("merchant.inbox", undefined, `store:${first.id}`);
   const acc = afterAccept.find((j: { shipmentId: string }) => j.shipmentId === firstJob.shipmentId);
   console.log(`FULFIL: after accept status=${acc?.status} carrier=${acc?.carrier}`);
-  await mutate("merchant.markShipped", { shipmentId: firstJob.shipmentId });
-  const afterShip = await query("merchant.inbox", { storeId: first.id });
+  // QC-2 — the parcel cannot leave without its box photo, so the loop takes one.
+  try {
+    await mutate("merchant.markShipped", { shipmentId: firstJob.shipmentId }, `store:${first.id}`);
+    console.log("FULFIL: !! shipped with no packing photo");
+  } catch (e) {
+    console.log(`FULFIL: shipping without a box photo is refused -> OK (${(e as Error).message.split(": ").pop()})`);
+  }
+  const { default: sharp } = await import("sharp");
+  const jpeg = await sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 180, g: 140, b: 90 } } }).jpeg().toBuffer();
+  await mutate("merchant.packingPhoto", { shipmentId: firstJob.shipmentId, image: jpeg.toString("base64") }, `store:${first.id}`);
+  await mutate("merchant.markShipped", { shipmentId: firstJob.shipmentId }, `store:${first.id}`);
+  const afterShip = await query("merchant.inbox", undefined, `store:${first.id}`);
   const shp = afterShip.find((j: { shipmentId: string }) => j.shipmentId === firstJob.shipmentId);
   console.log(`FULFIL: after ship   status=${shp?.status}`);
 
-  const earn = await query("merchant.earnings", { storeId: first.id });
+  const earn = await query("merchant.earnings", undefined, `store:${first.id}`);
   console.log(`EARNINGS for ${sellerNames[0]}: ${earn.orderCount} orders, gross ${money(earn.grossCents)}, net ${money(earn.netCents)}`);
 }

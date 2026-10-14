@@ -18,3 +18,4 @@ export * from "./components/StubView";
 export * from "./icons";
 export * from "./useMediaQuery";
 export * from "./components/Cart";
+export * from "./photo";

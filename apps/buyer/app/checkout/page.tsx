@@ -15,7 +15,7 @@ import {
   ClockIcon,
 } from "@afrimart/ui";
 import { trpc } from "@afrimart/api-client";
-import { useCart, DEMO_BUYER_ID } from "../cart-context";
+import { useCart } from "../cart-context";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const dayShort = (offset: number) =>
@@ -60,7 +60,6 @@ export default function CheckoutPage() {
     if (!formValid) return;
     try {
       const result = await place.mutateAsync({
-        buyerId: DEMO_BUYER_ID,
         items: lines.map((l) => ({ listingId: l.listingId, quantity: l.qty })),
         destination: { street, city, state, zip },
       });

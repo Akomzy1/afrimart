@@ -3,6 +3,8 @@ import { healthRouter } from "./routers/health.js";
 import { catalogueRouter } from "./routers/catalogue.js";
 import { checkoutRouter } from "./routers/checkout.js";
 import { merchantRouter } from "./routers/merchant.js";
+import { ordersRouter } from "./routers/orders.js";
+import { claimsRouter } from "./routers/claims.js";
 import { adminRouter } from "./routers/admin.js";
 import { staffAuthRouter } from "./routers/staffAuth.js";
 
@@ -11,6 +13,8 @@ export const appRouter = router({
   catalogue: catalogueRouter,
   checkout: checkoutRouter,
   merchant: merchantRouter,
+  orders: ordersRouter,
+  claims: claimsRouter,
   admin: adminRouter,
   staffAuth: staffAuthRouter,
 });

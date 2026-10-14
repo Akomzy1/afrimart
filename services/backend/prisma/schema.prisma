@@ -242,7 +242,10 @@ model Shipment {
   labelUrl          String?
   status            ShipmentStatus    @default(pending)
   estimatedDelivery DateTime?
+  /// QC-2 — the seller's photo of the open box, taken before sealing. Metadata
+  /// stripped on upload. A shipment cannot be marked shipped without one.
   packingPhotoUrl   String?
+  packingPhotoAt    DateTime?
   items             ShipmentItem[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
@@ -265,6 +268,7 @@ model ShipmentItem {
   quantity           Int
   unitPriceCents     Int
   lineTotalCents     Int
+  claimItems         RefundClaimItem[]
 
   @@index([shipmentId])
 }
@@ -343,8 +347,17 @@ model RefundClaim {
   shipmentId      String?
   reason          String
   amountCents     Int
+  /// QC-3 — "item" (goods that arrived wrong; photo required) or "parcel"
+  /// (it never arrived; no photo, always reviewed).
+  kind            String    @default("item")
   /// QC-8 — photo evidence is mandatory for spoiled or damaged goods.
   photoUrl        String?
+  /// The buyer's own words, if they added any.
+  note            String?
+  items           RefundClaimItem[]
+  /// Set only when a refund was actually issued, not merely approved.
+  refundedAt      DateTime?
+  refundId        String?
   /// auto_approved | manual_review | approved | rejected
   status          String    @default("manual_review")
   /// QC-8 — seller | carrier | platform. Who the cost is recovered from.
@@ -634,8 +647,9 @@ model KitchenLicence {
   store           Store                @relation(fields: [storeId], references: [id])
   storeId         String               @unique
   status          KitchenLicenceStatus @default(applied)
-  licenceNumber   String
-  issuingAuthority String
+  /// Optional: a seller may send a photo of the licence instead, which a reviewer reads.
+  licenceNumber   String?
+  issuingAuthority String?
   /// What the seller submitted in support (a document link or reference).
   evidence        String?
   reviewNote      String?
@@ -687,4 +701,20 @@ model PermitConfirmation {
   confirmedAt      DateTime           @default(now())
 
   @@unique([storeId, category])
+}
+
+/// QC-3 — which items a report covers. A report can name several items from one
+/// parcel under one reason and one photo; each item is held by at most one open
+/// report so the same goods cannot be refunded twice. The line total is
+/// snapshotted: what was refunded must not move if the listing later does.
+model RefundClaimItem {
+  id             String       @id @default(cuid())
+  claim          RefundClaim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  claimId        String
+  shipmentItem   ShipmentItem @relation(fields: [shipmentItemId], references: [id])
+  shipmentItemId String
+  lineTotalCents Int
+
+  @@unique([claimId, shipmentItemId])
+  @@index([shipmentItemId])
 }

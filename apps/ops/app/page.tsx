@@ -5,6 +5,7 @@ import { trpc } from "@afrimart/api-client";
 import { SignIn } from "./SignIn";
 import { readStaffToken, writeStaffToken } from "./providers";
 import { SellerRules } from "./SellerRules";
+import { Claims } from "./Claims";
 
 const EMPTY = {
   canonicalName: "", shortDescription: "", usedDescription: "", category: "", cuisine: "",
@@ -26,7 +27,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
  * onboarding or money, so this must sit behind a login before it is deployed
  * anywhere reachable.
  */
-type Tab = "queue" | "stores" | "rules" | "fulfilment" | "graph" | "finance";
+type Tab = "queue" | "stores" | "rules" | "claims" | "fulfilment" | "graph" | "finance";
 
 export default function OpsConsole() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -63,6 +64,8 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
     { enabled: perms.includes("stores:read" as never) },
   );
   const pendingCount = queue.data?.length ?? 0;
+  const claimsQuery = trpc.admin.refundClaims.useQuery(undefined, { enabled: perms.includes("finance:read" as never) });
+  const waitingClaims = claimsQuery.data?.filter((c) => c.status === "manual_review").length ?? 0;
   const applicationCount = (licences.data?.length ?? 0) + (badges.data?.length ?? 0);
   const stuckCount = fulfilment.data?.filter((s) => s.stuck).length ?? 0;
 
@@ -80,6 +83,7 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
     { id: "queue", label: "Catalogue review", badge: pendingCount, shown: can("catalogue:read") },
     { id: "stores", label: "Onboarding", badge: undefined, shown: can("stores:read") },
     { id: "rules", label: "Seller rules", badge: applicationCount, shown: can("stores:read") },
+    { id: "claims", label: "Buyer reports", badge: waitingClaims, shown: can("finance:read") },
     { id: "fulfilment", label: "Fulfilment", badge: stuckCount, shown: can("fulfilment:read") },
     { id: "graph", label: "Knowledge graph", badge: undefined, shown: can("graph:read") },
     { id: "finance", label: "Reconciliation", badge: undefined, shown: can("finance:read") },
@@ -116,6 +120,7 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
       {active === "rules" && (
         <SellerRules canWrite={can("stores:write")} canSettings={can("settings:write")} canAudit={can("audit:read")} />
       )}
+      {active === "claims" && <Claims canResolve={can("finance:write")} />}
       {active === "fulfilment" && <Fulfilment />}
       {active === "graph" && <KnowledgeGraph />}
       {active === "finance" && <Reconciliation />}

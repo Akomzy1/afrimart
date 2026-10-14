@@ -170,6 +170,19 @@ describe("QC-1 licensed commercial kitchen lifts the chilled and frozen restrict
     assert.match(merchant, /status: "applied" as const/);
   });
 
+  test("a seller can apply for a badge but never grant one: the merchant surface only writes 'applied'", async () => {
+    const merchant = await src("../routers/merchant.ts");
+    const writes = [...merchant.matchAll(/sellerBadge\.(create|update|upsert)\(/g)];
+    assert.ok(writes.length > 0, "the badge application path is missing");
+    for (const w of writes) {
+      assert.ok(!/approved|rejected|revoked/.test(callBody(merchant, w.index!)), "merchant code sets a reviewed badge status");
+    }
+    // One 'applied' default for the licence, one for the badge.
+    assert.equal((merchant.match(/status: "applied" as const/g) ?? []).length, 2);
+    // And a badge a reviewer has approved cannot be re-applied over.
+    assert.match(merchant, /existing\.status === "applied" \|\| existing\.status === "approved"/);
+  });
+
   test("only a reviewer holding stores:write can decide it, and approval needs the licence checked", async () => {
     const admin = await src("../routers/admin.ts");
     const start = admin.indexOf("reviewKitchenLicence:");

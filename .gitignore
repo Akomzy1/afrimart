@@ -17,3 +17,6 @@ prisma/dev.db
 
 # Locally captured emails from the dev sender
 .mail/
+
+# Evidence photos written by the local photo store (QC-2/QC-3)
+.uploads/

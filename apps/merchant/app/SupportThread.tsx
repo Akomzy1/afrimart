@@ -1,0 +1,185 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import { trpc } from "@afrimart/api-client";
+import { CameraIcon, CheckIcon, ChevronLeftIcon } from "@afrimart/ui";
+import { DOCUMENT_PHOTO, PhotoCamera } from "./PhotoCamera";
+
+/**
+ * The AfriMart thread in Messages — AfriMart Merchant.html. Where a seller asks
+ * for licensed-kitchen status or an authenticity badge: pick one, then send a
+ * photo of the document.
+ *
+ * What the prototype simulates and this does not: it answers "Approved" a few
+ * seconds after the photo. Here the photo becomes an application that waits for
+ * a person (QC-1, CAT-8), so the thread says it is being checked and stays that
+ * way until operations decides. Approval, when it comes, is read from the
+ * server, so the thread tells the same story on every visit and never claims a
+ * status the seller does not have.
+ */
+
+type Kind = "kitchen" | "diaspora_owned" | "imported_direct" | "made_in_usa_african_brand";
+
+const OPTIONS: Record<Kind, { label: string; ask: string; doc: string; ok: string; icon: ReactNode }> = {
+  kitchen: {
+    label: "Licensed kitchen",
+    ask: "your kitchen licence",
+    doc: "Kitchen licence",
+    ok: "Licensed kitchen status is on. You can now list chilled and frozen food.",
+    icon: (
+      <path d="M4 11h16v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7zM2 11h20M8 7c0-2 2-2 2-4M14 7c0-2 2-2 2-4" />
+    ),
+  },
+  diaspora_owned: {
+    label: "Diaspora-owned",
+    ask: "your business registration",
+    doc: "Business registration",
+    ok: "The diaspora-owned badge is now on your shop.",
+    icon: <path d="M3 11l9-7 9 7M5 10v10h14V10" />,
+  },
+  imported_direct: {
+    label: "Imported direct",
+    ask: "your import invoice",
+    doc: "Import invoice",
+    ok: "The imported direct badge is now on your shop.",
+    icon: <path d="M3 8l9-5 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8" />,
+  },
+  made_in_usa_african_brand: {
+    label: "Made in USA by an African brand",
+    ask: "your brand registration",
+    doc: "Brand registration",
+    ok: "The made in USA by an African brand badge is now on your shop.",
+    icon: <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z" />,
+  },
+};
+
+function Ic({ children, size = 1.7 }: { children: ReactNode; size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={size} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+export function SupportThread({ onBack }: { onBack: () => void }) {
+  const utils = trpc.useUtils();
+  const standing = trpc.merchant.standing.useQuery();
+  const [picked, setPicked] = useState<Kind | null>(null);
+  const [camera, setCamera] = useState(false);
+  const applyKitchen = trpc.merchant.applyForKitchenLicence.useMutation();
+  const applyBadge = trpc.merchant.applyForBadge.useMutation();
+  const sending = applyKitchen.isPending || applyBadge.isPending;
+  const error = (applyKitchen.error ?? applyBadge.error)?.message ?? null;
+
+  const s = standing.data;
+  // status of each thing a seller can ask for; null means never applied
+  const status = (k: Kind): string | null =>
+    !s ? null : k === "kitchen" ? s.kitchen : (s.badges.find((b) => b.kind === k)?.status ?? null);
+
+  const kinds = (Object.keys(OPTIONS) as Kind[]).filter((k) => k !== "kitchen" || s?.homeTier);
+  const open = kinds.filter((k) => status(k) !== "applied" && status(k) !== "approved");
+  const waiting = kinds.filter((k) => status(k) === "applied");
+  const approved = kinds.filter((k) => status(k) === "approved");
+
+  function send(document: string) {
+    if (!picked) return;
+    const done = {
+      onSuccess: async () => {
+        await utils.merchant.standing.invalidate();
+        setCamera(false);
+        setPicked(null);
+      },
+    };
+    if (picked === "kitchen") applyKitchen.mutate({ document }, done);
+    else applyBadge.mutate({ kind: picked, document }, done);
+  }
+
+  return (
+    <div className="mr-shell">
+      <div className="mr-header">
+        <button type="button" className="back" onClick={onBack} aria-label="Back to Messages">
+          <ChevronLeftIcon />
+        </button>
+        <h2 className="serif">AfriMart</h2>
+      </div>
+
+      <div className="mr-scroll">
+        <div className="mr-thread">
+          <div className="b-in support">
+            {s?.homeTier
+              ? "Want to sell chilled food or show a badge? Tap one below, then send us a photo of your document."
+              : "Want to show a badge on your shop? Tap one below, then send us a photo of your document."}
+          </div>
+
+          {approved.map((k) => (
+            <div className="b-in support approved" key={`ok-${k}`}>
+              <span className="ap">
+                <CheckIcon strokeWidth={2.4} />
+              </span>
+              <div>
+                <div className="at serif">Approved</div>
+                <div className="as">{OPTIONS[k].ok}</div>
+              </div>
+            </div>
+          ))}
+
+          {waiting.map((k) => (
+            <div className="mr-thread-group" key={`wait-${k}`}>
+              <div className="b-out">
+                I want to apply for {k === "kitchen" ? "licensed kitchen status" : `the ${OPTIONS[k].label.toLowerCase()} badge`}.
+              </div>
+              <div className="b-in support">Got it. We&apos;re checking it now. We&apos;ll message you here as soon as it&apos;s done.</div>
+            </div>
+          ))}
+
+          {picked && (
+            <>
+              <div className="b-out">
+                I want to apply for {picked === "kitchen" ? "licensed kitchen status" : `the ${OPTIONS[picked].label.toLowerCase()} badge`}.
+              </div>
+              <div className="b-in support">Please send a photo of {OPTIONS[picked].ask}.</div>
+              <div className="mr-qrs">
+                {error && <div className="mr-sheet-err">{error}</div>}
+                <button type="button" className="mr-bigbtn accent" onClick={() => setCamera(true)}>
+                  <CameraIcon />
+                  Send photo of document
+                </button>
+                <button type="button" className="mr-bigbtn ghost" onClick={() => setPicked(null)}>
+                  Choose something else
+                </button>
+              </div>
+            </>
+          )}
+
+          {!picked && open.length > 0 && (
+            <div className="mr-qrs">
+              <div className="eyebrow q">Apply for</div>
+              {open.map((k) => (
+                <button type="button" key={k} className="mr-qr" onClick={() => {
+                    applyKitchen.reset();
+                    applyBadge.reset();
+                    setPicked(k);
+                  }}>
+                  <span className="ic">
+                    <Ic>{OPTIONS[k].icon}</Ic>
+                  </span>
+                  {OPTIONS[k].label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {camera && picked && (
+        <PhotoCamera
+          copy={DOCUMENT_PHOTO(OPTIONS[picked].doc)}
+          saving={sending}
+          error={error}
+          onClose={() => setCamera(false)}
+          onUse={send}
+        />
+      )}
+    </div>
+  );
+}

@@ -13,6 +13,7 @@
  *   npm run verify:quality-controls --workspace=@afrimart/backend
  */
 import { TRPCError } from "@trpc/server";
+import sharp from "sharp";
 import { prisma } from "../db.js";
 import { appRouter } from "../router.js";
 import { createCallerFactory } from "../trpc.js";
@@ -41,7 +42,15 @@ async function sessionFor(email: string): Promise<ResolvedSession> {
     mfaEnrolled: true,
   };
 }
-const as = (staff: ResolvedSession | null) => createCaller({ req: {} as never, staff, ip: "127.0.0.1", userAgent: "verify" });
+/** A caller as the request context would build it: staff from a session, buyer/store from the dev identity header. */
+const as = (staff: ResolvedSession | null, identity?: string) =>
+  createCaller({
+    req: { headers: identity ? { "x-dev-identity": identity } : {} } as never,
+    staff,
+    ip: "127.0.0.1",
+    userAgent: "verify",
+  });
+const asStore = (storeId: string) => as(null, `store:${storeId}`);
 
 /** Run a call and report the tRPC error code, or "ok". */
 async function outcome<T>(p: Promise<T>): Promise<{ code: string; message: string; value?: T }> {
@@ -56,6 +65,7 @@ async function outcome<T>(p: Promise<T>): Promise<{ code: string; message: strin
 const ops = as(await sessionFor("ops@afrimart.test"));
 const reviewer = as(await sessionFor("reviewer@afrimart.test"));
 const finance = as(await sessionFor("finance@afrimart.test"));
+const admin = as(await sessionFor("admin@afrimart.test"));
 const buyer = as(null);
 const merchant = as(null);
 
@@ -81,6 +91,7 @@ async function sweep() {
   await prisma.permitConfirmation.deleteMany({ where: stores });
   await prisma.sellerCategoryControl.deleteMany({ where: stores });
   await prisma.kitchenLicence.deleteMany({ where: stores });
+  await prisma.sellerBadge.deleteMany({ where: stores });
   await prisma.store.deleteMany({ where: { id: { startsWith: "qc1v-" } } });
   await prisma.listing.deleteMany({ where: { canonicalProductId: { startsWith: "qc1v-" } } });
   await prisma.canonicalProduct.deleteMany({ where: { id: { startsWith: "qc1v-" } } });
@@ -166,12 +177,25 @@ try {
     check(`${who} seller cannot list chilled dairy`, chilled.code === "FORBIDDEN", chilled.code);
   }
 
+  console.log("\n=== 2b. identity comes from the request, never from input ===");
+  const anonymous = await outcome(as(null).merchant.permitStatus());
+  check("an unidentified caller is refused", anonymous.code === "UNAUTHORIZED", anonymous.code);
+  const wrongKind = await outcome(as(null, `buyer:demo-buyer`).merchant.permitStatus());
+  check("a buyer identity cannot act as a store", wrongKind.code === "UNAUTHORIZED", wrongKind.code);
+  const unknown = await outcome(as(null, "store:no-such-store").merchant.permitStatus());
+  check("an identity that does not exist gets nowhere", unknown.code === "UNAUTHORIZED", unknown.code);
+  const smuggled = await outcome((asStore(home).merchant.confirmPermit as unknown as (i: unknown) => Promise<unknown>)({ storeId: aspiring, category: "fish", acknowledged: true }));
+  check("a store id smuggled into the input is ignored: the confirmation lands on the caller", smuggled.code === "ok" &&
+    (await prisma.permitConfirmation.count({ where: { storeId: aspiring, category: "fish" } })) === 0 &&
+    (await prisma.permitConfirmation.count({ where: { storeId: home, category: "fish" } })) === 1);
+  await prisma.permitConfirmation.deleteMany({ where: { storeId: home, category: "fish" } });
+
   console.log("\n=== 3. licensed commercial kitchen: applied for, reviewed, audited ===");
-  const apply = await outcome(merchant.merchant.applyForKitchenLicence({ storeId: home, licenceNumber: "CK-1234", issuingAuthority: "County Health Dept" }));
+  const apply = await outcome(asStore(home).merchant.applyForKitchenLicence({ licenceNumber: "CK-1234", issuingAuthority: "County Health Dept" }));
   check("a home seller can apply", apply.code === "ok" && apply.value?.status === "applied");
-  const again = await outcome(merchant.merchant.applyForKitchenLicence({ storeId: home, licenceNumber: "CK-1234", issuingAuthority: "County Health Dept" }));
+  const again = await outcome(asStore(home).merchant.applyForKitchenLicence({ licenceNumber: "CK-1234", issuingAuthority: "County Health Dept" }));
   check("applying twice is refused", again.code === "CONFLICT", again.code);
-  const storeApply = await outcome(merchant.merchant.applyForKitchenLicence({ storeId: store, licenceNumber: "x", issuingAuthority: "y" }));
+  const storeApply = await outcome(asStore(store).merchant.applyForKitchenLicence({ licenceNumber: "x", issuingAuthority: "y" }));
   check("a store cannot apply (it has no use for it)", storeApply.code === "BAD_REQUEST", storeApply.code);
 
   const stillBlocked = await list(home, frozenMeat);
@@ -206,15 +230,15 @@ try {
   console.log("\n=== 4. meat, poultry, fish and dairy listable by default; permit confirmed once ===");
   const needsPermit2 = await list(home, dried);
   check("first fish listing asks for a permit confirmation", needsPermit2.code === "PRECONDITION_FAILED" && /permit/i.test(needsPermit2.message), needsPermit2.code);
-  const noAck = await outcome(merchant.merchant.confirmPermit({ storeId: home, category: "fish", acknowledged: false as never }));
+  const noAck = await outcome(asStore(home).merchant.confirmPermit({ category: "fish", acknowledged: false as never }));
   check("a confirmation needs an explicit acknowledgement", noAck.code === "BAD_REQUEST", noAck.code);
-  const storeConfirm = await outcome(merchant.merchant.confirmPermit({ storeId: store, category: "fish", acknowledged: true }));
+  const storeConfirm = await outcome(asStore(store).merchant.confirmPermit({ category: "fish", acknowledged: true }));
   check("a store is never asked to confirm a permit", storeConfirm.code === "BAD_REQUEST", storeConfirm.code);
 
-  const confirm1 = await outcome(merchant.merchant.confirmPermit({ storeId: home, category: "fish", acknowledged: true }));
+  const confirm1 = await outcome(asStore(home).merchant.confirmPermit({ category: "fish", acknowledged: true }));
   check("the seller confirms", confirm1.code === "ok" && Boolean(confirm1.value?.confirmedAt));
   await new Promise((r) => setTimeout(r, 25));
-  const confirm2 = await outcome(merchant.merchant.confirmPermit({ storeId: home, category: "fish", acknowledged: true }));
+  const confirm2 = await outcome(asStore(home).merchant.confirmPermit({ category: "fish", acknowledged: true }));
   check("confirming again keeps the original timestamp", confirm1.value?.confirmedAt.getTime() === confirm2.value?.confirmedAt.getTime());
   const stored = await prisma.permitConfirmation.findUniqueOrThrow({ where: { storeId_category: { storeId: home, category: "fish" } } });
   check("the confirmation is stored with a timestamp and wording version", stored.confirmedAt instanceof Date && stored.statementVersion.length > 0, stored.statementVersion);
@@ -223,9 +247,9 @@ try {
   check("dried fish now lists (shelf-stable fish is not blocked)", driedFish.code === "ok", driedFish.message);
   const secondFish = await list(aspiring, dried);
   check("another seller still has to confirm for themselves", secondFish.code === "PRECONDITION_FAILED", secondFish.code);
-  await merchant.merchant.confirmPermit({ storeId: aspiring, category: "fish", acknowledged: true });
-  await merchant.merchant.confirmPermit({ storeId: home, category: "meat", acknowledged: true });
-  await merchant.merchant.confirmPermit({ storeId: aspiring, category: "meat", acknowledged: true });
+  await asStore(aspiring).merchant.confirmPermit({ category: "fish", acknowledged: true });
+  await asStore(home).merchant.confirmPermit({ category: "meat", acknowledged: true });
+  await asStore(aspiring).merchant.confirmPermit({ category: "meat", acknowledged: true });
   check("an aspiring seller lists dried fish after confirming", (await list(aspiring, dried)).code === "ok");
   check("a licensed home seller lists frozen meat after confirming", (await list(home, frozenMeat)).code === "ok");
   check("kilishi lists (shelf-stable meat is not blocked)", (await list(aspiring, kilishi)).code === "ok");
@@ -265,7 +289,7 @@ try {
   const blockedNew = await list(home, dried);
   check("a new fish listing is refused", blockedNew.code === "FORBIDDEN");
   check("the refusal explains why and gives the support contact", /switched off on your account/.test(blockedNew.message) && blockedNew.message.includes(SUPPORT_CONTACT), blockedNew.message.slice(0, 90));
-  const notices = await merchant.merchant.categoryNotices({ storeId: home });
+  const notices = await asStore(home).merchant.categoryNotices();
   check("the seller can read the same explanation for the hidden listing", notices.length === 1 && notices[0]!.message.includes(SUPPORT_CONTACT));
   check("ops' internal reason is not shown to the seller", !notices.some((n) => /inspection/.test(n.message)));
   const controls = await ops.admin.categoryControls();
@@ -289,8 +313,14 @@ try {
   check("enabling is audited too", sellerAudit2.length === 2 && /passed/.test(sellerAudit2[1]!.note ?? ""));
 
   console.log("\n=== 6. ops switches a category off platform-wide ===");
-  const platformOff = await outcome(ops.admin.setPlatformCategory({ category: "meat", disabled: true, reason: "Legal advice, 14 Oct" }));
-  check("ops switches meat off for all home and aspiring sellers", platformOff.code === "ok");
+  const byOps = await outcome(ops.admin.setPlatformCategory({ category: "meat", disabled: true, reason: "Legal advice, 14 Oct" }));
+  check("operations cannot switch a category off for the whole tier", byOps.code === "FORBIDDEN", byOps.code);
+  const byReviewer2 = await outcome(reviewer.admin.setPlatformCategory({ category: "meat", disabled: true, reason: "x" }));
+  check("a catalogue reviewer cannot either", byReviewer2.code === "FORBIDDEN", byReviewer2.code);
+  const byFinance = await outcome(finance.admin.setPlatformCategory({ category: "meat", disabled: true, reason: "x" }));
+  check("finance cannot either", byFinance.code === "FORBIDDEN", byFinance.code);
+  const platformOff = await outcome(admin.admin.setPlatformCategory({ category: "meat", disabled: true, reason: "Legal advice, 14 Oct" }));
+  check("an administrator switches meat off for all home and aspiring sellers", platformOff.code === "ok");
   seen = await visibleIds();
   check("a home seller's meat is hidden", !seen.has(homeMeat));
   check("an aspiring seller's meat is hidden", !seen.has(aspiringMeat));
@@ -301,14 +331,14 @@ try {
   check("new meat listings are refused for the home tier", blockedPlatform.code === "FORBIDDEN" && /paused meat listings/.test(blockedPlatform.message) && blockedPlatform.message.includes(SUPPORT_CONTACT));
   check("a store can still list meat", (await list(store, kilishi)).code === "ok");
   const platformAudit = await auditFor("category:meat", "platform.category_restriction_change");
-  check("audited with who, the setting, and why", platformAudit.length === 1 && platformAudit[0]!.actorEmail === "ops@afrimart.test" && /Legal advice/.test(platformAudit[0]!.note ?? "") && platformAudit[0]!.subjectType === "platform_setting");
-  await ops.admin.setPlatformCategory({ category: "meat", disabled: false, reason: "Advice clarified" });
+  check("audited with who, the setting, and why", platformAudit.length === 1 && platformAudit[0]!.actorEmail === "admin@afrimart.test" && /Legal advice/.test(platformAudit[0]!.note ?? "") && platformAudit[0]!.subjectType === "platform_setting");
+  await admin.admin.setPlatformCategory({ category: "meat", disabled: false, reason: "Advice clarified" });
   seen = await visibleIds();
   check("switching it back on restores the listings", seen.has(homeMeat) && seen.has(aspiringMeat));
   check("re-enabling is audited", (await auditFor("category:meat", "platform.category_restriction_change")).length === 2);
 
   console.log("\n=== 7. hidden listings cannot be bought ===");
-  await ops.admin.setPlatformCategory({ category: "meat", disabled: true, reason: "Re-test routing" });
+  await admin.admin.setPlatformCategory({ category: "meat", disabled: true, reason: "Re-test routing" });
   const sole = await prisma.listing.findUniqueOrThrow({ where: { id: aspiringMeat } });
   // Remove the store's alternative so this product has no visible offer anywhere.
   await prisma.listing.deleteMany({ where: { canonicalProductId: sole.canonicalProductId, storeId: store } });
@@ -317,7 +347,7 @@ try {
     destination: { street: "1 Main St", city: "Austin", state: "TX", zip: "78701" },
   });
   check("routing reports the hidden item as unfulfillable", quote.unfulfillable.length === 1 && quote.parcels.length === 0, `parcels=${quote.parcels.length}`);
-  await ops.admin.setPlatformCategory({ category: "meat", disabled: false, reason: "Done" });
+  await admin.admin.setPlatformCategory({ category: "meat", disabled: false, reason: "Done" });
 
   console.log("\n=== 8. revoking a licence takes the chilled and frozen listings down ===");
   seen = await visibleIds();
@@ -332,7 +362,7 @@ try {
   check("the revocation is audited", (await auditFor(home, "store.kitchen_licence_change")).length === 2);
   const revokeAgain = await outcome(ops.admin.reviewKitchenLicence({ id: appRow.id, decision: "revoke", note: "again" }));
   check("a revoked licence cannot be revoked twice", revokeAgain.code === "BAD_REQUEST", revokeAgain.code);
-  const reapply = await outcome(merchant.merchant.applyForKitchenLicence({ storeId: home, licenceNumber: "CK-9999", issuingAuthority: "State Dept" }));
+  const reapply = await outcome(asStore(home).merchant.applyForKitchenLicence({ licenceNumber: "CK-9999", issuingAuthority: "State Dept" }));
   check("a seller can apply again after revocation", reapply.code === "ok" && reapply.value?.status === "applied");
   check("and the fresh application is unreviewed", (await prisma.kitchenLicence.findUniqueOrThrow({ where: { storeId: home } })).reviewedAt === null);
 
@@ -348,6 +378,44 @@ try {
   });
   seen = await visibleIds();
   check("a store's chilled listing, with no licence row at all, is visible", seen.has(storeChilled.id));
+
+  console.log("\n=== 8c. the seller's own screens: What's listed, and applying with a photo ===");
+  const mine = await asStore(aspiring).merchant.listings();
+  const mineLegacy = mine.find((l) => l.id === legacy.id);
+  check("a hidden listing is marked hidden on the seller's own list", mineLegacy?.hidden === true, String(mineLegacy?.hidden));
+  check("and the reason is the licence, not a paused category", mineLegacy?.hiddenReason === "needs_kitchen_licence", String(mineLegacy?.hiddenReason));
+  const storeMine = await asStore(store).merchant.listings();
+  check("a store's chilled listing is not hidden", storeMine.find((l) => l.id === storeChilled.id)?.hidden === false);
+  const standingHome = await asStore(aspiring).merchant.standing();
+  check("standing: a home-tier seller with no application", standingHome.homeTier === true && standingHome.kitchen === null);
+  check("standing: a store is not home tier", (await asStore(store).merchant.standing()).homeTier === false);
+
+  const foreign = await outcome(asStore(store).merchant.updateListing({ listingId: legacy.id, priceCents: 1000, inStock: true }));
+  check("a store cannot change another store's listing", foreign.code === "NOT_FOUND", foreign.code);
+  const tooLow = await outcome(asStore(store).merchant.updateListing({ listingId: storeChilled.id, priceCents: 10, inStock: true }));
+  check("a price below 50 cents is refused", tooLow.code === "BAD_REQUEST", tooLow.code);
+  const fix = await outcome(asStore(store).merchant.updateListing({ listingId: storeChilled.id, priceCents: 1250, inStock: false }));
+  const fixed = await prisma.listing.findUniqueOrThrow({ where: { id: storeChilled.id } });
+  check("a seller fixes a price and marks a product out", fix.code === "ok" && fixed.priceCents === 1250 && fixed.stockStatus === "out_of_stock");
+  await asStore(store).merchant.updateListing({ listingId: storeChilled.id, priceCents: 1250, inStock: true });
+  check("and marks it back in stock", (await prisma.listing.findUniqueOrThrow({ where: { id: storeChilled.id } })).stockStatus === "in_stock");
+
+  const none = await outcome(asStore(aspiring).merchant.applyForKitchenLicence({}));
+  check("an application with neither a photo nor a number is refused", none.code === "BAD_REQUEST", none.code);
+  const jpeg = await sharp({ create: { width: 16, height: 16, channels: 3, background: "#ffffff" } }).jpeg().toBuffer();
+  const photo = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+  const notAPhoto = await outcome(asStore(aspiring).merchant.applyForKitchenLicence({ document: Buffer.from("not an image").toString("base64") }));
+  check("a document that is not an image is refused", notAPhoto.code === "BAD_REQUEST", notAPhoto.code);
+  const byPhoto = await outcome(asStore(aspiring).merchant.applyForKitchenLicence({ document: photo }));
+  const photoRow = await prisma.kitchenLicence.findUniqueOrThrow({ where: { storeId: aspiring } });
+  check("a photo of the licence alone makes an application", byPhoto.code === "ok" && photoRow.status === "applied", byPhoto.code);
+  check("the photo is kept as the evidence", photoRow.evidence?.startsWith("/photos/document/") === true && photoRow.licenceNumber === null, String(photoRow.evidence));
+  const badge = await outcome(asStore(aspiring).merchant.applyForBadge({ kind: "diaspora_owned", document: photo }));
+  const badgeRow = await prisma.sellerBadge.findUniqueOrThrow({ where: { storeId_kind: { storeId: aspiring, kind: "diaspora_owned" } } });
+  check("a badge application with a photo is kept for review, never granted", badge.code === "ok" && badgeRow.status === "applied" && badgeRow.evidence?.startsWith("/photos/document/") === true);
+  const standingAfter = await asStore(aspiring).merchant.standing();
+  check("standing reports both as applied", standingAfter.kitchen === "applied" && standingAfter.badges.some((b) => b.kind === "diaspora_owned" && b.status === "applied"));
+  await prisma.kitchenLicence.deleteMany({ where: { storeId: aspiring } });
 
   console.log("\n=== 9. reclassifying a product is audited ===");
   const reclass = await outcome(ops.admin.setControlledCategory({ productId: plain, controlledCategory: "poultry", reason: "Chicken seasoning blend with dried chicken" }));

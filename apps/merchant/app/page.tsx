@@ -12,10 +12,15 @@ import {
   CookPotIcon,
   MicIcon,
   ShipCheckIcon,
+  CameraIcon,
   LogoMark,
 } from "@afrimart/ui";
 import { trpc } from "@afrimart/api-client";
 import { MESSAGES, glyphForCategory, type MerchantOrder } from "./orders";
+import { photoUrl, setDevStoreId } from "./providers";
+import { BOX_PHOTO, PhotoCamera } from "./PhotoCamera";
+import { SupportThread } from "./SupportThread";
+import { WhatsListed } from "./WhatsListed";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -27,16 +32,16 @@ type Tab = "camera" | "orders" | "messages";
  *
  * Deliberately absent, per CLAUDE.md's merchant-simplicity principle and the
  * prototype: any settings screen, any dashboard, any fourth navigation item.
- * The export also carries `v-earnings` and `v-catalogue` views; both are extra
- * surfaces beyond the three and are not built here.
+ * The export also carries `v-earnings` and `v-catalogue` views. Catalogue, titled
+ * "What's listed" and reached from the Camera tab, is built (WhatsListed.tsx)
+ * because the QC-1 seller rules surface there: hidden listings, the paused
+ * banner, the add-a-product checks. The AfriMart thread in Messages
+ * (SupportThread.tsx) is where a seller applies for licensed-kitchen status or a
+ * badge. Neither adds a fourth tab.
  *
- * The 2026-09-10 re-export changed how those two are reached, not whether they
- * exist: it drops the overflow menu sheet entirely, moves earnings to a header
- * button showing a running total on the orders view, and retitles catalogue to
- * "What's listed", reached from the camera screen. Both destinations are still
- * outside the three surfaces, so this build is unaffected — but the header
- * earnings total is a new always-visible affordance, and adding it is a product
- * call rather than a UI one. Flagged, not built.
+ * Earnings is not built: it moves to a header button showing a running total on
+ * the orders view, an always-visible affordance that is a product call rather
+ * than a UI one. Flagged, not built.
  */
 export default function MerchantApp() {
   // useSearchParams opts the tree into client rendering, which the static
@@ -52,6 +57,8 @@ export default function MerchantApp() {
 function MerchantAppInner() {
   const [tab, setTab] = useState<Tab>("orders");
   const [openId, setOpenId] = useState<string | null>(null);
+  // Two screens reached from inside the tabs: What's listed (Camera) and the AfriMart thread (Messages).
+  const [sub, setSub] = useState<"listed" | "support" | null>(null);
 
   /**
    * There is no merchant sign-in yet. Rather than add a store picker — which
@@ -64,13 +71,24 @@ function MerchantAppInner() {
   const storeId = params.get("store") ?? storesQuery.data?.[0]?.id ?? "";
   const store = storesQuery.data?.find((s) => s.id === storeId) ?? storesQuery.data?.[0];
 
-  const inbox = trpc.merchant.inbox.useQuery({ storeId }, { enabled: Boolean(storeId) });
+  // Set before the first identified request is made: the queries below are only
+  // enabled once there is a store, and every request reads this at send time.
+  setDevStoreId(storeId || null);
+  const inbox = trpc.merchant.inbox.useQuery(undefined, { enabled: Boolean(storeId) });
   const utils = trpc.useUtils();
   const acceptJob = trpc.merchant.accept.useMutation({
     onSuccess: () => utils.merchant.inbox.invalidate(),
   });
   const shipJob = trpc.merchant.markShipped.useMutation({
     onSuccess: () => utils.merchant.inbox.invalidate(),
+  });
+  // QC-2 — which order the box-photo camera is open for, and the upload itself.
+  const [cameraFor, setCameraFor] = useState<string | null>(null);
+  const savePhoto = trpc.merchant.packingPhoto.useMutation({
+    onSuccess: () => {
+      utils.merchant.inbox.invalidate();
+      setCameraFor(null);
+    },
   });
 
   /**
@@ -92,6 +110,7 @@ function MerchantAppInner() {
     valueCents: s.valueCents,
     temperatureClass: s.temperatureClass,
     items: s.items.map((i) => ({ name: i.name, qty: i.qty, glyph: glyphForCategory(i.category) })),
+    photoUrl: s.packingPhotoUrl,
   }));
 
   const open = orders.find((o) => o.id === openId) ?? null;
@@ -123,6 +142,8 @@ function MerchantAppInner() {
   if (open) {
     const itemCount = open.items.reduce((n, i) => n + i.qty, 0);
     const allPacked = open.packed.length === open.items.length;
+    // QC-2 — the box is photographed open, after the last item is in and before it is sealed.
+    const readyToShip = allPacked && open.photoUrl !== null;
 
     return (
       <div className="mr-shell">
@@ -171,10 +192,14 @@ function MerchantAppInner() {
               <div className="mr-progress">
                 <div className="p on" />
                 <div className={`p${open.step >= 1 ? " on" : ""}`} />
-                <div className="p" />
+                <div className={`p${open.step >= 1 && allPacked ? " on" : ""}`} />
               </div>
               <div className="mr-progress-lbl">
-                {open.step === 0 ? "Step 1 — print the label" : "Step 2 — pack every item"}
+                {open.step === 0
+                  ? "Step 1 — print the label"
+                  : allPacked
+                    ? "Step 3 — photo the open box"
+                    : "Step 2 — pack every item"}
               </div>
               <div className="mr-packhead">
                 <h3 className="serif">Photo packing list</h3>
@@ -202,6 +227,17 @@ function MerchantAppInner() {
                   </button>
                 ))}
               </div>
+              <div className="mr-packcount tnum">
+                <b>{open.packed.length}</b> of {open.items.length} packed
+              </div>
+              <BoxPhotoSlot
+                order={open}
+                canPhotograph={allPacked && open.step >= 1}
+                onOpen={() => {
+                  savePhoto.reset();
+                  setCameraFor(open.id);
+                }}
+              />
             </>
           )}
           <div className="mr-spacer" />
@@ -230,10 +266,11 @@ function MerchantAppInner() {
             <>
               <button
                 type="button"
-                className={`mr-bigbtn ${allPacked ? "accent" : "disabled"}`}
+                className={`mr-bigbtn ${readyToShip ? "accent" : "disabled"}`}
                 /* A real disabled attribute, not just pointer-events:none — the
-                   CSS alone leaves the action reachable by keyboard and script. */
-                disabled={!allPacked}
+                   CSS alone leaves the action reachable by keyboard and script.
+                   The server refuses a shipment with no box photo as well. */
+                disabled={!readyToShip || shipJob.isPending}
                 onClick={() => {
                   update(open.id, { status: "ready" });
                   setOpenId(null);
@@ -242,13 +279,43 @@ function MerchantAppInner() {
                 <CheckIcon strokeWidth={2.6} /> Packed — ready for pickup
               </button>
               <div className="mr-barhint">
-                {open.packed.length} of {open.items.length} items packed
+                {!allPacked
+                  ? `${open.items.length - open.packed.length} still to pack`
+                  : open.photoUrl === null
+                    ? "Photograph the open box first"
+                    : "Ready to hand over"}
               </div>
             </>
           )}
         </div>
+
+        {cameraFor === open.id && (
+          <PhotoCamera
+            copy={BOX_PHOTO(open.ref)}
+            saving={savePhoto.isPending}
+            error={savePhoto.isError ? savePhoto.error.message : null}
+            onClose={() => setCameraFor(null)}
+            onUse={(image) => savePhoto.mutate({ shipmentId: open.id, image })}
+          />
+        )}
       </div>
     );
+  }
+
+  // ---- screens reached from a tab ----
+  if (sub === "listed") {
+    return (
+      <WhatsListed
+        onBack={() => setSub(null)}
+        onMessage={() => {
+          setTab("messages");
+          setSub("support");
+        }}
+      />
+    );
+  }
+  if (sub === "support") {
+    return <SupportThread onBack={() => setSub(null)} />;
   }
 
   // ---- three-tab shell ----
@@ -271,8 +338,8 @@ function MerchantAppInner() {
 
       <div className="mr-scroll">
         {tab === "orders" && <OrdersInbox orders={orders} onOpen={setOpenId} onAccept={(id) => update(id, { status: "packing", step: 0 })} />}
-        {tab === "camera" && <CameraSurface />}
-        {tab === "messages" && <MessagesSurface />}
+        {tab === "camera" && <CameraSurface onListed={() => setSub("listed")} />}
+        {tab === "messages" && <MessagesSurface onSupport={() => setSub("support")} />}
         <div className="mr-spacer" />
       </div>
 
@@ -293,6 +360,58 @@ function MerchantAppInner() {
         </button>
       </nav>
     </div>
+  );
+}
+
+function GridIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+      <rect x="3" y="4" width="7" height="7" rx="1.5" />
+      <rect x="14" y="4" width="7" height="7" rx="1.5" />
+      <rect x="3" y="15" width="7" height="5" rx="1.5" />
+      <rect x="14" y="15" width="7" height="5" rx="1.5" />
+    </svg>
+  );
+}
+
+/**
+ * QC-2 — the box photo slot. Disabled until every item is ticked, amber and
+ * tappable when it is time, a thumbnail with Retake once saved.
+ */
+function BoxPhotoSlot({
+  order, canPhotograph, onOpen,
+}: { order: MerchantOrder; canPhotograph: boolean; onOpen: () => void }) {
+  if (order.photoUrl) {
+    return (
+      <div className="mr-bp done">
+        <div className="thumb">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoUrl(order.photoUrl)} alt="Your photo of the packed box" />
+        </div>
+        <div className="m">
+          <span className="t">Box photo</span>
+          <span className="s">
+            <CheckIcon strokeWidth={2.6} /> Saved
+          </span>
+        </div>
+        <button type="button" className="retake" onClick={onOpen}>
+          Retake
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button type="button" className={`mr-bp${canPhotograph ? " ready" : ""}`} disabled={!canPhotograph} onClick={onOpen}>
+      <span className="ic">
+        <CameraIcon />
+      </span>
+      <span className="m">
+        <span className="t">{canPhotograph ? "Photograph the open box" : "Box photo"}</span>
+        <span className="s">
+          {canPhotograph ? "Before you seal it" : order.step >= 1 ? "After every item is in" : "After the label is printed"}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -396,7 +515,7 @@ function OrdersInbox({
 }
 
 /** MCH-1/ONB-2 — photo and voice first, words second. */
-function CameraSurface() {
+function CameraSurface({ onListed }: { onListed: () => void }) {
   return (
     <div className="mr-cam">
       <div className="mr-cam-prompt">What changed today?</div>
@@ -424,16 +543,28 @@ function CameraSurface() {
           <ArrowRightIcon />
         </span>
       </button>
+      <button type="button" className="mr-bigaction listed" onClick={onListed}>
+        <span className="ic">
+          <GridIcon />
+        </span>
+        <span className="m">
+          <span className="t">What&apos;s listed</span>
+          <span className="s">Tap to fix a price, mark one out, or add a product.</span>
+        </span>
+        <span className="arr">
+          <ArrowRightIcon />
+        </span>
+      </button>
       <div className="mr-cam-foot">Photo first. We&apos;ll handle the words.</div>
     </div>
   );
 }
 
-function MessagesSurface() {
+function MessagesSurface({ onSupport }: { onSupport: () => void }) {
   return (
     <div className="mr-msglist">
       {MESSAGES.map((m) => (
-        <button type="button" className="mr-msgrow" key={m.id}>
+        <button type="button" className={`mr-msgrow${m.support ? " support" : ""}`} key={m.id} onClick={m.support ? onSupport : undefined}>
           <span className="av">{m.initial}</span>
           <span className="m">
             <span className="nm">{m.from}</span>

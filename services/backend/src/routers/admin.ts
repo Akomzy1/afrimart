@@ -7,6 +7,8 @@ import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.
 import { computeHold } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 import { checkListingForStore } from "../quality/categoryAccess.js";
+import { refundClaim } from "../quality/claimService.js";
+import { claimRef } from "../quality/claims.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier } from "../quality/listingStandards.js";
 
 /**
@@ -570,27 +572,54 @@ export const adminRouter = router({
   refundClaims: staffProcedure("finance:read").query(async () => {
     const claims = await prisma.refundClaim.findMany({
       where: { status: { in: ["manual_review", "auto_approved"] } },
-      include: { buyer: { select: { email: true } } },
+      include: { buyer: { select: { email: true } }, items: { include: { shipmentItem: true } } },
       orderBy: { createdAt: "asc" },
       take: 200,
     });
-    return claims.map((c) => ({
-      id: c.id,
-      buyerEmail: c.buyer.email,
-      orderId: c.orderId,
-      reason: c.reason,
-      amountCents: c.amountCents,
-      photoUrl: c.photoUrl,
-      status: c.status,
-      recoveryTarget: c.recoveryTarget,
-      createdAt: c.createdAt,
-    }));
+
+    // QC-3 — a reviewer judging a "missing from the box" report needs the seller's
+    // packing photo beside the buyer's, so both come back with the claim.
+    const shipments = await prisma.shipment.findMany({
+      where: { id: { in: claims.map((c) => c.shipmentId).filter((v): v is string => Boolean(v)) } },
+      include: { store: { select: { name: true } } },
+    });
+    const shipmentById = new Map(shipments.map((s) => [s.id, s]));
+
+    return claims.map((c) => {
+      const shipment = c.shipmentId ? shipmentById.get(c.shipmentId) : undefined;
+      return {
+        id: c.id,
+        ref: claimRef(c.id),
+        kind: c.kind,
+        buyerEmail: c.buyer.email,
+        orderId: c.orderId,
+        reason: c.reason,
+        note: c.note,
+        amountCents: c.amountCents,
+        /** The buyer's photo of the problem. */
+        photoUrl: c.photoUrl,
+        storeName: shipment?.store.name ?? null,
+        /** The seller's photo of the open box before sealing (QC-2). */
+        packingPhotoUrl: shipment?.packingPhotoUrl ?? null,
+        packingPhotoAt: shipment?.packingPhotoAt ?? null,
+        parcelStatus: shipment?.status ?? null,
+        items: c.items.map((i) => ({ name: i.shipmentItem.nameSnapshot, quantity: i.shipmentItem.quantity, lineTotalCents: i.lineTotalCents })),
+        status: c.status,
+        recoveryTarget: c.recoveryTarget,
+        refundedAt: c.refundedAt,
+        createdAt: c.createdAt,
+      };
+    });
   }),
 
   /**
-   * QC-8 — resolve a claim and say where the cost lands. The refund to the
-   * buyer is not what is being decided here; that already happened. This
-   * records the recovery, which is the part that affects a seller's money.
+   * QC-8 — resolve a claim and say where the cost lands.
+   *
+   * For a claim that was auto-approved the buyer was already refunded and this
+   * records the recovery, the part that affects a seller's money. For one that
+   * went to review, approving it is what refunds the buyer: the refund is issued
+   * after the decision is recorded and audited, and approving again retries it
+   * if the issuer failed. A claim is "refunded" only once the money has gone.
    */
   resolveRefundClaim: staffProcedure("finance:write")
     .input(
@@ -605,6 +634,18 @@ export const adminRouter = router({
     .mutation(async ({ input, ctx }) => {
       const before = await prisma.refundClaim.findUnique({ where: { id: input.claimId } });
       if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such claim." });
+      // Closed once it is declined, or approved and paid. An auto-approved claim is
+      // refunded but not yet resolved: approving it records the recovery. One that
+      // is approved but not yet refunded may be approved again, which retries the refund.
+      if (before.status === "rejected" || (before.status === "approved" && before.refundedAt)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "That claim has already been resolved." });
+      }
+      if (input.decision === "reject" && before.refundedAt) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "The buyer has already been refunded, so this can't be rejected. Approve it to record where the cost is recovered from.",
+        });
+      }
 
       return prisma.$transaction(async (tx) => {
         const after = await tx.refundClaim.update({
@@ -633,6 +674,19 @@ export const adminRouter = router({
           });
         }
         return after;
+      }).then(async (after) => {
+        if (input.decision !== "approve") return after;
+        try {
+          const { refundedAt } = await refundClaim(after.id);
+          return { ...after, refundedAt };
+        } catch (e) {
+          // The decision stands, audited. The refund did not go, and nothing
+          // may say it did: tell the operator so they can approve again.
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Approved, but the refund could not be issued (${e instanceof Error ? e.message : "unknown error"}). Approve again to retry.`,
+          });
+        }
       });
     }),
 

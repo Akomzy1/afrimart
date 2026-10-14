@@ -31,7 +31,7 @@ function refuseIfProduction() {
   const reasons: string[] = [];
   if (process.env.NODE_ENV === "production") reasons.push("NODE_ENV is production");
   if (host && !localHosts.includes(host)) reasons.push(`database host "${host}" is not local`);
-  if (/\b(prod|production|live)\b/i.test(url)) reasons.push("DATABASE_URL names a production database");
+  if (/(^|[^a-z0-9])(prod|production|live)([^a-z0-9]|$)/i.test(url)) reasons.push("DATABASE_URL names a production database");
 
   if (reasons.length) {
     console.error("Refusing to seed staff accounts:");

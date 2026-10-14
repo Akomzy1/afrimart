@@ -17,6 +17,19 @@ import { trpc } from "@afrimart/api-client";
  * shown as it was written.
  */
 
+const API_ORIGIN = new URL(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/trpc").origin;
+
+/** What the seller sent: a photo of the document opens in a new tab, anything else is shown as written. */
+function Evidence({ value }: { value: string | null }) {
+  if (!value) return <>—</>;
+  if (!value.startsWith("/photos/")) return <>{value}</>;
+  return (
+    <a href={`${API_ORIGIN}${value}`} target="_blank" rel="noreferrer">
+      Open the photo
+    </a>
+  );
+}
+
 const CATEGORIES = ["meat", "poultry", "fish", "dairy"] as const;
 type Category = (typeof CATEGORIES)[number];
 
@@ -122,10 +135,12 @@ function KitchenLicences({ canWrite }: { canWrite: boolean }) {
                   <div className="muted">{r.sellerType.replace("_", " ")}</div>
                 </td>
                 <td>
-                  {r.licenceNumber}
+                  {r.licenceNumber ?? <span className="muted">Number on the photo</span>}
                   <div className="muted">{r.issuingAuthority}</div>
                 </td>
-                <td className="muted">{r.evidence ?? "—"}</td>
+                <td className="muted">
+                  <Evidence value={r.evidence} />
+                </td>
                 <td className="muted">
                   {when(status === "applied" ? r.createdAt : (r.reviewedAt ?? r.createdAt))}
                   {r.reviewedByEmail ? <div>{r.reviewedByEmail}</div> : null}
@@ -257,7 +272,9 @@ function Badges({ canWrite }: { canWrite: boolean }) {
                   <div className="muted">{b.sellerType.replace("_", " ")}</div>
                 </td>
                 <td>{BADGE_LABEL[b.kind] ?? b.kind}</td>
-                <td className="muted">{b.evidence ?? "—"}</td>
+                <td className="muted">
+                  <Evidence value={b.evidence} />
+                </td>
                 <td className="muted">
                   {when(b.createdAt)}
                   {b.reviewNote ? <div>{b.reviewNote}</div> : null}

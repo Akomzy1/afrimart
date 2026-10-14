@@ -48,6 +48,8 @@ export interface RenderContext {
   trackingNumber?: string;
   paymentMethod?: string;
   reportRef?: string;
+  /** The refund's amount, formatted, for the refund email's title and total. */
+  refundAmount?: string;
   items?: EmailItem[];
 }
 
@@ -60,6 +62,9 @@ async function load(name: TemplateName): Promise<string> {
   cache.set(name, html);
   return html;
 }
+
+/** The order reference buyers see in emails and on screen. */
+export const orderRefFor = (orderId: string) => `AM-${orderId.slice(-7).toUpperCase()}`;
 
 /** Escapes values before they land in HTML; order data is user-influenced. */
 function esc(value: string): string {
@@ -112,6 +117,7 @@ export async function renderEmail(name: TemplateName, ctx: RenderContext): Promi
     trackingNumber: ctx.trackingNumber ?? "",
     paymentMethod: ctx.paymentMethod ?? "",
     reportRef: ctx.reportRef ?? "",
+    refundAmount: ctx.refundAmount ?? "",
   })) {
     html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), esc(value));
   }
@@ -124,7 +130,7 @@ export async function renderEmail(name: TemplateName, ctx: RenderContext): Promi
  * because the subject is a property of the notification and should not change
  * silently when a designer edits a page title.
  */
-export function subjectFor(name: TemplateName, ctx: RenderContext & { refundAmount?: string }): string {
+export function subjectFor(name: TemplateName, ctx: RenderContext): string {
   switch (name) {
     case "order-confirmed":
     case "order-confirmed-no-chilled":

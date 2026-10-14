@@ -118,6 +118,18 @@ export function assessClaim(ctx: ClaimContext): ClaimDecision {
     };
   }
 
+  // QC-3 — "missing from the box" is checked against the seller's packing photo
+  // (QC-2), which only a person can do, so it is never auto-approved either. The
+  // seller photographed the open box before sealing it; whether the item was in
+  // it is the whole question.
+  if (ctx.reason === "missing_items") {
+    return {
+      status: "manual_review",
+      recoveryTarget: target,
+      reasonGiven: "We'll check this against the seller's packing photo and come back to you.",
+    };
+  }
+
   // QC-9 — a buyer past the claim cap goes to a human, regardless of amount.
   if (ctx.priorClaims >= REFUND_CLAIMS_BEFORE_REVIEW) {
     return {

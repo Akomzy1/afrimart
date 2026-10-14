@@ -190,7 +190,7 @@ export function ShipCheckIcon(props: SVGProps<SVGSVGElement>) {
 
 /** Product placeholder art — no real photography yet, so listings render one of
  * these glyphs on a warm radial-gradient shot, matching every prototype page. */
-export type ProductGlyphKind = "leaf" | "wheat" | "pepper" | "jar" | "seed" | "onion" | "fish" | "butter";
+export type ProductGlyphKind = "leaf" | "wheat" | "pepper" | "jar" | "seed" | "onion" | "fish" | "butter" | "meat" | "bird" | "milk";
 
 export function ProductGlyph({ kind, ...props }: { kind: ProductGlyphKind } & SVGProps<SVGSVGElement>) {
   const paths: Record<ProductGlyphKind, string> = {
@@ -203,6 +203,10 @@ export function ProductGlyph({ kind, ...props }: { kind: ProductGlyphKind } & SV
     onion: "M12 3c1.5 2 2 3 2 4M12 21c-4 0-7-3-7-7 0-3.5 3-8 7-8s7 4.5 7 8c0 4-3 7-7 7zM9 8c-1 2-1 5 0 8M15 8c1 2 1 5 0 8",
     fish: "M3 12c3-4 8-5 12-5 3 0 5 2 6 5-1 3-3 5-6 5-4 0-9-1-12-5zM3 12l-1-3M3 12l-1 3",
     butter: "M4 9h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9zM4 9l3-4h10l3 4",
+    // The merchant app's listing categories (AfriMart Merchant.html).
+    meat: "M5 9c0-3 4-5 8-4s7 4 6 8-5 6-9 5-5-5-5-9zM16.2 11a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0z",
+    bird: "M14 4a5 5 0 0 1 3.5 8.5L15 15l-6-6 2.5-2.5A5 5 0 0 1 14 4zM9 14l-5 5M4 15l3 3",
+    milk: "M8 3h8l2 4v14H6V7l2-4zM6 7h12M10 13h4",
   };
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -243,6 +247,17 @@ export function ChevronRightIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
       <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** A camera, as drawn for the box photo slot in AfriMart Merchant.html. */
+export function CameraIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} {...props}>
+      <rect x="3" y="7" width="18" height="13" rx="2" />
+      <path d="M8 7l1.5-2.5h5L16 7" strokeLinejoin="round" />
+      <circle cx="12" cy="13.5" r="3.5" />
     </svg>
   );
 }

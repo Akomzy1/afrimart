@@ -24,7 +24,10 @@ const DST = path.resolve("src/notifications/templates");
 /** Scalar demo values, replaced wholesale. */
 const SCALARS: [RegExp, string][] = [
   [/AM-4827-193|AM-4790-021|AM-4712-508/g, "{{orderRef}}"],
-  [/AM-C-1987/g, "{{reportRef}}"],
+  // Any demo report reference, not one named instance: the re-exported claim
+  // emails carry AM-C-2041 and AM-C-2042, and a pattern for a single value
+  // let both through to real buyers.
+  [/AM-C-\d+/g, "{{reportRef}}"],
   [/Visa ending 4821/g, "{{paymentMethod}}"],
   [/1Z 84V 2X0 03 1185 4471/g, "{{trackingNumber}}"],
   [/UPS Ground/g, "{{carrier}}"],
@@ -71,7 +74,12 @@ const emptyTemplates: string[] = [];
 for (const file of files) {
   let html = await readFile(path.join(SRC, file), "utf8");
   for (const [pattern, token] of SCALARS) html = html.replace(pattern, token);
-  const { html: withItems, rows } = templatiseItems(html);
+  const { html: templated, rows } = templatiseItems(html);
+  // The refund email states one amount (title, preheader and total). It is the
+  // demo figure everywhere it remains once the item rows have been tokenised,
+  // and left as a literal it would tell a real buyer they had been refunded
+  // somebody else's $13.50.
+  const withItems = file === "refund-issued.html" ? templated.replace(/\$13\.50/g, "{{refundAmount}}") : templated;
   await writeFile(path.join(DST, file), withItems);
   if (rows === 0) emptyTemplates.push(file);
   const tokens = new Set((withItems.match(/\{\{#?\/?([a-zA-Z]+)\}\}/g) ?? []).map((t) => t));

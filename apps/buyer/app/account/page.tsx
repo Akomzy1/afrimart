@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { trpc } from "@afrimart/api-client";
+import { glyphForCategory } from "../../lib/glyph";
 import {
   PageHeader,
   ProductGlyph,
@@ -24,42 +26,29 @@ const USUALS: { name: string; seller: string; priceCents: number; glyph: Product
   { name: "Ata Rodo", seller: "Lagos Fresh", priceCents: 675, glyph: "pepper" },
 ];
 
-interface HistoryOrder {
-  id: string;
-  date: string;
-  glyphs: ProductGlyphKind[];
-  itemCount: number;
-  totalCents: number;
-  status: "transit" | "done";
-  statusLabel: string;
-}
-
-const HISTORY: HistoryOrder[] = [
-  { id: "AM-4827-193", date: "This Tuesday", glyphs: ["leaf", "pepper", "jar", "leaf"], itemCount: 5, totalCents: 9920, status: "transit", statusLabel: "On the way" },
-  { id: "AM-4790-021", date: "2 weeks ago", glyphs: ["wheat", "seed", "jar"], itemCount: 6, totalCents: 7460, status: "done", statusLabel: "Delivered" },
-  { id: "AM-4712-508", date: "Last month", glyphs: ["leaf", "pepper"], itemCount: 4, totalCents: 4130, status: "done", statusLabel: "Delivered" },
-];
+const dayWord = (iso: string | Date) =>
+  new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 /**
  * AfriMart Buyer - Boxes Tracking and Account.html — account view.
- * There is no auth or account router on the backend yet, so the profile,
- * usuals and history below are the prototype's demo data. The Taste of Home
+ * Order history is the signed-in buyer's real orders (QC-3 reports hang off
+ * them). There is no account router on the backend yet, so the profile and the
+ * usuals below are still the prototype's demo data. The Taste of Home
  * row links nowhere on purpose: boxes are PRD SUB-1, Phase 2, unbuilt.
  */
 export default function AccountPage() {
   const { show } = useToast();
   const [added, setAdded] = useState<string | null>(null);
+  const orders = trpc.orders.list.useQuery();
 
   /**
-   * SRCH-4 one-tap reorder, as far as it can honestly go today: HISTORY is
-   * local demo data carrying only glyphs and a count, and the backend exposes
-   * no orders router, so there is nothing to resolve a past order's actual
-   * lines from. Rather than fake an add, this tells the buyer plainly. Wire it
-   * to real order lines once an orders API exists.
+   * SRCH-4 one-tap reorder. The orders API now exists, so the lines are
+   * there to reorder from, but the cart's add-by-listing path is not wired to
+   * past orders yet; until it is, say so plainly rather than fake an add.
    */
-  function reorder(order: HistoryOrder) {
-    setAdded(order.id);
-    show(`Reordering ${order.id} needs your order history — that's coming soon`);
+  function reorder(id: string, ref: string) {
+    setAdded(id);
+    show(`Reordering ${ref} is coming soon`);
     window.setTimeout(() => setAdded(null), 2000);
   }
 
@@ -101,39 +90,59 @@ export default function AccountPage() {
 
         <div className="history">
           <h3 className="serif">Order history</h3>
-          {HISTORY.map((order) => (
-            <div className="ord" key={order.id}>
-              <div className="top">
-                <div className="d">
-                  {order.date}
-                  <span className="sub">Order № {order.id}</span>
-                </div>
-                <div className={`st ${order.status}`}>{order.statusLabel}</div>
-              </div>
-              <div className="thumbs">
-                {order.glyphs.map((g, i) => (
-                  <div className="t" key={i}>
-                    <ProductGlyph kind={g} />
+          {orders.isLoading && <p className="od-note">Loading your orders…</p>}
+          {orders.data && orders.data.length === 0 && <p className="od-note">No orders yet. When you place one, it shows up here.</p>}
+          {orders.data?.map((order) => {
+            const items = order.parcels.flatMap((p) => p.items);
+            const delivered = order.parcels.every((p) => p.status === "delivered");
+            const openReports = order.parcels.flatMap((p) => p.claims).filter((c) => c.stage === "review").length;
+            const glyphs = items.slice(0, 4).map((i) => glyphForCategory(i.category));
+            const count = items.reduce((n, i) => n + i.quantity, 0);
+            return (
+              <div className="ord" key={order.orderId}>
+                <div className="top">
+                  <div className="d">
+                    {dayWord(order.placedAt)}
+                    <span className="sub">Order № {order.ref}</span>
                   </div>
-                ))}
-                {order.itemCount > order.glyphs.length && <div className="more">+{order.itemCount - order.glyphs.length}</div>}
-              </div>
-              <div className="foot">
-                <div className="tt">
-                  {order.itemCount} items · <b>{money(order.totalCents)}</b>
+                  <div className={`st ${delivered ? "done" : "transit"}`}>{delivered ? "Delivered" : "On the way"}</div>
                 </div>
-                {order.status === "transit" ? (
-                  <Link href="/orders" className="track">
-                    Track order
-                  </Link>
-                ) : (
-                  <button type="button" className={`re${added === order.id ? " added" : ""}`} onClick={() => reorder(order)}>
-                    <CartIcon /> {added === order.id ? "Added" : "Reorder"}
-                  </button>
+                <div className="thumbs">
+                  {glyphs.map((g, i) => (
+                    <div className="t" key={i}>
+                      <ProductGlyph kind={g} />
+                    </div>
+                  ))}
+                  {items.length > glyphs.length && <div className="more">+{items.length - glyphs.length}</div>}
+                </div>
+                {openReports > 0 && (
+                  <span className="cchip open">
+                    {openReports === 1 ? "Report under review" : `${openReports} reports under review`}
+                  </span>
                 )}
+                <div className="foot">
+                  <div className="tt">
+                    {count} {count === 1 ? "item" : "items"} · <b>{money(order.totalCents)}</b>
+                  </div>
+                  <div className="ord-actions">
+                    {!delivered && (
+                      <Link href="/orders" className="track">
+                        Track order
+                      </Link>
+                    )}
+                    <Link href={`/account/orders/${order.orderId}`} className="track">
+                      View order
+                    </Link>
+                    {delivered && (
+                      <button type="button" className={`re${added === order.orderId ? " added" : ""}`} onClick={() => reorder(order.orderId, order.ref)}>
+                        <CartIcon /> {added === order.orderId ? "Added" : "Reorder"}
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="rows">

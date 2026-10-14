@@ -20,7 +20,8 @@
     "verify:lockout": "tsx src/scripts/verify-lockout.ts",
     "build:emails": "tsx src/scripts/build-email-templates.ts",
     "verify:notifications": "tsx src/scripts/verify-notifications.ts",
-    "verify:quality-controls": "tsx src/scripts/verify-quality-controls.ts"
+    "verify:quality-controls": "tsx src/scripts/verify-quality-controls.ts",
+    "verify:claims": "tsx src/scripts/verify-claims.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -32,6 +33,7 @@
     "@trpc/server": "^11.0.0",
     "fastify": "^5.0.0",
     "otplib": "^13.5.0",
+    "sharp": "^0.35.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {

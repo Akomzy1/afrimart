@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
-import { publicProcedure, router } from "../trpc.js";
+import { devProcedure, merchantProcedure, router } from "../trpc.js";
 import { PERMIT_STATEMENT_VERSION } from "../config.js";
-import { sellerCategoryNotices } from "../quality/categoryAccess.js";
+import { sellerCategoryNotices, visibleListings } from "../quality/categoryAccess.js";
+import { PhotoRejected, decodeUpload, photoStore } from "../storage/photos.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier, permitStatement } from "../quality/listingStandards.js";
 
 const CONTROLLED = ["meat", "poultry", "fish", "dairy"] as const;
@@ -17,8 +18,11 @@ const CONTROLLED = ["meat", "poultry", "fish", "dairy"] as const;
  * what enforces that — there is no query here that can return another store's
  * items, because the relation does not lead there.
  *
- * There is no merchant auth yet, so storeId is passed in. That is the single
- * thing to replace when sign-in lands: every procedure already scopes by it.
+ * Which store is asking comes from the request (`ctx.storeId`, resolved in
+ * identity.ts), never from input: no procedure here accepts a store id. Until
+ * real merchant sign-in lands the resolver is a development stub that refuses
+ * to run on anything that looks like production, so nothing in this file is
+ * reachable in a deployment until sign-in replaces it.
  */
 
 function minutesAgo(from: Date): string {
@@ -38,11 +42,28 @@ function merchantStatus(status: string): "new" | "packing" | "ready" {
   return "ready";
 }
 
-const storeInput = z.object({ storeId: z.string() });
+/**
+ * A document photo the seller sent in support of an application (a kitchen
+ * licence, a business registration). It is what the reviewer reads, so it is
+ * kept as the application's evidence; the same metadata-stripping store as the
+ * packing and claim photos holds it.
+ */
+async function storeDocument(photo: string): Promise<string> {
+  try {
+    return await photoStore.put("document", decodeUpload(photo));
+  } catch (e) {
+    if (e instanceof PhotoRejected) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+    throw e;
+  }
+}
 
 export const merchantRouter = router({
-  /** Which stores exist, so the app can pick one while there is no sign-in. */
-  stores: publicProcedure.query(async () => {
+  /**
+   * Which stores exist, so the app can pick one while there is no sign-in.
+   * Development only: it lists every store to anyone, which sign-in makes
+   * unnecessary, and it fails closed anywhere that looks like production.
+   */
+  stores: devProcedure.query(async () => {
     const stores = await prisma.store.findMany({
       where: { onboardingStatus: "live" },
       include: { hubMetro: true },
@@ -57,9 +78,9 @@ export const merchantRouter = router({
   }),
 
   /** MCH-2 — this store's inbox: one card per shipment it has to fulfil. */
-  inbox: publicProcedure.input(storeInput).query(async ({ input }) => {
+  inbox: merchantProcedure.query(async ({ ctx }) => {
     const shipments = await prisma.shipment.findMany({
-      where: { storeId: input.storeId, status: { not: "delivered" } },
+      where: { storeId: ctx.storeId, status: { not: "delivered" } },
       include: { items: true, order: { include: { buyer: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -73,6 +94,8 @@ export const merchantRouter = router({
       ago: minutesAgo(s.createdAt),
       status: merchantStatus(s.status),
       temperatureClass: s.temperatureClass,
+      /** QC-2 — null until the box has been photographed. */
+      packingPhotoUrl: s.packingPhotoUrl,
       carrier: s.carrier,
       estimatedDelivery: s.estimatedDelivery,
       /** This parcel's value only — not the buyer's order total. */
@@ -87,27 +110,72 @@ export const merchantRouter = router({
   }),
 
   /** MCH-2 — accept the job; the label is generated at this point (FUL-1). */
-  accept: publicProcedure
+  accept: merchantProcedure
     .input(z.object({ shipmentId: z.string() }))
-    .mutation(async ({ input }) => {
-      const shipment = await prisma.shipment.findUnique({ where: { id: input.shipmentId } });
+    .mutation(async ({ input, ctx }) => {
+      // Scoped to the caller's own store: another store's shipment is "no longer
+      // available", not "forbidden", so its existence is not confirmed either.
+      const shipment = await prisma.shipment.findFirst({ where: { id: input.shipmentId, storeId: ctx.storeId } });
       if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
       return prisma.shipment.update({
-        where: { id: input.shipmentId },
+        where: { id: shipment.id },
         data: {
           status: "label_created",
           // A real EasyPost label replaces this once credentials exist.
-          trackingNumber: shipment.trackingNumber ?? `TRK${input.shipmentId.slice(-8).toUpperCase()}`,
+          trackingNumber: shipment.trackingNumber ?? `TRK${shipment.id.slice(-8).toUpperCase()}`,
         },
       });
     }),
 
-  /** MCH-4 — everything is packed and handed to the carrier. */
-  markShipped: publicProcedure
+  /**
+   * QC-2 — photograph the open box before sealing it. The photo is the evidence
+   * for every later dispute about what was in the parcel, including a "missing
+   * from the box" claim (QC-3), so it is taken after the last item is in and
+   * before the box is closed, and the shipment cannot be handed over without it.
+   *
+   * The image arrives as base64, is re-encoded and stripped of all metadata
+   * (the GPS position of the shop included) by the photo store, and only then
+   * written. Retaking replaces the saved photo.
+   */
+  packingPhoto: merchantProcedure
+    .input(z.object({ shipmentId: z.string(), image: z.string().min(1).max(12_000_000) }))
+    .mutation(async ({ input, ctx }) => {
+      const shipment = await prisma.shipment.findFirst({ where: { id: input.shipmentId, storeId: ctx.storeId } });
+      if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
+      if (shipment.status === "pending") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Accept the order before photographing the box." });
+      }
+      if (shipment.status !== "label_created") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This order has already been handed over." });
+      }
+
+      let url: string;
+      try {
+        url = await photoStore.put("packing", decodeUpload(input.image));
+      } catch (e) {
+        if (e instanceof PhotoRejected) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+        throw e;
+      }
+      await prisma.shipment.update({
+        where: { id: shipment.id },
+        data: { packingPhotoUrl: url, packingPhotoAt: new Date() },
+      });
+      return { photoUrl: url };
+    }),
+
+  /** MCH-4 — everything is packed, photographed and handed to the carrier. */
+  markShipped: merchantProcedure
     .input(z.object({ shipmentId: z.string() }))
-    .mutation(({ input }) =>
-      prisma.shipment.update({ where: { id: input.shipmentId }, data: { status: "picked_up" } }),
-    ),
+    .mutation(async ({ input, ctx }) => {
+      const shipment = await prisma.shipment.findFirst({ where: { id: input.shipmentId, storeId: ctx.storeId } });
+      if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
+      // QC-2 — enforced here, not only by a disabled button: every shipment has
+      // a packing photo on record before it leaves the seller's hands.
+      if (!shipment.packingPhotoUrl) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Photograph the open box before you hand it over." });
+      }
+      return prisma.shipment.update({ where: { id: shipment.id }, data: { status: "picked_up" } });
+    }),
 
   /* ------------------------------------------------------------ QC-1 */
 
@@ -117,26 +185,32 @@ export const merchantRouter = router({
    * the status is `applied` until a reviewer who has checked the licence moves
    * it, so a seller cannot grant it to themselves. Stores have no use for it.
    */
-  applyForKitchenLicence: publicProcedure
+  applyForKitchenLicence: merchantProcedure
     .input(
       z.object({
-        storeId: z.string(),
-        licenceNumber: z.string().trim().min(1),
-        issuingAuthority: z.string().trim().min(1),
+        licenceNumber: z.string().trim().min(1).optional(),
+        issuingAuthority: z.string().trim().min(1).optional(),
         evidence: z.string().trim().optional(),
+        /** A photo of the licence, as base64. Enough on its own: a reviewer reads it. */
+        document: z.string().min(1).max(12_000_000).optional(),
       }),
     )
-    .mutation(async ({ input }) => {
-      const store = await prisma.store.findUnique({ where: { id: input.storeId } });
-      if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "We couldn't find that account." });
+    .mutation(async ({ input, ctx }) => {
+      const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId } });
       if (!isHomeTier(store.sellerType)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "This applies to home-based and aspiring sellers. Stores can already list chilled and frozen goods.",
         });
       }
+      if (!input.document && !(input.licenceNumber && input.issuingAuthority)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Send a photo of your kitchen licence, or its number and who issued it.",
+        });
+      }
 
-      const existing = await prisma.kitchenLicence.findUnique({ where: { storeId: input.storeId } });
+      const existing = await prisma.kitchenLicence.findUnique({ where: { storeId: ctx.storeId } });
       if (existing && (existing.status === "applied" || existing.status === "approved")) {
         throw new TRPCError({
           code: "CONFLICT",
@@ -150,18 +224,61 @@ export const merchantRouter = router({
       // A fresh application after a refusal or revocation reuses the row and
       // goes back to the start of review. Every earlier decision stays in the
       // audit log, which is where the history lives.
+      const documentUrl = input.document ? await storeDocument(input.document) : null;
       const fields = {
         status: "applied" as const,
-        licenceNumber: input.licenceNumber,
-        issuingAuthority: input.issuingAuthority,
-        evidence: input.evidence || null,
+        licenceNumber: input.licenceNumber ?? null,
+        issuingAuthority: input.issuingAuthority ?? null,
+        evidence: documentUrl ?? (input.evidence || null),
         reviewNote: null,
         reviewedAt: null,
         reviewedByEmail: null,
       };
       const row = await prisma.kitchenLicence.upsert({
-        where: { storeId: input.storeId },
-        create: { storeId: input.storeId, ...fields },
+        where: { storeId: ctx.storeId },
+        create: { storeId: ctx.storeId, ...fields },
+        update: fields,
+      });
+      return { status: row.status };
+    }),
+
+  /**
+   * CAT-8 — apply for an authenticity badge. Like the kitchen licence, this only
+   * ever creates an application: the badge is `applied` until a reviewer
+   * approves it, so a seller cannot award themselves one. A fresh application
+   * after a refusal or revocation goes back to the start of review.
+   */
+  applyForBadge: merchantProcedure
+    .input(
+      z.object({
+        kind: z.enum(["diaspora_owned", "imported_direct", "made_in_usa_african_brand"]),
+        evidence: z.string().trim().optional(),
+        /** A photo of the supporting document, as base64. */
+        document: z.string().min(1).max(12_000_000).optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const key = { storeId_kind: { storeId: ctx.storeId, kind: input.kind } };
+      const existing = await prisma.sellerBadge.findUnique({ where: key });
+      if (existing && (existing.status === "applied" || existing.status === "approved")) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            existing.status === "approved"
+              ? "You already have this badge."
+              : "Your application is already with our team. We'll be in touch once it has been reviewed.",
+        });
+      }
+      const documentUrl = input.document ? await storeDocument(input.document) : null;
+      const fields = {
+        status: "applied" as const,
+        evidence: documentUrl ?? (input.evidence || null),
+        reviewNote: null,
+        reviewedAt: null,
+      };
+      const row = await prisma.sellerBadge.upsert({
+        where: key,
+        create: { storeId: ctx.storeId, kind: input.kind, ...fields },
         update: fields,
       });
       return { status: row.status };
@@ -172,10 +289,10 @@ export const merchantRouter = router({
    * the exact words they are asked to confirm, and when they did. Home-based
    * and aspiring sellers only; for a store this is empty.
    */
-  permitStatus: publicProcedure.input(storeInput).query(async ({ input }) => {
-    const store = await prisma.store.findUnique({ where: { id: input.storeId } });
-    if (!store || !isHomeTier(store.sellerType)) return [];
-    const confirmations = await prisma.permitConfirmation.findMany({ where: { storeId: input.storeId } });
+  permitStatus: merchantProcedure.query(async ({ ctx }) => {
+    const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId } });
+    if (!isHomeTier(store.sellerType)) return [];
+    const confirmations = await prisma.permitConfirmation.findMany({ where: { storeId: ctx.storeId } });
     const confirmedAt = new Map(confirmations.map((c) => [c.category, c.confirmedAt]));
     return CONTROLLED.map((category) => ({
       category,
@@ -191,11 +308,10 @@ export const merchantRouter = router({
    * explicit `acknowledged: true`, so it cannot be recorded by a default or an
    * empty call. Idempotent: confirming again keeps the original timestamp.
    */
-  confirmPermit: publicProcedure
-    .input(z.object({ storeId: z.string(), category: z.enum(CONTROLLED), acknowledged: z.literal(true) }))
-    .mutation(async ({ input }) => {
-      const store = await prisma.store.findUnique({ where: { id: input.storeId } });
-      if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "We couldn't find that account." });
+  confirmPermit: merchantProcedure
+    .input(z.object({ category: z.enum(CONTROLLED), acknowledged: z.literal(true) }))
+    .mutation(async ({ input, ctx }) => {
+      const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId } });
       if (!isHomeTier(store.sellerType)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -203,8 +319,8 @@ export const merchantRouter = router({
         });
       }
       const row = await prisma.permitConfirmation.upsert({
-        where: { storeId_category: { storeId: input.storeId, category: input.category } },
-        create: { storeId: input.storeId, category: input.category, statementVersion: PERMIT_STATEMENT_VERSION },
+        where: { storeId_category: { storeId: ctx.storeId, category: input.category } },
+        create: { storeId: ctx.storeId, category: input.category, statementVersion: PERMIT_STATEMENT_VERSION },
         update: {},
       });
       return { category: row.category, confirmedAt: row.confirmedAt };
@@ -214,15 +330,98 @@ export const merchantRouter = router({
    * QC-1 — why some of this seller's listings are hidden, in plain words, and
    * how to reach support. Empty when nothing is switched off.
    */
-  categoryNotices: publicProcedure.input(storeInput).query(async ({ input }) => {
-    const store = await prisma.store.findUnique({ where: { id: input.storeId } });
-    if (!store) return [];
+  categoryNotices: merchantProcedure.query(async ({ ctx }) => {
+    const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId } });
     return sellerCategoryNotices(prisma, store.id, store.sellerType);
   }),
 
+  /**
+   * Where this seller stands on everything the QC-1 screens need in one read:
+   * whether the home-tier rules apply to them, their licensed-kitchen and badge
+   * applications, and the one-time permit confirmations already given.
+   */
+  standing: merchantProcedure.query(async ({ ctx }) => {
+    const store = await prisma.store.findUniqueOrThrow({
+      where: { id: ctx.storeId },
+      include: { kitchenLicence: true, badges: true, permitConfirmations: true },
+    });
+    return {
+      homeTier: isHomeTier(store.sellerType),
+      kitchen: store.kitchenLicence?.status ?? null,
+      badges: store.badges.map((b) => ({ kind: b.kind, status: b.status })),
+      permitsConfirmed: store.permitConfirmations.map((p) => p.category),
+    };
+  }),
+
+  /**
+   * "What's listed" — this store's products, each marked hidden when the QC-1
+   * rules keep it from buyers. Hidden is decided by the same filter buyers'
+   * reads go through, so the seller is never shown a different answer.
+   */
+  listings: merchantProcedure.query(async ({ ctx }) => {
+    const [all, visible, store] = await Promise.all([
+      prisma.listing.findMany({
+        where: { storeId: ctx.storeId },
+        include: { canonicalProduct: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.listing.findMany({
+        where: await visibleListings(prisma, { storeId: ctx.storeId }),
+        select: { id: true },
+      }),
+      prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, include: { kitchenLicence: true } }),
+    ]);
+    const visibleIds = new Set(visible.map((l) => l.id));
+    const licensed = store.kitchenLicence?.status === "approved";
+    return all.map((l) => {
+      const hidden = !visibleIds.has(l.id);
+      return {
+        id: l.id,
+        name: l.canonicalProduct.canonicalName,
+        category: l.canonicalProduct.category,
+        controlledCategory: l.canonicalProduct.controlledCategory,
+        priceCents: l.priceCents,
+        inStock: l.stockStatus !== "out_of_stock",
+        hidden,
+        // Cold food without a licensed kitchen is hidden for a different reason
+        // than a category being switched off, and the way out is different too.
+        hiddenReason: !hidden
+          ? null
+          : isHomeTier(store.sellerType) && l.temperatureClass !== "ambient" && !licensed
+            ? ("needs_kitchen_licence" as const)
+            : ("category_paused" as const),
+      };
+    });
+  }),
+
+  /** Fix a price or mark a product in or out of stock. Scoped to this store. */
+  updateListing: merchantProcedure
+    .input(
+      z.object({
+        listingId: z.string(),
+        priceCents: z.number().int().min(50).max(1_000_000),
+        inStock: z.boolean(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const listing = await prisma.listing.findFirst({ where: { id: input.listingId, storeId: ctx.storeId } });
+      if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "That product is no longer listed." });
+      // A made-to-order product stays so unless it is being marked out.
+      const stockStatus = !input.inStock
+        ? "out_of_stock"
+        : listing.stockStatus === "out_of_stock"
+          ? "in_stock"
+          : listing.stockStatus;
+      await prisma.listing.update({
+        where: { id: listing.id },
+        data: { priceCents: input.priceCents, stockStatus },
+      });
+      return { id: listing.id };
+    }),
+
   /** What this store has earned, per PAY-6 payout statements. */
-  earnings: publicProcedure.input(storeInput).query(async ({ input }) => {
-    const payouts = await prisma.payout.findMany({ where: { storeId: input.storeId } });
+  earnings: merchantProcedure.query(async ({ ctx }) => {
+    const payouts = await prisma.payout.findMany({ where: { storeId: ctx.storeId } });
     return {
       orderCount: payouts.length,
       grossCents: payouts.reduce((s, p) => s + p.grossCents, 0),

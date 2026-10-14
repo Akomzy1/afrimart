@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
-import { publicProcedure, router } from "../trpc.js";
+import { buyerProcedure, publicProcedure, router } from "../trpc.js";
 import { LocalCarrierGateway } from "../shipping/carrier.js";
 import { route } from "../routing/engine.js";
 import { priceOrder } from "../routing/pricing.js";
@@ -170,9 +170,9 @@ export const checkoutRouter = router({
    * Payment for the whole charge (CART-5 — a single collection), and one Payout
    * row per fulfilling store (PAY-2).
    */
-  place: publicProcedure
-    .input(basketInput.extend({ buyerId: z.string() }))
-    .mutation(async ({ input }) => {
+  place: buyerProcedure
+    .input(basketInput)
+    .mutation(async ({ input, ctx }) => {
       const { lines, pool } = await resolveBasket(input);
       const plan = await route(lines, pool, carrier, { toZip: input.destination.zip });
 
@@ -197,7 +197,7 @@ export const checkoutRouter = router({
       const result = await prisma.$transaction(async (tx) => {
         const order = await tx.order.create({
           data: {
-            buyerId: input.buyerId,
+            buyerId: ctx.buyerId,
             totalCents: pricing.totalCents,
             shippingCents: pricing.shippingCents,
             taxCents: pricing.taxCents,

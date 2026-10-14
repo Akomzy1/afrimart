@@ -47,6 +47,7 @@ export interface Parcel {
 }
 
 /** Seeded in prisma/seed.ts. Replace with the signed-in buyer when auth lands. */
+/** Development stand-in for the signed-in buyer. Sent as an identity header, never as input; goes when real sign-in lands. */
 export const DEMO_BUYER_ID = "demo-buyer";
 
 /** The demo basket, by canonical name — resolved to real listings on mount. */

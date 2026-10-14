@@ -1,7 +1,7 @@
 import { prisma } from "../db.js";
 import { canAdvanceOrder, canAdvanceShipment, deriveOrderStatus, mapCarrierStatus } from "./state.js";
 import { enqueue } from "./outbox.js";
-import { renderEmail, shippedTemplateFor, subjectFor, type EmailItem } from "./render.js";
+import { orderRefFor, renderEmail, shippedTemplateFor, subjectFor, type EmailItem } from "./render.js";
 
 /**
  * NTF-1/NTF-2/NTF-3 — carrier events in, order state and notifications out.
@@ -239,7 +239,7 @@ export async function queueOrderConfirmation(
 
   const hasChilled = order.shipments.some((s) => s.temperatureClass !== "ambient");
   const template = hasChilled ? "order-confirmed" : "order-confirmed-no-chilled";
-  const orderRef = `AM-${order.id.slice(-7).toUpperCase()}`;
+  const orderRef = orderRefFor(order.id);
   const ctx = {
     orderRef,
     parcelLabel: order.shipments.length > 1 ? `Parcel 1 of ${order.shipments.length}` : null,
@@ -307,4 +307,72 @@ export async function queueMerchantAlerts(
     }
   }
   return alerted;
+}
+
+/**
+ * QC-3 — "we have your report", queued in the same transaction that records it.
+ * An item-level report lists the items it covers; a parcel-level one names the
+ * order only, since the whole parcel is the subject. One per report: the dedupe
+ * key is the claim, so a retried request cannot send it twice.
+ */
+export async function queueReportReceived(
+  tx: Parameters<typeof enqueue>[0],
+  args: {
+    claimId: string;
+    kind: "item" | "parcel";
+    orderId: string;
+    shipmentId: string;
+    buyerEmail: string;
+    reportRef: string;
+    items?: EmailItem[];
+  },
+): Promise<boolean> {
+  const template = args.kind === "item" ? "report-received-item" : "report-received-parcel";
+  const ctx = { orderRef: orderRefFor(args.orderId), reportRef: args.reportRef, items: args.items };
+  return enqueue(tx, {
+    channel: "email",
+    template,
+    recipient: args.buyerEmail,
+    subject: subjectFor(template, ctx),
+    body: await renderEmail(template, ctx),
+    dedupeKey: `email:report-received:${args.claimId}`,
+    orderId: args.orderId,
+    shipmentId: args.shipmentId,
+  });
+}
+
+/**
+ * QC-8 — "we have refunded you", queued only once a refund has actually been
+ * issued. Never for a decision alone: the email says the money is on its way,
+ * and it must be.
+ */
+export async function queueRefundIssued(
+  tx: Parameters<typeof enqueue>[0],
+  args: {
+    claimId: string;
+    orderId: string;
+    shipmentId: string | null;
+    buyerEmail: string;
+    reportRef: string;
+    amountCents: number;
+    items?: EmailItem[];
+  },
+): Promise<boolean> {
+  const ctx = {
+    orderRef: orderRefFor(args.orderId),
+    reportRef: args.reportRef,
+    paymentMethod: "your original payment method",
+    refundAmount: money(args.amountCents),
+    items: args.items,
+  };
+  return enqueue(tx, {
+    channel: "email",
+    template: "refund-issued",
+    recipient: args.buyerEmail,
+    subject: subjectFor("refund-issued", ctx),
+    body: await renderEmail("refund-issued", ctx),
+    dedupeKey: `email:refund-issued:${args.claimId}`,
+    orderId: args.orderId,
+    shipmentId: args.shipmentId ?? undefined,
+  });
 }
