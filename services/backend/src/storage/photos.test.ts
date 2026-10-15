@@ -226,7 +226,7 @@ describe("there is no way to store bytes without sanitising them", () => {
       for (const e of await ls(dir, { withFileTypes: true })) {
         const child = new URL(`${e.name}${e.isDirectory() ? "/" : ""}`, dir);
         if (e.isDirectory()) await walk(child);
-        else if (e.name.endsWith(".ts") && !e.name.endsWith(".test.ts") && !child.pathname.endsWith("/storage/photos.ts")) {
+        else if (e.name.endsWith(".ts") && !e.name.endsWith(".test.ts") && !(child.pathname.endsWith("/storage/photos.ts") || child.pathname.endsWith("/storage/store.ts") || child.pathname.endsWith("/scripts/migrate-photos-to-s3.ts"))) {
           const text = await rf(child, "utf8");
           if (/\.uploads|UPLOAD_DIR/.test(text)) offenders.push(child.pathname);
         }
@@ -246,7 +246,7 @@ describe("there is no way to store bytes without sanitising them", () => {
     const server = await readFile(new URL("./route.ts", import.meta.url), "utf8");
     assert.match(server, /x-content-type-options", "nosniff"/);
     assert.match(server, /content-type", "image\/jpeg"/);
-    assert.match(server, /photoStore\.read\(/);
+    assert.match(server, /store\.read\(/);
   });
 });
 

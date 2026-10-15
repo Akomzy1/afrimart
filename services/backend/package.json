@@ -22,7 +22,9 @@
     "verify:notifications": "tsx src/scripts/verify-notifications.ts",
     "verify:quality-controls": "tsx src/scripts/verify-quality-controls.ts",
     "verify:claims": "tsx src/scripts/verify-claims.ts",
-    "verify:sign-in": "tsx src/scripts/verify-sign-in.ts"
+    "verify:sign-in": "tsx src/scripts/verify-sign-in.ts",
+    "verify:storage": "tsx src/scripts/verify-storage.ts",
+    "migrate:photos": "tsx src/scripts/migrate-photos-to-s3.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

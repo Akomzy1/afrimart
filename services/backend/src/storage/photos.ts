@@ -3,7 +3,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { productionSignals } from "../runtime.js";
 
 /**
  * Photo evidence: the seller's packing photo (QC-2) and the buyer's claim
@@ -21,16 +20,17 @@ import { productionSignals } from "../runtime.js";
  *    `PhotoStore.put` is the only way in and it sanitises first; there is no
  *    method that stores bytes as they arrived.
  *
- * 2. Storage is a port. `LocalPhotoStore` writes to disk for development; an
- *    object store (S3, R2) replaces it without touching a caller. Photos are
- *    private: nothing here is served by its path. Access is decided by the
- *    procedure that returns a photo and expressed as a short-lived signed link
- *    (access.ts), which the picture route requires.
+ * 2. Storage is a port. `LocalPhotoStore` writes to disk for development;
+ *    `S3PhotoStore` (s3.ts) keeps photos in any S3-compatible bucket and is what
+ *    runs everywhere else. Which one is chosen from the environment lives in
+ *    store.ts. Photos are private: nothing here is served by its path. Access is
+ *    decided by the procedure that returns a photo and expressed as a
+ *    short-lived signed link (access.ts), which the picture route requires.
  *
  *    The file name is 128 random bits and that is only defence in depth. A disk
  *    on a single server is not where licence documents belong, so a store says
  *    whether it is `durable`, and documents are refused where it is not (see
- *    `assertCanKeepDocuments`).
+ *    `assertCanKeepDocuments` in store.ts).
  */
 
 export type PhotoKind = "packing" | "claim" | "document";
@@ -116,18 +116,10 @@ export interface PhotoStore {
   read(kind: PhotoKind, name: string): Promise<Buffer | null>;
 }
 
-/**
- * Licence documents are not accepted from real sellers until they have
- * somewhere durable and private to live. On a development machine the local
- * store is fine; anywhere else it is refused, with a message a seller can read.
- */
-export function assertCanKeepDocuments(store: PhotoStore = photoStore, env: NodeJS.ProcessEnv = process.env): void {
-  if (store.durable || productionSignals(env).length === 0) return;
-  throw new PhotoRejected("We can't take documents yet. We'll tell you here when we can.");
-}
+/** The only shape a stored photo's file name takes: 128 random bits and ".jpg". */
+export const PHOTO_NAME = /^[a-f0-9]{32}\.jpg$/;
 
-const NAME = /^[a-f0-9]{32}\.jpg$/;
-
+/** The development store: a folder on this machine. Never durable, never for production. */
 export class LocalPhotoStore implements PhotoStore {
   readonly durable = false;
   constructor(private readonly root: string) {}
@@ -144,7 +136,7 @@ export class LocalPhotoStore implements PhotoStore {
   async read(kind: PhotoKind, name: string): Promise<Buffer | null> {
     // Both parts are validated against fixed shapes, so no input can name a path
     // outside the store.
-    if (!PHOTO_KINDS.includes(kind) || !NAME.test(name)) return null;
+    if (!PHOTO_KINDS.includes(kind) || !PHOTO_NAME.test(name)) return null;
     try {
       return await readFile(path.join(this.root, kind, name));
     } catch {
@@ -153,7 +145,5 @@ export class LocalPhotoStore implements PhotoStore {
   }
 }
 
-const DEFAULT_ROOT = fileURLToPath(new URL("../../.uploads/", import.meta.url));
-
-/** The store in use. Swap for an object-store adapter before deployment. */
-export const photoStore: PhotoStore = new LocalPhotoStore(process.env.UPLOAD_DIR ?? DEFAULT_ROOT);
+/** Where the development store keeps files unless UPLOAD_DIR says otherwise. */
+export const DEFAULT_PHOTO_ROOT = fileURLToPath(new URL("../../.uploads/", import.meta.url));

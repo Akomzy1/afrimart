@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { photoStore, type PhotoKind } from "./photos.js";
+import type { PhotoKind } from "./photos.js";
+import { photoStore } from "./store.js";
+import type { PhotoStore } from "./photos.js";
 import { photoLinkIsValid } from "./access.js";
 
 /**
@@ -13,13 +15,22 @@ import { photoLinkIsValid } from "./access.js";
  * (nosniff), and never cached: a link is short-lived, and the picture behind it
  * should not outlive it in a browser or proxy.
  */
-export function registerPhotoRoute(server: FastifyInstance): void {
+export function registerPhotoRoute(server: FastifyInstance, store: PhotoStore = photoStore): void {
   server.get<{ Params: { kind: string; name: string }; Querystring: { exp?: string; sig?: string } }>(
     "/photos/:kind/:name",
     async (req, reply) => {
       const { kind, name } = req.params;
       const allowed = photoLinkIsValid(kind, name, req.query.exp, req.query.sig);
-      const bytes = allowed ? await photoStore.read(kind as PhotoKind, name) : null;
+      let bytes: Buffer | null = null;
+      if (allowed) {
+        try {
+          bytes = await store.read(kind as PhotoKind, name);
+        } catch (e) {
+          // The store being down is not "no such photo", and must not look like it to a caller.
+          req.log.error({ err: e }, "photo store read failed");
+          return reply.code(503).header("cache-control", "no-store").send({ error: "Temporarily unavailable" });
+        }
+      }
       if (!bytes) return reply.code(404).header("cache-control", "no-store").send({ error: "Not found" });
       return reply
         .header("content-type", "image/jpeg")

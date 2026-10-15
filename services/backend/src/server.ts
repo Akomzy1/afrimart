@@ -5,6 +5,7 @@ import { appRouter } from "./router.js";
 import { createContext } from "./trpc.js";
 import { registerPhotoRoute } from "./storage/route.js";
 import { assertPhotoSigningConfigured } from "./storage/access.js";
+import { assertPhotoStorageReady } from "./storage/store.js";
 
 // Photos arrive as base64 inside a tRPC mutation; 8MB of image is about 11MB encoded.
 const server = Fastify({ logger: true, bodyLimit: 12 * 1024 * 1024 });
@@ -22,6 +23,7 @@ await server.register(fastifyTRPCPlugin, {
 
 registerPhotoRoute(server);
 
+await assertPhotoStorageReady();
 assertPhotoSigningConfigured();
 
 const port = Number(process.env.PORT ?? 4000);

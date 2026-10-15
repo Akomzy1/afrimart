@@ -59,7 +59,7 @@ function stripLink<T extends string | null | undefined>(link: T): T extends stri
 
 /** Fetch a stored photo back over the same path the server serves it from. */
 async function storedBytes(url: string): Promise<Buffer> {
-  const { photoStore } = await import("../storage/photos.js");
+  const { photoStore } = await import("../storage/store.js");
   const [, , kind, name] = stripLink(url).split("/");
   const bytes = await photoStore.read(kind as "packing" | "claim", name!);
   if (!bytes) throw new Error(`photo not found: ${url}`);

@@ -17,7 +17,7 @@ import { callerFor } from "./callers.js";
 import { issueUserSession, resolveUserSession, revokeAllForUser } from "../auth/userSession.js";
 import { resetAllIpLimits } from "../auth/rateLimit.js";
 import { FileEmailSender, MemoryEmailSender, setSenders, type SmsMessage, type SmsSender } from "../notifications/senders.js";
-import { photoStore } from "../storage/photos.js";
+import { photoStore } from "../storage/store.js";
 import { photoLinkIsValid, signedPhotoUrl } from "../storage/access.js";
 import { registerPhotoRoute } from "../storage/route.js";
 import { setPayoutDashboard } from "../payments/dashboard.js";

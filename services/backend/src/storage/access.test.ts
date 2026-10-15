@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import { parsePhotoPath, photoLinkIsValid, signedPhotoUrl } from "./access.js";
-import { LocalPhotoStore, assertCanKeepDocuments, PhotoRejected } from "./photos.js";
+import { LocalPhotoStore, PhotoRejected } from "./photos.js";
+import { assertCanKeepDocuments } from "./store.js";
 
 const NAME = "0123456789abcdef0123456789abcdef.jpg";
 const OTHER = "fedcba9876543210fedcba9876543210.jpg";
@@ -78,7 +79,8 @@ describe("the picture route and where photos are kept", () => {
     assert.match(route, /photoLinkIsValid\(kind, name, req\.query\.exp, req\.query\.sig\)/);
     assert.ok(!/immutable|max-age=3/.test(route), "photos must not be cached for a year");
     assert.match(route, /private, no-store/);
-    assert.match(server, /registerPhotoRoute\(server\)/);
+    assert.match(await src("../app.ts"), /registerPhotoRoute\(server\)/);
+    assert.match(server, /await assertPhotoStorageReady\(\)/);
     assert.match(server, /assertPhotoSigningConfigured\(\)/);
   });
 

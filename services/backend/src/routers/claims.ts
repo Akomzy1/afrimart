@@ -6,7 +6,8 @@ import { REFUND_CLAIM_WINDOW_DAYS } from "../config.js";
 import { BUYER_ITEM_REASONS, assessClaim } from "../quality/refunds.js";
 import { claimRef, hadCarrierScan, itemReportBlock, parcelReportBlock } from "../quality/claims.js";
 import { refundClaim } from "../quality/claimService.js";
-import { PhotoRejected, decodeUpload, photoStore } from "../storage/photos.js";
+import { PhotoRejected, decodeUpload } from "../storage/photos.js";
+import { photoStore } from "../storage/store.js";
 import { queueReportReceived } from "../notifications/pipeline.js";
 import { drain } from "../notifications/outbox.js";
 
