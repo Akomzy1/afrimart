@@ -15,6 +15,7 @@ import {
 import { clearIp, tooManyFromIp } from "../auth/rateLimit.js";
 import { issueSession, markMfaVerified, revokeSession, resolveSession } from "../auth/session.js";
 import { permissionsFor } from "../auth/permissions.js";
+import { devStaffRefusedHere } from "../auth/devStaff.js";
 
 /**
  * The staff sign-in handshake. These are the only ops endpoints that do not
@@ -58,7 +59,9 @@ export const staffAuthRouter = router({
         ? await verifyAndMaybeRehash(input.password, user)
         : await verifyPassword(input.password, await decoyHash());
 
-      if (!user || !ok || user.disabledAt || locked) {
+      // A dev-only account has a public password and secret: refused outside
+      // development, with the same message as any other failure.
+      if (!user || !ok || user.disabledAt || locked || devStaffRefusedHere(user.email)) {
         if (user && !ok && !locked) await recordFailure(user.id, "password", user);
         // Same message for every failure: unknown address, wrong password,
         // disabled and locked are indistinguishable from outside.

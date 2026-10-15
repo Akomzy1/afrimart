@@ -13,7 +13,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "db:generate": "npm run generate --workspace=@afrimart/backend",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "e2e:ops": "tsx tools/browser/ops-console.e2e.ts"
   },
   "devDependencies": {
     "turbo": "latest",

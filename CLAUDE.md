@@ -153,6 +153,13 @@ headless over the DevTools Protocol (`--remote-debugging-port` plus Node's globa
   review would have shown: a stale-closure state update that dropped every
   second rapid tap, and an action disabled only by `pointer-events: none`, which
   stops a mouse but not the keyboard or a script.
+- **A reusable driver lives in `tools/browser/`** (`cdp.ts`: launch, click, type,
+  measure, screenshot, with a throwaway profile per run). `npm run e2e:ops`
+  drives the operations console as the dev-only staff accounts, which exist only
+  on a development machine and are created by
+  `npm run seed:dev-staff --workspace=@afrimart/backend`. Their password and
+  authenticator secret are public (`services/backend/src/auth/devStaff.ts`), so
+  seeding and sign-in both refuse anywhere that looks like production.
 
 ## Working conventions
 

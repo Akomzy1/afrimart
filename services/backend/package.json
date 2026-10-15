@@ -16,6 +16,7 @@
     "verify:economics": "tsx src/scripts/verify-economics.ts",
     "verify:loop": "tsx src/scripts/verify-order-loop.ts",
     "seed:staff": "tsx src/scripts/seed-staff.ts",
+    "seed:dev-staff": "tsx src/scripts/seed-dev-staff.ts",
     "verify:auth": "tsx src/scripts/verify-ops-auth.ts",
     "verify:lockout": "tsx src/scripts/verify-lockout.ts",
     "build:emails": "tsx src/scripts/build-email-templates.ts",

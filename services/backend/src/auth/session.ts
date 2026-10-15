@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { SESSION_ABSOLUTE_HOURS, SESSION_IDLE_MINUTES } from "../config.js";
+import { devStaffRefusedHere } from "./devStaff.js";
 
 /**
  * Staff sessions.
@@ -74,6 +75,8 @@ export async function resolveSession(token: string | null): Promise<ResolvedSess
     return null;
   }
   if (session.staffUser.disabledAt) return null;
+  // A dev-only account (public password and secret) is never a way in anywhere but a developer's machine.
+  if (devStaffRefusedHere(session.staffUser.email)) return null;
 
   await prisma.staffSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
 
