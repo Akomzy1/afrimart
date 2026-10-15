@@ -481,14 +481,4 @@ export const merchantRouter = router({
       throw e;
     }
   }),
-
-  /** What this store has earned, per PAY-6 payout statements. */
-  earnings: merchantProcedure.query(async ({ ctx }) => {
-    const payouts = await prisma.payout.findMany({ where: { storeId: ctx.storeId } });
-    return {
-      orderCount: payouts.length,
-      grossCents: payouts.reduce((s, p) => s + p.grossCents, 0),
-      netCents: payouts.reduce((s, p) => s + p.netCents, 0),
-    };
-  }),
 });

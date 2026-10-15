@@ -103,9 +103,6 @@ if (firstJob) {
   const afterShip = await query("merchant.inbox", undefined, `store:${first.id}`);
   const shp = afterShip.find((j: { shipmentId: string }) => j.shipmentId === firstJob.shipmentId);
   console.log(`FULFIL: after ship   status=${shp?.status}`);
-
-  const earn = await query("merchant.earnings", undefined, `store:${first.id}`);
-  console.log(`EARNINGS for ${sellerNames[0]}: ${earn.orderCount} orders, gross ${money(earn.grossCents)}, net ${money(earn.netCents)}`);
 }
 
 await prisma.$disconnect();
