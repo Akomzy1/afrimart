@@ -87,6 +87,7 @@ async function sweep() {
   await prisma.sellerCategoryControl.deleteMany({ where: stores });
   await prisma.kitchenLicence.deleteMany({ where: stores });
   await prisma.sellerBadge.deleteMany({ where: stores });
+  await prisma.sellerMessage.deleteMany({ where: stores });
   await prisma.userSession.deleteMany({ where: { OR: [stores, { buyerId: { startsWith: "qc1v-" } }] } });
   await prisma.buyer.deleteMany({ where: { id: { startsWith: "qc1v-" } } });
   await prisma.store.deleteMany({ where: { id: { startsWith: "qc1v-" } } });
@@ -441,6 +442,62 @@ try {
   check("a badge application with a photo is kept for review, never granted", badge.code === "ok" && badgeRow.status === "applied" && badgeRow.evidence?.startsWith("/photos/document/") === true);
   const standingAfter = await asStore(aspiring).merchant.standing();
   check("standing reports both as applied", standingAfter.kitchen === "applied" && standingAfter.badges.some((b) => b.kind === "diaspora_owned" && b.status === "applied"));
+  await prisma.kitchenLicence.deleteMany({ where: { storeId: aspiring } });
+
+  console.log("\n=== 8d. a licence past its expiry date stops counting, decided when it is read ===");
+  const dayUtc = (offset: number) => {
+    const d = new Date();
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + offset));
+  };
+  const licenceRow = await prisma.kitchenLicence.create({
+    data: { storeId: aspiring, status: "approved", verifiedLicenceNumber: "EXP-1", verifiedIssuingAuthority: "County Health Dept", licenceExpiresOn: dayUtc(30), reviewedAt: new Date(), reviewedByEmail: "ops@afrimart.test", reviewNote: "checked" },
+  });
+  const setExpiry = (offset: number | null) => prisma.kitchenLicence.update({ where: { id: licenceRow.id }, data: { licenceExpiresOn: offset === null ? null : dayUtc(offset) } });
+  const sellerA = asStore(aspiring);
+  const expiryNotices = async () => (await sellerA.merchant.thread()).messages.filter((m) => m.kind === "licence_expired");
+
+  seen = await visibleIds();
+  check("with a licence that has a month to run, the seller's chilled listing is visible", seen.has(legacy.id));
+  check("and the seller is told it is approved", (await sellerA.merchant.standing()).kitchen === "approved");
+  check("no notice has been posted", (await expiryNotices()).length === 0);
+
+  await setExpiry(-1);
+  seen = await visibleIds();
+  check("the day after its expiry date, the chilled listing is hidden from buyers, exactly as on revocation", !seen.has(legacy.id));
+  check("with nothing else changed: the stored status is still approved", (await prisma.kitchenLicence.findUniqueOrThrow({ where: { id: licenceRow.id } })).status === "approved");
+  const cantList = await list(aspiring, chilledDairy);
+  check("a new chilled listing is refused, with the same rule as for an unlicensed seller", cantList.code === "FORBIDDEN" && /commercial kitchen/i.test(cantList.message), cantList.code);
+  check("the seller's standing says expired", (await sellerA.merchant.standing()).kitchen === "expired");
+  const lapsedRow = (await sellerA.merchant.listings()).find((l) => l.id === legacy.id);
+  check("their list says why it is hidden: the licence has expired", lapsedRow?.hidden === true && lapsedRow?.hiddenReason === "licence_expired", String(lapsedRow?.hiddenReason));
+  const found = await expiryNotices();
+  check("a plain message is in their AfriMart thread", found.length === 1 && /expired on/.test(found[0]!.body) && /renewed licence/.test(found[0]!.body) && !found[0]!.body.includes("!"), found[0]?.body);
+  await sellerA.merchant.thread();
+  await sellerA.merchant.standing();
+  check("looking again posts nothing more", (await expiryNotices()).length === 1);
+  check("it counts as unread until they open the thread", (await sellerA.merchant.thread()).unread >= 1);
+  const opsList = (await ops.admin.kitchenLicences({ status: "approved" })).find((r) => r.id === licenceRow.id);
+  check("operations sees it as expired, with its date", opsList?.expired === true && opsList?.licenceExpiresOn !== null);
+  check("and the stores list says so", (await ops.admin.stores()).find((s) => s.id === aspiring)?.kitchenLicence === "expired");
+
+  await setExpiry(0);
+  check("on the expiry date itself the licence still counts", (await visibleIds()).has(legacy.id));
+  await setExpiry(null);
+  check("an approval recorded with no date keeps counting", (await visibleIds()).has(legacy.id));
+
+  await setExpiry(-3);
+  const renew = await outcome(sellerA.merchant.applyForKitchenLicence({ document: photo }));
+  const renewed = await prisma.kitchenLicence.findUniqueOrThrow({ where: { id: licenceRow.id } });
+  check("an expired approval does not block a renewal", renew.code === "ok" && renewed.status === "applied", renew.code);
+  check("which starts a fresh review: nothing recorded against the old approval carries over", renewed.verifiedLicenceNumber === null && renewed.licenceExpiresOn === null && renewed.reviewedAt === null);
+  check("while it is under review the listing stays hidden", !(await visibleIds()).has(legacy.id));
+
+  const reApprove = await outcome(ops.admin.reviewKitchenLicence({ id: licenceRow.id, decision: "approve", licenceChecked: true, licenceNumber: "EXP-2", issuingAuthority: "County Health Dept", expiresOn: dayUtc(365).toISOString() as never, note: "Renewal checked" }));
+  check("a reviewer approves the renewal with a new date", reApprove.code === "ok");
+  check("and the listing is back", (await visibleIds()).has(legacy.id));
+  await prisma.kitchenLicence.update({ where: { id: licenceRow.id }, data: { licenceExpiresOn: dayUtc(-2) } });
+  await sellerA.merchant.thread();
+  check("a renewal that lapses later is a new notice, not a duplicate of the first", (await expiryNotices()).length === 2);
   await prisma.kitchenLicence.deleteMany({ where: { storeId: aspiring } });
 
   console.log("\n=== 9. reclassifying a product is audited ===");

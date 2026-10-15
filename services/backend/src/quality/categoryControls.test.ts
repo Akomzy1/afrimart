@@ -567,8 +567,9 @@ describe("QC-1 is enforced where a listing is created, and hiding is applied whe
     }
   });
 
-  test("the hiding filter also covers a revoked licence, so revoking takes the chilled listings down", () => {
-    const filter = buildHiddenListingFilter({ platformDisabled: [], sellerDisabled: new Map() });
+  test("the hiding filter also covers a revoked or expired licence, so either takes the chilled listings down", () => {
+    const today = new Date("2026-10-15T00:00:00Z");
+    const filter = buildHiddenListingFilter({ platformDisabled: [], sellerDisabled: new Map(), today });
     const clauses = filter.OR as Record<string, unknown>[];
     assert.equal(clauses.length, 1);
     assert.deepEqual(clauses[0], {
@@ -576,7 +577,12 @@ describe("QC-1 is enforced where a listing is created, and hiding is applied whe
       store: {
         is: {
           sellerType: { not: "store" },
-          NOT: { kitchenLicence: { is: { status: "approved" } } },
+          // A licence counts only while it is approved and has not passed its expiry date.
+          NOT: {
+            kitchenLicence: {
+              is: { status: "approved", OR: [{ licenceExpiresOn: null }, { licenceExpiresOn: { gte: today } }] },
+            },
+          },
         },
       },
     });

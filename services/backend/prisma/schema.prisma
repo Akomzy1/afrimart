@@ -329,6 +329,9 @@ model SellerMessage {
   amountCents Int?
   paidOn      DateTime?
   orderRefs   String[]
+  /// For a notice that must be posted once however often it is checked for
+  /// (a lapsed licence): the same key is never written twice.
+  dedupeKey   String?   @unique
   readAt      DateTime?
   createdAt   DateTime  @default(now())
 
@@ -732,8 +735,9 @@ model KitchenLicence {
   reviewedByEmail String?
   /// What the reviewer read off the licence when approving, entered by them and
   /// not taken from the seller: the number, who issued it, and when it lapses.
-  /// All three are required to approve. The expiry is stored so a warning can be
-  /// raised before it lapses; nothing enforces it yet.
+  /// All three are required to approve. A licence counts through its expiry date
+  /// and not after: the chilled and frozen listings are hidden by date at read
+  /// time (quality/licence.ts). The renewal warning ahead of it is not built yet.
   verifiedLicenceNumber     String?
   verifiedIssuingAuthority  String?
   licenceExpiresOn          DateTime? @db.Date

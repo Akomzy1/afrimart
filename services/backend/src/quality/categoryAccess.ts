@@ -7,6 +7,7 @@ import {
   type SellerListingContext,
   type StandardsResult,
 } from "./listingStandards.js";
+import { currentLicenceWhere, licenceCounts } from "./licence.js";
 
 /**
  * QC-1 — everything that needs the database: loading a seller's context for the
@@ -22,13 +23,14 @@ type Db = Prisma.TransactionClient | PrismaClient;
 
 export async function loadSellerListingContext(db: Db, storeId: string): Promise<SellerListingContext> {
   const [licence, sellerControls, platformControls, permits] = await Promise.all([
-    db.kitchenLicence.findUnique({ where: { storeId }, select: { status: true } }),
+    db.kitchenLicence.findUnique({ where: { storeId }, select: { status: true, licenceExpiresOn: true } }),
     db.sellerCategoryControl.findMany({ where: { storeId, disabled: true }, select: { category: true } }),
     db.platformCategoryControl.findMany({ where: { disabled: true }, select: { category: true } }),
     db.permitConfirmation.findMany({ where: { storeId }, select: { category: true } }),
   ]);
   return {
-    licensedKitchen: licence?.status === "approved",
+    // Approved and not past its expiry date, decided now, at read time.
+    licensedKitchen: licenceCounts(licence),
     disabledForSeller: sellerControls.map((c) => c.category),
     disabledPlatformWide: platformControls.map((c) => c.category),
     permitConfirmed: permits.map((p) => p.category),
@@ -71,6 +73,8 @@ export interface HiddenListingInputs {
   platformDisabled: readonly ControlledCategory[];
   /** Per-seller switches: store id -> categories switched off for that store. */
   sellerDisabled: ReadonlyMap<string, readonly ControlledCategory[]>;
+  /** The day a licence's expiry is compared with (midnight UTC). Defaults to today; a parameter so the rule can be pinned. */
+  today?: Date;
 }
 
 /**
@@ -105,7 +109,8 @@ export function buildHiddenListingFilter(input: HiddenListingInputs): Prisma.Lis
       store: {
         is: {
           sellerType: { not: "store" },
-          NOT: { kitchenLicence: { is: { status: "approved" } } },
+          // A licence counts only while it is approved and not past its date.
+          NOT: { kitchenLicence: { is: currentLicenceWhere(input.today) } },
         },
       },
     },

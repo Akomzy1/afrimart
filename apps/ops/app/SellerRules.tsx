@@ -62,6 +62,8 @@ const SELLER_RULE_ACTIONS = [
   "platform.category_restriction_change",
   "product.reclassify",
   "store.verification_change",
+  "store.owner_phone_change",
+  "photo.view",
 ];
 
 const ACTION_LABEL: Record<string, string> = {
@@ -70,6 +72,8 @@ const ACTION_LABEL: Record<string, string> = {
   "platform.category_restriction_change": "Platform category switch",
   "product.reclassify": "Product reclassified",
   "store.verification_change": "Verification / badge",
+  "store.owner_phone_change": "Sign-in phone changed",
+  "photo.view": "Photo opened",
 };
 
 const when = (d: Date | string) => new Date(d).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
@@ -210,7 +214,10 @@ function KitchenLicences({ canWrite }: { canWrite: boolean }) {
                       {status === "approved" && (
                         <div className="muted" style={{ marginBottom: 6 }}>
                           {r.verifiedLicenceNumber} · {r.verifiedIssuingAuthority}
-                          <div>Expires {r.licenceExpiresOn ? new Date(r.licenceExpiresOn).toISOString().slice(0, 10) : "—"}</div>
+                          <div>
+                            Expires {r.licenceExpiresOn ? new Date(r.licenceExpiresOn).toISOString().slice(0, 10) : "—"}{" "}
+                            {r.expired && <span className="op-pill bad">expired: no longer counts</span>}
+                          </div>
                         </div>
                       )}
                       <input
@@ -615,7 +622,7 @@ function RecentChanges() {
     <div className="op-sec">
       <h2>Recent changes</h2>
       <p className="lede">
-        Who changed what, when, and why. Every licence decision, badge decision, category switch and product
+        Who changed what, when, and why. Every licence decision, badge decision, category switch, sign-in phone change, photo opened and product
         reclassification is recorded in the same transaction as the change itself and cannot be edited afterwards.
       </p>
       {log.isLoading ? (

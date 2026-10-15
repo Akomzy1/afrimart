@@ -108,6 +108,7 @@ export function WhatsListed({ onBack, onMessage }: { onBack: () => void; onMessa
   const rows = listings.data ?? [];
   const paused = [...new Set(rows.filter((l) => l.hiddenReason === "category_paused").map((l) => l.category))];
   const needsLicence = rows.some((l) => l.hiddenReason === "needs_kitchen_licence");
+  const lapsed = rows.some((l) => l.hiddenReason === "licence_expired");
   const shown = rows.filter((l) => !l.hidden).length;
   const editingRow = rows.find((l) => l.id === editing) ?? null;
 
@@ -136,6 +137,20 @@ export function WhatsListed({ onBack, onMessage }: { onBack: () => void; onMessa
             <span className="m">
               <span className="t">{paused.join(", ")} listings hidden</span>
               <span className="s">This category has been paused for your shop — message us if you have questions.</span>
+            </span>
+            <span className="arr">
+              <ChevIcon />
+            </span>
+          </button>
+        )}
+        {lapsed && (
+          <button type="button" className="mr-pausebanner" onClick={onMessage}>
+            <span className="ic">
+              <SnowIcon />
+            </span>
+            <span className="m">
+              <span className="t">Your kitchen licence has expired</span>
+              <span className="s">Chilled and frozen listings are hidden. Send us your renewed licence in Messages to bring them back.</span>
             </span>
             <span className="arr">
               <ChevIcon />
@@ -342,9 +357,12 @@ function AddSheet({ onClose, onMessage }: { onClose: () => void; onMessage: () =
     cold: {
       head: "Chilled and frozen",
       icon: <SnowIcon />,
-      title: "Cold food needs a licensed kitchen",
-      body: "Chilled and frozen items can only be sold from a licensed commercial kitchen. Send us your kitchen licence in Messages to unlock them.",
-      action: "Send licence in Messages",
+      title: standing.data?.kitchen === "expired" ? "Your kitchen licence has expired" : "Cold food needs a licensed kitchen",
+      body:
+        standing.data?.kitchen === "expired"
+          ? "Chilled and frozen items can only be sold from a licensed commercial kitchen. Send us your renewed licence in Messages to unlock them again."
+          : "Chilled and frozen items can only be sold from a licensed commercial kitchen. Send us your kitchen licence in Messages to unlock them.",
+      action: standing.data?.kitchen === "expired" ? "Send renewed licence in Messages" : "Send licence in Messages",
       ghost: "Not now",
     },
     permit: {

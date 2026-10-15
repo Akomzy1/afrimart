@@ -73,6 +73,8 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unreadCount]);
   const payouts = (thread.data?.messages ?? []).filter((m) => m.kind === "payout");
+  // Notices from AfriMart that are just words (a licence that has lapsed).
+  const notices = (thread.data?.messages ?? []).filter((m) => m.kind === "licence_expired");
   const dashboard = trpc.merchant.payoutDashboardLink.useMutation();
 
   /**
@@ -197,6 +199,12 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
                 </button>
                 <button type="button" className="mr-bigbtn ghost" onClick={() => setPicked(null)}>
                   Choose something else
+          {notices.map((n) => (
+            <div className="b-in support" key={n.id}>
+              {n.body}
+            </div>
+          ))}
+
                 </button>
               </div>
             </>

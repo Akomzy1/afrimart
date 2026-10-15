@@ -7,6 +7,7 @@ import { sellerCategoryNotices, visibleListings } from "../quality/categoryAcces
 import { PhotoRejected, decodeUpload } from "../storage/photos.js";
 import { assertCanKeepDocuments, photoStore } from "../storage/store.js";
 import { signedPhotoUrl } from "../storage/access.js";
+import { ensureLicenceExpiryNotice, licenceCounts, licenceState } from "../quality/licence.js";
 import { DashboardUnavailable, payoutDashboard } from "../payments/dashboard.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier, permitStatement } from "../quality/listingStandards.js";
 
@@ -200,12 +201,15 @@ export const merchantRouter = router({
         });
       }
 
+      // An approval that has passed its expiry date no longer counts, so it does
+      // not block a renewal: applying again starts a fresh review.
       const existing = await prisma.kitchenLicence.findUnique({ where: { storeId: ctx.storeId } });
-      if (existing && (existing.status === "applied" || existing.status === "approved")) {
+      const state = licenceState(existing);
+      if (state === "applied" || state === "approved") {
         throw new TRPCError({
           code: "CONFLICT",
           message:
-            existing.status === "approved"
+            state === "approved"
               ? "Your licensed kitchen is already approved."
               : "Your application is already with our team. We'll be in touch once it has been reviewed.",
         });
@@ -336,13 +340,15 @@ export const merchantRouter = router({
    * applications, and the one-time permit confirmations already given.
    */
   standing: merchantProcedure.query(async ({ ctx }) => {
+    await ensureLicenceExpiryNotice(prisma, ctx.storeId);
     const store = await prisma.store.findUniqueOrThrow({
       where: { id: ctx.storeId },
       include: { kitchenLicence: true, badges: true, permitConfirmations: true },
     });
     return {
       homeTier: isHomeTier(store.sellerType),
-      kitchen: store.kitchenLicence?.status ?? null,
+      /** The licence as it stands today: "expired" once an approval is past its date. */
+      kitchen: licenceState(store.kitchenLicence),
       badges: store.badges.map((b) => ({ kind: b.kind, status: b.status })),
       permitsConfirmed: store.permitConfirmations.map((p) => p.category),
     };
@@ -367,7 +373,8 @@ export const merchantRouter = router({
       prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, include: { kitchenLicence: true } }),
     ]);
     const visibleIds = new Set(visible.map((l) => l.id));
-    const licensed = store.kitchenLicence?.status === "approved";
+    const licensed = licenceCounts(store.kitchenLicence);
+    const lapsed = licenceState(store.kitchenLicence) === "expired";
     return all.map((l) => {
       const hidden = !visibleIds.has(l.id);
       return {
@@ -383,7 +390,9 @@ export const merchantRouter = router({
         hiddenReason: !hidden
           ? null
           : isHomeTier(store.sellerType) && l.temperatureClass !== "ambient" && !licensed
-            ? ("needs_kitchen_licence" as const)
+            ? lapsed
+              ? ("licence_expired" as const)
+              : ("needs_kitchen_licence" as const)
             : ("category_paused" as const),
       };
     });
@@ -422,6 +431,9 @@ export const merchantRouter = router({
    * the date, the order), which is where a seller sees what they have earned.
    */
   thread: merchantProcedure.query(async ({ ctx }) => {
+    // A lapsed licence is announced here the first time the seller looks after
+    // it lapses; no job runs, and checking again posts nothing more.
+    await ensureLicenceExpiryNotice(prisma, ctx.storeId);
     const rows = await prisma.sellerMessage.findMany({
       where: { storeId: ctx.storeId },
       orderBy: { createdAt: "asc" },

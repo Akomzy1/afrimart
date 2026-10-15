@@ -12,6 +12,7 @@ import { claimRef } from "../quality/claims.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier } from "../quality/listingStandards.js";
 import { parsePhotoPath, signedPhotoUrl } from "../storage/access.js";
 import { postPayoutMessage } from "../payments/payoutMessage.js";
+import { licenceState } from "../quality/licence.js";
 import { normalisePhone } from "../auth/signInCodes.js";
 
 const isPhotoPath = (v: string | null): v is string => v !== null && parsePhotoPath(v) !== null;
@@ -172,7 +173,7 @@ export const adminRouter = router({
     const stores = await prisma.store.findMany({
       include: {
         hubMetro: true,
-        kitchenLicence: { select: { status: true } },
+        kitchenLicence: { select: { status: true, licenceExpiresOn: true } },
         categoryControls: { where: { disabled: true }, select: { category: true } },
         _count: { select: { listings: true, catalogueDrafts: true } },
       },
@@ -192,7 +193,7 @@ export const adminRouter = router({
       listingCount: s._count.listings,
       pendingDrafts: s._count.catalogueDrafts,
       /** QC-1 — null for a seller who has never applied. */
-      kitchenLicence: s.kitchenLicence?.status ?? null,
+      kitchenLicence: licenceState(s.kitchenLicence),
       /** QC-1 — controlled categories switched off for this seller. */
       disabledCategories: s.categoryControls.map((c) => c.category),
       /** SEL-2 — a store cannot be routed orders until this is true. */
@@ -1039,6 +1040,8 @@ export const adminRouter = router({
         verifiedLicenceNumber: r.verifiedLicenceNumber,
         verifiedIssuingAuthority: r.verifiedIssuingAuthority,
         licenceExpiresOn: r.licenceExpiresOn,
+        /** An approval past its expiry date: it no longer counts, though its stored status is still approved. */
+        expired: licenceState(r) === "expired",
         reviewNote: r.reviewNote,
         reviewedByEmail: r.reviewedByEmail,
         reviewedAt: r.reviewedAt,
