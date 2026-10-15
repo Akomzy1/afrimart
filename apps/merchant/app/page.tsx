@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import {
   ProductGlyph,
   CheckIcon,
@@ -16,7 +16,7 @@ import {
 } from "@afrimart/ui";
 import { trpc } from "@afrimart/api-client";
 import { glyphForCategory, type MerchantOrder } from "./orders";
-import { photoUrl, tokenStore } from "./providers";
+import { photoUrl } from "./providers";
 import { SignIn } from "./SignIn";
 import { BOX_PHOTO, PhotoCamera } from "./PhotoCamera";
 import { SupportThread } from "./SupportThread";
@@ -44,13 +44,14 @@ type Tab = "camera" | "orders" | "messages";
  * than a UI one. Flagged, not built.
  */
 export default function MerchantApp() {
-  // Signed in or not is decided on the device and confirmed by the server: a
-  // token is only a hint, and the first request that comes back UNAUTHORIZED
-  // clears it (providers.tsx). Until the browser has been asked, show the
-  // shell rather than flashing the sign-in screen at someone who is signed in.
-  const token = useSyncExternalStore(tokenStore.subscribe, tokenStore.get, () => undefined);
-  if (token === undefined) return <div className="mr-shell" />;
-  return token ? <MerchantAppInner /> : <SignIn />;
+  // Signed in or not is whatever the server says when asked which shop this is:
+  // the session is an httpOnly cookie this page cannot read. Until it has
+  // answered, show the shell rather than flashing the sign-in screen at someone
+  // who is signed in. Any later request that comes back UNAUTHORIZED refreshes
+  // this answer (providers.tsx) and the sign-in screen takes over.
+  const me = trpc.merchant.me.useQuery(undefined, { retry: false, staleTime: 60_000, refetchOnWindowFocus: true });
+  if (me.isPending) return <div className="mr-shell" />;
+  return me.data ? <MerchantAppInner /> : <SignIn />;
 }
 
 function MerchantAppInner() {

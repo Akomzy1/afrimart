@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { trpc } from "@afrimart/api-client";
 import { glyphForCategory } from "../../lib/glyph";
-import { tokenStore } from "../providers";
 import {
   PageHeader,
   ProductGlyph,
@@ -43,7 +42,11 @@ export default function AccountPage() {
   const orders = trpc.orders.list.useQuery();
   const me = trpc.userAuth.buyerMe.useQuery();
   // Ending the session on the server first, then forgetting it here either way.
-  const signOut = trpc.userAuth.signOut.useMutation({ onSettled: () => tokenStore.set(null) });
+  const signOut = trpc.userAuth.signOutBuyer.useMutation({
+    // The server ends the session and clears the cookie. Reloading then drops
+    // everything this page held in memory about the person who has just left.
+    onSettled: () => window.location.reload(),
+  });
 
   /**
    * SRCH-4 one-tap reorder. The orders API now exists, so the lines are

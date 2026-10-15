@@ -43,8 +43,10 @@ describe("no buyer-facing or merchant-facing endpoint takes an identity as input
 
   test("the identity comes out of the session in the request context and nowhere else", async () => {
     const text = stripComments(await src("./trpc.ts"));
-    assert.match(text, /resolveUserSession\(token\)/);
-    assert.match(text, /ctx\.user/);
+    assert.match(text, /resolveUserSession\(bearer\)/);
+    assert.match(text, /resolveUserSession\(sessionCookie\(cookieHeader, "buyer"\)\)/);
+    assert.match(text, /resolveUserSession\(sessionCookie\(cookieHeader, "store"\)\)/);
+    assert.match(text, /ctx\.sessions\[kind\]/);
     const other = text.replace(/headers\.authorization/g, "").replace(/headers\["user-agent"\]/g, "");
     assert.ok(!/headers\[/.test(other), "trpc.ts reads a request header other than the bearer token and the user agent");
   });
@@ -76,6 +78,13 @@ describe("no buyer-facing or merchant-facing endpoint takes an identity as input
     assert.ok(!/input\.buyerId/.test(body));
   });
 
+  test("there is no earnings procedure: a seller's earnings live in the AfriMart thread and their payout dashboard", async () => {
+    const text = stripComments(await src("./routers/merchant.ts"));
+    assert.ok(!/^\s{2}earnings:/m.test(text), "merchant.earnings is back");
+    assert.match(text, /^\s{2}payoutDashboardLink:/m);
+    assert.match(text, /^\s{2}thread:/m);
+  });
+
   test("the store picker that stood in for sign-in is gone", async () => {
     const text = await src("./routers/merchant.ts");
     assert.ok(!/^\s{2}stores:/m.test(text), "merchant.stores (list every shop to anyone) is back");
@@ -87,7 +96,7 @@ describe("only the sign-in routes are open to the world", () => {
   test("userAuth has no unauthenticated route besides the code request, the code exchange and sign-out", async () => {
     const text = await src("./routers/userAuth.ts");
     const open = [...text.matchAll(/^\s{2}(\w+):\s*publicProcedure/gm)].map((m) => m[1]).sort();
-    assert.deepEqual(open, ["requestBuyerCode", "requestStoreCode", "signOut", "verifyBuyerCode", "verifyStoreCode"]);
+    assert.deepEqual(open, ["requestBuyerCode", "requestStoreCode", "signOutBuyer", "signOutStore", "verifyBuyerCode", "verifyStoreCode"]);
   });
 
   test("every public procedure in the buyer-facing and merchant-facing routers is accounted for", async () => {

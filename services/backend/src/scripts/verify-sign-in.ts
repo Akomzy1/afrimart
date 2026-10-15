@@ -10,10 +10,11 @@
  *   npm run verify:sign-in --workspace=@afrimart/backend
  */
 import Fastify from "fastify";
+import { buildServer } from "../app.js";
 import sharp from "sharp";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
-import { callerFor } from "./callers.js";
+import { callerFor, cookieToken } from "./callers.js";
 import { issueUserSession, resolveUserSession, revokeAllForUser } from "../auth/userSession.js";
 import { resetAllIpLimits } from "../auth/rateLimit.js";
 import { FileEmailSender, MemoryEmailSender, setSenders, type SmsMessage, type SmsSender } from "../notifications/senders.js";
@@ -69,7 +70,8 @@ const ageCodes = (where: { identifier: string }, seconds = 7200) =>
 
 // Each call from its own address, so the per-address limit does not fire in the middle of a test (it has its own check below).
 let ipN = 0;
-const anon = () => callerFor({ ip: `10.1.${Math.floor(++ipN / 250)}.${ipN % 250}` });
+const freshIp = () => `10.1.${Math.floor(++ipN / 250)}.${ipN % 250}`;
+const anon = (capture?: string[]) => callerFor({ ip: freshIp(), capture });
 const finance = callerFor({ staff: await sessionFor("finance@afrimart.test") });
 const ops = callerFor({ staff: await sessionFor("ops@afrimart.test") });
 const reviewer = callerFor({ staff: await sessionFor("reviewer@afrimart.test") });
@@ -120,9 +122,12 @@ try {
   check("a code for one address does not work for another", (await outcome(anon().userAuth.verifyBuyerCode({ email: emailOf("someone-else"), code: code1 }))).code === "UNAUTHORIZED");
   check("a malformed code is refused at the door", (await outcome(anon().userAuth.verifyBuyerCode({ email, code: "12ab56" }))).code === "BAD_REQUEST");
 
-  const signedIn = await outcome(anon().userAuth.verifyBuyerCode({ email, code: code1 }));
+  const buyerCookies: string[] = [];
+  const signedIn = await outcome(anon(buyerCookies).userAuth.verifyBuyerCode({ email, code: code1 }));
   check("the right code signs the buyer in, creating the account on first use", signedIn.code === "ok" && (await prisma.buyer.count({ where: { email } })) === 1);
-  const token = signedIn.value!.token;
+  check("the session is not in the response body: it travels only as a cookie", !JSON.stringify(signedIn.value).includes("token") && Object.keys(signedIn.value as object).join() === "expiresAt");
+  const token = cookieToken(buyerCookies, "buyer")!;
+  check("the cookie carries it", typeof token === "string" && token.length > 30);
   check("the session token is opaque and only its hash is stored", (await prisma.userSession.count({ where: { tokenHash: token } })) === 0 && (await prisma.userSession.count({ where: { buyer: { email } } })) === 1);
   check("the token identifies this buyer, and nobody else", (await callerFor({ rawToken: token }).userAuth.buyerMe()).email === email);
   check("the same code cannot be used twice", (await outcome(anon().userAuth.verifyBuyerCode({ email, code: code1 }))).code === "UNAUTHORIZED");
@@ -176,7 +181,7 @@ try {
   check("a fresh session resolves", (await resolveUserSession(s2.token))?.buyerId === buyerRow.id);
   check("a buyer's token is not a store's", (await outcome(callerFor({ rawToken: s2.token }).merchant.me())).code === "UNAUTHORIZED");
   check("no token, and a made-up token, are both signed out", (await resolveUserSession(null)) === null && (await resolveUserSession("made-up")) === null);
-  await callerFor({ rawToken: s2.token }).userAuth.signOut();
+  await callerFor({ rawToken: s2.token }).userAuth.signOutBuyer();
   check("signing out ends the session on the server", (await resolveUserSession(s2.token)) === null);
   const s3 = await issueUserSession({ kind: "buyer", buyerId: buyerRow.id });
   await prisma.userSession.updateMany({ where: { buyerId: buyerRow.id, revokedAt: null }, data: { lastSeenAt: new Date(Date.now() - 40 * 86_400_000) } });
@@ -203,12 +208,14 @@ try {
 
   check("a wrong code is refused", (await outcome(anon().userAuth.verifyStoreCode({ phone: PHONE.a, code: sCode === "000000" ? "111111" : "000000" }))).code === "UNAUTHORIZED");
   check("a buyer's emailed code does not open a shop", (await outcome(anon().userAuth.verifyStoreCode({ phone: PHONE.b, code: lastEmailCode() }))).code === "UNAUTHORIZED");
-  const storeIn = await outcome(anon().userAuth.verifyStoreCode({ phone: "555-555-0101", code: sCode }));
+  const storeCookies: string[] = [];
+  const storeIn = await outcome(anon(storeCookies).userAuth.verifyStoreCode({ phone: "555-555-0101", code: sCode }));
   check("the right code signs the owner in to their shop", storeIn.code === "ok");
-  const me = await callerFor({ rawToken: storeIn.value!.token }).merchant.me();
+  const storeToken = cookieToken(storeCookies, "store")!;
+  const me = await callerFor({ rawToken: storeToken }).merchant.me();
   check("the session is that shop's, by name", me.name === "SGN a", me.name);
-  check("a shop's token is not a buyer's", (await outcome(callerFor({ rawToken: storeIn.value!.token }).userAuth.buyerMe())).code === "UNAUTHORIZED");
-  check("and the shop's token gives it only its own inbox", (await callerFor({ rawToken: storeIn.value!.token }).merchant.inbox()).every((j) => typeof j.shipmentId === "string"));
+  check("a shop's token is not a buyer's", (await outcome(callerFor({ rawToken: storeToken }).userAuth.buyerMe())).code === "UNAUTHORIZED");
+  check("and the shop's token gives it only its own inbox", (await callerFor({ rawToken: storeToken }).merchant.inbox()).every((j) => typeof j.shipmentId === "string"));
 
   console.log("\n=== sending codes only where they can arrive ===");
   setSenders({ sms: Object.assign(new CapturingSms(), { enabled: false }) });
@@ -229,6 +236,88 @@ try {
   const results: string[] = [];
   for (let i = 0; i < 25; i++) results.push((await outcome(spray.userAuth.requestBuyerCode({ email: "nope" }))).code);
   check("after a run of requests from one address, it is turned away", results.slice(0, 20).every((c) => c === "BAD_REQUEST") && results.slice(20).every((c) => c === "TOO_MANY_REQUESTS"), [...new Set(results)].join());
+
+  /* ------------------------------------------- the real HTTP path, with cookies */
+  console.log("\n=== the session travels only as an httpOnly cookie, through the real server ===");
+  const app = await buildServer({ logger: false });
+  const ORIGIN = "http://localhost:3000";
+  let hip = 0;
+  const addr = () => `10.9.${Math.floor(++hip / 250)}.${hip % 250}`;
+  const hPost = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+    app.inject({ method: "POST", url: `/trpc/${path}`, remoteAddress: addr(), headers: { "content-type": "application/json", ...headers }, payload: JSON.stringify(body) });
+  const hGet = (path: string, headers: Record<string, string> = {}) => app.inject({ method: "GET", url: `/trpc/${path}`, remoteAddress: addr(), headers });
+  const result = (r: { body: string }) => JSON.parse(r.body).result?.data;
+  const errCode = (r: { body: string }) => JSON.parse(r.body).error?.data?.code as string | undefined;
+  const setCookies = (r: { headers: Record<string, unknown> }) => ([] as string[]).concat((r.headers["set-cookie"] as string[] | string | undefined) ?? []);
+  const pair = (c: string) => c.split(";")[0]!;
+
+  const httpEmail = emailOf("http-buyer");
+  const askedHttp = await hPost("userAuth.requestBuyerCode", { email: httpEmail }, { origin: ORIGIN });
+  check("asking for a code over HTTP works", askedHttp.statusCode === 200 && result(askedHttp)?.sent === true);
+  const verified = await hPost("userAuth.verifyBuyerCode", { email: httpEmail, code: lastEmailCode() }, { origin: ORIGIN });
+  const issued = setCookies(verified);
+  check("the right code answers 200 and sets one cookie", verified.statusCode === 200 && issued.length === 1, issued.join(" | "));
+  const buyerSetCookie = issued[0]!;
+  check("it is httpOnly, so no script on the page can read it", /;\s*HttpOnly/i.test(buyerSetCookie));
+  check("same-site only", /;\s*SameSite=Strict/i.test(buyerSetCookie));
+  check("for the whole API, with no Domain (host-only)", /;\s*Path=\//.test(buyerSetCookie) && !/Domain=/i.test(buyerSetCookie));
+  check("ending when the session does", /Max-Age=\d{6,}/.test(buyerSetCookie) && /Expires=/.test(buyerSetCookie));
+  check("named for the kind of account", buyerSetCookie.startsWith("afrimart_buyer=") || buyerSetCookie.startsWith("__Host-afrimart_buyer="));
+  check("the response body holds no token", !verified.body.includes(pair(buyerSetCookie).split("=")[1]!.slice(0, 20)) && !/token/i.test(verified.body));
+  const buyerCookie = pair(buyerSetCookie);
+
+  const me1 = await hGet("userAuth.buyerMe", { cookie: buyerCookie });
+  check("the cookie signs the buyer in for a read", me1.statusCode === 200 && result(me1)?.email === httpEmail);
+  check("without it, the same read is refused", errCode(await hGet("userAuth.buyerMe")) === "UNAUTHORIZED");
+
+  // A signed-in buyer reporting a parcel that does not exist gets NOT_FOUND; an unknown caller gets UNAUTHORIZED.
+  const probe = (headers: Record<string, string>) => hPost("claims.submitParcelReport", { shipmentId: "no-such-parcel" }, headers);
+  check("a cookie write from the app's own origin is accepted", errCode(await probe({ cookie: buyerCookie, origin: ORIGIN })) === "NOT_FOUND");
+  check("the same write from another site's page is not: the cookie is ignored", errCode(await probe({ cookie: buyerCookie, origin: "https://evil.example" })) === "UNAUTHORIZED");
+  check("nor with no Origin at all", errCode(await probe({ cookie: buyerCookie })) === "UNAUTHORIZED");
+  check("nor from a look-alike on localhost over https", errCode(await probe({ cookie: buyerCookie, origin: "https://localhost:3000" })) === "UNAUTHORIZED");
+  const cors = await hGet("userAuth.buyerMe", { cookie: buyerCookie, origin: ORIGIN });
+  const corsEvil = await hGet("userAuth.buyerMe", { cookie: buyerCookie, origin: "https://evil.example" });
+  check("CORS lets the app's origin read the answer, with credentials", cors.headers["access-control-allow-origin"] === ORIGIN && cors.headers["access-control-allow-credentials"] === "true");
+  check("and gives another site's page nothing to read it with", corsEvil.headers["access-control-allow-origin"] === undefined);
+
+  check("garbage in the cookie is signed out", errCode(await hGet("userAuth.buyerMe", { cookie: "afrimart_buyer=not-a-session-token-at-all-0000000" })) === "UNAUTHORIZED");
+  const cookieNamedForStore = buyerCookie.replace(/(__Host-)?afrimart_buyer=/, (m) => m.replace("buyer", "store"));
+  check("a buyer's token under a shop's cookie name opens nothing", errCode(await hGet("merchant.me", { cookie: cookieNamedForStore })) === "UNAUTHORIZED");
+
+  // a shop in the same browser: two cookies, each used only for its own kind
+  await hPost("userAuth.requestStoreCode", { phone: PHONE.b }, { origin: ORIGIN });
+  const storeVerified = await hPost("userAuth.verifyStoreCode", { phone: PHONE.b, code: lastSmsCode() }, { origin: ORIGIN });
+  const storeCookie = pair(setCookies(storeVerified)[0]!);
+  check("a shop signs in the same way, with its own cookie", storeVerified.statusCode === 200 && /afrimart_store=/.test(storeCookie));
+  const bothCookies = `${buyerCookie}; ${storeCookie}`;
+  check("with bothCookies in one browser each procedure uses its own", result(await hGet("userAuth.buyerMe", { cookie: bothCookies }))?.email === httpEmail && result(await hGet("merchant.me", { cookie: bothCookies }))?.name === "SGN b");
+
+  // signing out
+  const out = await hPost("userAuth.signOutBuyer", {}, { cookie: bothCookies, origin: ORIGIN });
+  const cleared = setCookies(out)[0] ?? "";
+  check("signing out clears the cookie in the browser", /afrimart_buyer=;/.test(cleared) && /Max-Age=0/.test(cleared));
+  check("and ends the session on the server: the same cookie, sent again, is refused", errCode(await hGet("userAuth.buyerMe", { cookie: buyerCookie })) === "UNAUTHORIZED");
+  check("it did not touch the shop's session", result(await hGet("merchant.me", { cookie: bothCookies }))?.name === "SGN b");
+  check("signing out when not signed in is harmless", (await hPost("userAuth.signOutBuyer", {}, { origin: ORIGIN })).statusCode === 200);
+  const forged = await hPost("userAuth.signOutStore", {}, { cookie: storeCookie, origin: "https://evil.example" });
+  check("another site cannot sign a shop out by riding its cookie", forged.statusCode === 200 && result(await hGet("merchant.me", { cookie: storeCookie }))?.name === "SGN b");
+
+  console.log("\n=== sign out of all devices ===");
+  await ageCodes({ identifier: PHONE.b });
+  await hPost("userAuth.requestStoreCode", { phone: PHONE.b }, { origin: ORIGIN });
+  const second = await hPost("userAuth.verifyStoreCode", { phone: PHONE.b, code: lastSmsCode() }, { origin: ORIGIN });
+  const secondCookie = pair(setCookies(second)[0]!);
+  const otherShop = await issueUserSession({ kind: "store", storeId: storeA.id });
+  check("the shop is signed in on two devices", result(await hGet("merchant.me", { cookie: storeCookie }))?.name === "SGN b" && result(await hGet("merchant.me", { cookie: secondCookie }))?.name === "SGN b");
+  check("signing out everywhere needs a live session", errCode(await hPost("userAuth.signOutStoreEverywhere", {}, { origin: ORIGIN })) === "UNAUTHORIZED");
+  check("and an allowed origin", errCode(await hPost("userAuth.signOutStoreEverywhere", {}, { cookie: storeCookie, origin: "https://evil.example" })) === "UNAUTHORIZED");
+  const everywhere = await hPost("userAuth.signOutStoreEverywhere", {}, { cookie: storeCookie, origin: ORIGIN });
+  check("it ends every session of that shop and says how many", everywhere.statusCode === 200 && result(everywhere)?.sessionsEnded >= 2, JSON.stringify(result(everywhere)));
+  check("the other device is signed out too", errCode(await hGet("merchant.me", { cookie: secondCookie })) === "UNAUTHORIZED" && errCode(await hGet("merchant.me", { cookie: storeCookie })) === "UNAUTHORIZED");
+  check("and the cookie is cleared here", /Max-Age=0/.test(setCookies(everywhere)[0] ?? ""));
+  check("another shop's session is untouched", (await resolveUserSession(otherShop.token))?.storeId === storeA.id);
+  await app.close();
 
   /* ------------------------------------------------------ private photos */
   console.log("\n=== private photos: only a signed, short-lived link opens one ===");
@@ -359,12 +448,16 @@ try {
   check("every session the shop had is ended", (await resolveUserSession(bSession.token)) === null);
   const phoneAudit = await prisma.auditLogEntry.findMany({ where: { action: "store.owner_phone_change", subjectId: storeB.id, createdAt: { gte: phoneStart } } });
   check("it is audited with who, why, and the old and new number", phoneAudit.length === 1 && phoneAudit[0]!.actorEmail === "ops@afrimart.test" && /checked ID/.test(phoneAudit[0]!.note ?? "") && (phoneAudit[0]!.before as { ownerPhone?: string })?.ownerPhone === PHONE.b && (phoneAudit[0]!.after as { ownerPhone?: string })?.ownerPhone === NEW);
+  // this number was texted earlier in the run; clear the resend wait so the check is about the number, not the clock
+  await prisma.authCode.deleteMany({ where: { identifier: PHONE.b } });
+  const smsBeforeOld = sms.sent.length;
   await anon().userAuth.requestStoreCode({ phone: PHONE.b });
-  check("the old number no longer reaches the shop: no text is sent to it", sms.sent.every((m) => m.to !== PHONE.b));
+  check("the old number no longer reaches the shop: no text is sent to it", sms.sent.slice(smsBeforeOld).every((m) => m.to !== PHONE.b));
   await anon().userAuth.requestStoreCode({ phone: NEW });
   check("the new number does", sms.sent.at(-1)?.to === NEW);
-  const viaNew = await outcome(anon().userAuth.verifyStoreCode({ phone: NEW, code: lastSmsCode() }));
-  check("and signs in to that shop", viaNew.code === "ok" && (await callerFor({ rawToken: viaNew.value!.token }).merchant.me()).name === "SGN b");
+  const newCookies: string[] = [];
+  const viaNew = await outcome(anon(newCookies).userAuth.verifyStoreCode({ phone: NEW, code: lastSmsCode() }));
+  check("and signs in to that shop", viaNew.code === "ok" && (await callerFor({ rawToken: cookieToken(newCookies, "store")! }).merchant.me()).name === "SGN b");
   check("the store list shows only the last four digits", (await ops.admin.stores()).find((s) => s.id === storeB.id)?.ownerPhoneLast4 === "0142" && !JSON.stringify(await ops.admin.stores()).includes(NEW));
 } finally {
   await sweep();

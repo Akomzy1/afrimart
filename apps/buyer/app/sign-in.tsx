@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { trpc } from "@afrimart/api-client";
-import { tokenStore } from "./providers";
 
 /**
  * Sign in for buyers: an email address, then the six-digit code sent to it.
@@ -13,16 +12,25 @@ import { tokenStore } from "./providers";
  * agent and the catalogue are never gated); it appears only where a page is
  * about the buyer's own orders, or at the moment they place one.
  *
+ * The session is an httpOnly cookie the API sets, so nothing here ever sees it.
+ * Whether the buyer is signed in is whatever the server says when asked.
+ *
  * There is no prototype screen for it, so it uses the design system's tokens
  * and the form patterns already in the checkout, and stays plain.
  */
 
-/** True/false once the browser has been asked, undefined while it has not (the server render). */
-export function useBuyerToken(): string | null | undefined {
-  return useSyncExternalStore(tokenStore.subscribe, tokenStore.get, () => undefined);
+export type BuyerSession = "loading" | "in" | "out";
+
+/** Asks the server who this browser is. Cheap, cached for a minute, refreshed when the window is revisited. */
+export function useBuyerSession(): { state: BuyerSession; email: string | null } {
+  const me = trpc.userAuth.buyerMe.useQuery(undefined, { retry: false, staleTime: 60_000, refetchOnWindowFocus: true });
+  if (me.data) return { state: "in", email: me.data.email };
+  if (me.isError) return { state: "out", email: null };
+  return { state: "loading", email: null };
 }
 
 export function SignInPanel({ heading = "Sign in to see your orders", lede }: { heading?: string; lede?: string }) {
+  const utils = trpc.useUtils();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
@@ -35,7 +43,8 @@ export function SignInPanel({ heading = "Sign in to see your orders", lede }: { 
     },
   });
   const verify = trpc.userAuth.verifyBuyerCode.useMutation({
-    onSuccess: (r) => tokenStore.set(r.token),
+    // The cookie is already set by the response; refresh everything that was waiting on a session.
+    onSuccess: () => utils.invalidate(),
     onError: () => setCode(""),
   });
 
@@ -114,7 +123,7 @@ export function SignInPanel({ heading = "Sign in to see your orders", lede }: { 
 
 /** Shows its children to a signed-in buyer and the sign-in panel to everyone else. */
 export function SignInGate({ children, heading, lede }: { children: ReactNode; heading?: string; lede?: string }) {
-  const token = useBuyerToken();
-  if (token === undefined) return null; // not yet known on the server render; avoids flashing the panel
-  return token ? <>{children}</> : <SignInPanel heading={heading} lede={lede} />;
+  const { state } = useBuyerSession();
+  if (state === "loading") return null; // not yet asked; avoids flashing the panel at someone who is signed in
+  return state === "in" ? <>{children}</> : <SignInPanel heading={heading} lede={lede} />;
 }

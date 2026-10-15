@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@afrimart/api-client";
 import { LogoMark } from "@afrimart/ui";
-import { tokenStore } from "./providers";
 
 /**
  * Sign in to the merchant app with the mobile number on file for the shop and a
@@ -24,6 +23,7 @@ import { tokenStore } from "./providers";
 const DIGITS = 6;
 
 export function SignIn() {
+  const utils = trpc.useUtils();
   const [phone, setPhone] = useState("");
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [code, setCode] = useState<string[]>(() => Array(DIGITS).fill(""));
@@ -37,7 +37,8 @@ export function SignIn() {
     },
   });
   const verify = trpc.userAuth.verifyStoreCode.useMutation({
-    onSuccess: (r) => tokenStore.set(r.token),
+    // The cookie is already set by the response; refreshing `me` is what moves the app on.
+    onSuccess: () => utils.invalidate(),
     onError: () => {
       setCode(Array(DIGITS).fill(""));
       refs.current[0]?.focus();

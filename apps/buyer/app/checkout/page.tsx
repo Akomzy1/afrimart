@@ -16,7 +16,7 @@ import {
 } from "@afrimart/ui";
 import { trpc } from "@afrimart/api-client";
 import { useCart } from "../cart-context";
-import { SignInPanel, useBuyerToken } from "../sign-in";
+import { SignInPanel, useBuyerSession } from "../sign-in";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const dayShort = (offset: number) =>
@@ -42,7 +42,7 @@ export default function CheckoutPage() {
   const place = trpc.checkout.place.useMutation();
   // Looking at the basket needs no account; placing the order does. The panel
   // appears at that moment and the form (and the basket) are exactly as left.
-  const token = useBuyerToken();
+  const session = useBuyerSession();
   const [askSignIn, setAskSignIn] = useState(false);
 
   const zipValid = /^\d{5}$/.test(zip);
@@ -63,7 +63,7 @@ export default function CheckoutPage() {
   async function placeOrder() {
     setAttempted(true);
     if (!formValid) return;
-    if (!token) {
+    if (session.state !== "in") {
       setAskSignIn(true);
       return;
     }
@@ -79,7 +79,7 @@ export default function CheckoutPage() {
     }
   }
 
-  if (askSignIn && !token) {
+  if (askSignIn && session.state !== "in") {
     return (
       <SignInPanel
         heading="Sign in to place your order"

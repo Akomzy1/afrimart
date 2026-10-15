@@ -88,3 +88,8 @@ export async function revokeAllForUser(who: { buyerId: string } | { storeId: str
   });
   return result.count;
 }
+
+/** End one session by its id, for a request that knows its session but not its token (it came in a cookie). */
+export async function revokeSessionById(sessionId: string): Promise<void> {
+  await prisma.userSession.updateMany({ where: { id: sessionId, revokedAt: null }, data: { revokedAt: new Date() } });
+}

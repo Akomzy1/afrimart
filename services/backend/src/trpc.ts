@@ -2,7 +2,9 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
 import { resolveSession, type ResolvedSession } from "./auth/session.js";
 import { roleHas, type Permission } from "./auth/permissions.js";
-import { resolveUserSession } from "./auth/userSession.js";
+import { resolveUserSession, type ResolvedUser } from "./auth/userSession.js";
+import { sessionCookie } from "./auth/cookies.js";
+import { isAllowedOrigin } from "./auth/origins.js";
 
 function bearerToken(req: CreateFastifyContextOptions["req"]): string | null {
   const header = req.headers.authorization;
@@ -11,16 +13,37 @@ function bearerToken(req: CreateFastifyContextOptions["req"]): string | null {
   return scheme?.toLowerCase() === "bearer" && value ? value : null;
 }
 
-export async function createContext({ req }: CreateFastifyContextOptions) {
-  // Resolved once per request. A token belongs to exactly one kind of account,
-  // so at most one of these is non-null; neither is for a visitor who is not
-  // signed in. Nothing else the client sends is believed about who it is.
-  const token = bearerToken(req);
-  const [staff, user] = await Promise.all([resolveSession(token), resolveUserSession(token)]);
+export async function createContext({ req, res }: CreateFastifyContextOptions) {
+  // Who is asking, resolved once per request from the session token and from
+  // nothing else the client sends.
+  //
+  // Buyers and shops carry theirs in an httpOnly cookie, one cookie per kind of
+  // account. The cookie is honoured on a read from anywhere it arrives, but a
+  // write is honoured only from an allowed origin: a browser attaches cookies to
+  // a request a hostile page makes, and the Origin header is how this API tells
+  // that request from the app's own. A request with no cookie can still carry a
+  // bearer token, which is how staff sign in and how scripts and tests do.
+  const bearer = bearerToken(req);
+  const safeMethod = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+  const cookieHeader = safeMethod || isAllowedOrigin(req.headers.origin) ? req.headers.cookie : undefined;
+
+  const [staff, bearerUser, buyerCookie, storeCookie] = await Promise.all([
+    resolveSession(bearer),
+    resolveUserSession(bearer),
+    resolveUserSession(sessionCookie(cookieHeader, "buyer")),
+    resolveUserSession(sessionCookie(cookieHeader, "store")),
+  ]);
+  // A token is only ever good for the kind of account it was issued to.
+  const of = (u: ResolvedUser | null, kind: "buyer" | "store") => (u && u.kind === kind ? u : null);
+  const sessions = {
+    buyer: of(buyerCookie, "buyer") ?? of(bearerUser, "buyer"),
+    store: of(storeCookie, "store") ?? of(bearerUser, "store"),
+  };
   return {
     req,
+    res,
     staff,
-    user,
+    sessions,
     ip: req.ip,
     userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
   };
@@ -84,7 +107,8 @@ export const staffAuthProcedure = t.procedure;
 function identify(ctx: Context, kind: "buyer"): string;
 function identify(ctx: Context, kind: "store"): string;
 function identify(ctx: Context, kind: "buyer" | "store"): string {
-  const id = ctx.user && ctx.user.kind === kind ? (kind === "buyer" ? ctx.user.buyerId : ctx.user.storeId) : null;
+  const session = ctx.sessions[kind];
+  const id = session ? (kind === "buyer" ? session.buyerId : session.storeId) : null;
   if (!id) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in to continue." });
   return id;
 }

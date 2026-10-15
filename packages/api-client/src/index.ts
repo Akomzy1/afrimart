@@ -14,11 +14,22 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>;
 export const trpc: CreateTRPCReact<AppRouter, unknown> = createTRPCReact<AppRouter>();
 
 /**
- * Every request carries the signed-in session token as a bearer token, and
- * nothing else says who is asking: the server resolves the buyer or store from
- * that session, never from anything the page claims.
+ * How a request says who it is.
+ *
+ * The buyer and merchant apps sign in with an httpOnly cookie the API sets, so
+ * their pages never hold a session token: `credentials: "include"` is all they
+ * do, and the browser attaches the cookie. The operations console signs in with
+ * a bearer token it keeps for the length of a shift (`getAuthToken`), and sends
+ * no cookie. Nothing in either case names a buyer or a store; the server works
+ * that out from the session.
  */
-export function createTrpcClientConfig(opts: { apiUrl: string; getAuthToken?: () => string | null }) {
+export function createTrpcClientConfig(opts: {
+  apiUrl: string;
+  /** The operations console only. */
+  getAuthToken?: () => string | null;
+  /** The buyer and merchant apps: send the API's session cookie. */
+  withCookies?: boolean;
+}) {
   return {
     links: [
       httpBatchLink({
@@ -27,50 +38,11 @@ export function createTrpcClientConfig(opts: { apiUrl: string; getAuthToken?: ()
           const token = opts.getAuthToken?.();
           return token ? { authorization: `Bearer ${token}` } : {};
         },
+        fetch(url, init) {
+          return fetch(url, { ...init, credentials: opts.withCookies ? "include" : "same-origin" });
+        },
       }),
     ],
-  };
-}
-
-/**
- * Where a signed-in app keeps its session token in the browser.
- *
- * localStorage, because a buyer or a shop phone should still be signed in
- * tomorrow (the session itself is what bounds how long: idle and absolute
- * clocks, and revocable on the server). Every read and write is guarded, since
- * storage can be blocked or throw in a private window; without it the person
- * just signs in again. `subscribe` lets the tree react to a sign-in or sign-out
- * made anywhere, including another tab.
- */
-export function createTokenStore(key: string) {
-  const listeners = new Set<() => void>();
-  const read = (): string | null => {
-    try {
-      return typeof window === "undefined" ? null : window.localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  };
-  let memory: string | null = null; // keeps working for this tab when storage is blocked
-  const get = () => read() ?? memory;
-  const notify = () => listeners.forEach((l) => l());
-  if (typeof window !== "undefined") window.addEventListener("storage", (e) => e.key === key && notify());
-  return {
-    get,
-    set(token: string | null) {
-      memory = token;
-      try {
-        if (token) window.localStorage.setItem(key, token);
-        else window.localStorage.removeItem(key);
-      } catch {
-        /* blocked storage: the in-memory copy still signs this tab in */
-      }
-      notify();
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
   };
 }
 

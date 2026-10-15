@@ -94,6 +94,13 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
       onError: () => win?.close(),
     });
   }
+  // The menu in this thread's header: sign out of this phone, or of every phone.
+  // The server ends the session and clears the cookie; reloading then drops
+  // whatever this page held about the shop and shows the sign-in screen.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const signOut = trpc.userAuth.signOutStore.useMutation({ onSuccess: () => window.location.reload() });
+  const signOutAll = trpc.userAuth.signOutStoreEverywhere.useMutation({ onSuccess: () => window.location.reload() });
   const [picked, setPicked] = useState<Kind | null>(null);
   const [camera, setCamera] = useState(false);
   const applyKitchen = trpc.merchant.applyForKitchenLicence.useMutation();
@@ -132,6 +139,53 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
           <ChevronLeftIcon />
         </button>
         <h2 className="serif">AfriMart</h2>
+        <div className="mr-menuwrap">
+          <button
+            type="button"
+            className="mr-menubtn"
+            aria-label="Menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => {
+              setMenuOpen((o) => !o);
+              setConfirmAll(false);
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="19" cy="12" r="2" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <>
+              <button type="button" className="mr-menuscrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+              <div className="mr-menu" role="menu">
+                {!confirmAll ? (
+                  <>
+                    <button type="button" role="menuitem" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
+                      Sign out
+                    </button>
+                    <button type="button" role="menuitem" disabled={signOut.isPending} onClick={() => setConfirmAll(true)}>
+                      Sign out of all devices
+                    </button>
+                  </>
+                ) : (
+                  <div className="mr-menuconfirm">
+                    <p>Sign out everywhere? Every phone using this shop will need a new code to get back in.</p>
+                    <button type="button" className="danger" disabled={signOutAll.isPending} onClick={() => signOutAll.mutate()}>
+                      {signOutAll.isPending ? "Signing out…" : "Yes, sign out everywhere"}
+                    </button>
+                    <button type="button" onClick={() => setConfirmAll(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                {(signOut.isError || signOutAll.isError) && <p className="err">We couldn&apos;t sign you out. Check your connection and try again.</p>}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mr-scroll">
@@ -144,6 +198,12 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
                 : "Want to show a badge on your shop? Tap one below, then send us a photo of your document."}
             </div>
           )}
+
+          {notices.map((n) => (
+            <div className="b-in support" key={n.id}>
+              {n.body}
+            </div>
+          ))}
 
           {payouts.map((p) => (
             <div className="b-in support payout" key={p.id}>
@@ -199,12 +259,6 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
                 </button>
                 <button type="button" className="mr-bigbtn ghost" onClick={() => setPicked(null)}>
                   Choose something else
-          {notices.map((n) => (
-            <div className="b-in support" key={n.id}>
-              {n.body}
-            </div>
-          ))}
-
                 </button>
               </div>
             </>

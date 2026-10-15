@@ -527,6 +527,22 @@
 .mr-toast.show { transform: translateY(0); opacity: 1; visibility: visible; }
 .mr-toast svg { width: 22px; height: 22px; color: var(--gold-soft); flex: none; }
 
+/* the menu in the AfriMart thread's header */
+.mr-menuwrap { margin-left: auto; position: relative; }
+.mr-menubtn { width: 48px; height: 48px; border-radius: var(--r-md); border: 1.5px solid var(--line); background: var(--card); color: var(--ink); display: flex; align-items: center; justify-content: center; }
+.mr-menubtn:active { transform: translateY(1px); }
+.mr-menubtn svg { width: 26px; height: 26px; }
+.mr-menuscrim { position: fixed; inset: 0; z-index: 40; background: transparent; border: 0; }
+.mr-menu { position: absolute; right: 0; top: 56px; z-index: 41; min-width: 250px; background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r-lg); box-shadow: 0 16px 34px -16px rgba(17, 35, 24, 0.5); overflow: hidden; }
+.mr-menu > button { display: block; width: 100%; text-align: left; padding: 18px 20px; background: transparent; border: 0; border-bottom: 1.5px solid var(--line-soft); font-size: 18px; font-weight: 700; color: var(--ink); }
+.mr-menu > button:last-of-type { border-bottom: 0; }
+.mr-menu > button:active { background: var(--green-50); }
+.mr-menuconfirm { padding: 16px 18px; display: grid; gap: 10px; }
+.mr-menuconfirm p { margin: 0; font-size: 15px; line-height: 1.4; color: var(--ink-2); }
+.mr-menuconfirm button { height: 56px; border-radius: var(--r-md); border: 1.5px solid var(--line); background: var(--card); font-size: 17px; font-weight: 700; color: var(--ink); }
+.mr-menuconfirm button.danger { background: var(--amber); border-color: var(--amber); }
+.mr-menu .err { margin: 0; padding: 10px 18px 14px; font-size: 14px; font-weight: 600; }
+
 /* sign in */
 .mr-otp.six { gap: 8px; }
 .mr-otp.six input { width: 48px; height: 64px; font-size: 30px; border-radius: var(--r-md); }
