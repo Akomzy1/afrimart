@@ -141,7 +141,7 @@ export function buildHiddenListingFilter(input: HiddenListingInputs): Prisma.Lis
  * where listings are read rather than depending on a flag that something has to
  * remember to keep in sync.
  */
-export async function visibleListings(db: Db, where: Prisma.ListingWhereInput = {}): Promise<Prisma.ListingWhereInput> {
+export async function visibleListings(db: Db, where: Prisma.ListingWhereInput = {}, mode: "public" | "routing" = "public"): Promise<Prisma.ListingWhereInput> {
   const [platform, sellers] = await Promise.all([
     db.platformCategoryControl.findMany({ where: { disabled: true }, select: { category: true } }),
     db.sellerCategoryControl.findMany({ where: { disabled: true }, select: { storeId: true, category: true } }),
@@ -154,7 +154,11 @@ export async function visibleListings(db: Db, where: Prisma.ListingWhereInput = 
     platformDisabled: platform.map((p) => p.category),
     sellerDisabled,
   });
-  return { AND: [where, { NOT: hidden }] };
+  // Routing must see an unverified live seller as a blocked candidate, so it
+  // can distinguish a verification block from stock running out (SEL-2).
+  // The engine rejects those candidates; public catalogue reads never see them.
+  const store = { onboardingStatus: "live" as const, ...(mode === "public" ? { verificationStatus: "verified" } : {}) };
+  return { AND: [where, { store: { is: store } }, { NOT: hidden }] };
 }
 
 /* -------------------------------------------------------------- notices */

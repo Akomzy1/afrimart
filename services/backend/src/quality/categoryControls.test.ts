@@ -512,8 +512,8 @@ describe("QC-1 permit confirmation", () => {
   });
 
   test("a missing confirmation is something the seller can supply, so it is reported as such", async () => {
-    const admin = await src("../routers/admin.ts");
-    assert.match(admin, /permitOnly \? "PRECONDITION_FAILED" : "FORBIDDEN"/);
+    const writer = await src("../catalogue/publication.ts");
+    assert.match(writer, /every\(v => v.code === "permit_confirmation_required"\) \? "PRECONDITION_FAILED" : "FORBIDDEN"/);
   });
 
   test("the confirmation is stored with a timestamp and the wording version", async () => {
@@ -543,13 +543,15 @@ describe("QC-1 permit confirmation", () => {
 });
 
 describe("QC-1 is enforced where a listing is created, and hiding is applied where listings are read", () => {
-  test("approveDraft — the only path that creates a listing — runs the listing standards first", async () => {
-    const admin = await src("../routers/admin.ts");
-    const create = admin.indexOf("tx.listing.create(");
-    assert.ok(create > -1);
-    const before = admin.slice(0, create);
-    assert.ok(before.lastIndexOf("checkListingForStore(") > before.lastIndexOf("approveDraft:"), "no check precedes the create");
-    assert.equal((admin.match(/listing\.create\(/g) ?? []).length, 1, "a second listing path exists and must be checked too");
+  test("staff and seller publication both use the shared QC-1 listing writer", async () => {
+    const writer = await src("../catalogue/publication.ts");
+    const create = writer.indexOf("tx.listing.create(");
+    assert.ok(create > writer.indexOf("await checkListingForStore(") && writer.includes("await checkListingForStore("));
+    for (const path of ["../routers/admin.ts", "../routers/catalogueReview.ts"]) {
+      const router = await src(path);
+      assert.match(router, /await publishDraft\(/);
+      assert.doesNotMatch(router, /listing\.create\(/);
+    }
   });
 
   test("every public listing read in the catalogue and the routing pool applies the hiding filter", async () => {

@@ -1,0 +1,83 @@
+{
+  "stop_reason": "tool_use",
+  "content": [
+    {
+      "type": "tool_use",
+      "name": "record_shelf",
+      "input": {
+        "products": [
+          {
+            "name": "Àmàlà",
+            "rawText": "Àmàlà",
+            "brand": "Walkthrough",
+            "packSize": "731 g",
+            "priceCents": 525,
+            "frames": [
+              0
+            ],
+            "confidence": 0.96
+          },
+          {
+            "name": "Amala",
+            "rawText": "Amala",
+            "brand": "Walkthrough",
+            "packSize": "731g",
+            "priceCents": 525,
+            "frames": [
+              1
+            ],
+            "confidence": 0.96
+          },
+          {
+            "name": "Yam meal",
+            "rawText": "Yam meal",
+            "brand": "Walkthrough",
+            "packSize": "731 g",
+            "priceCents": 525,
+            "frames": [
+              1
+            ],
+            "confidence": 0.75
+          },
+          {
+            "name": "Dried fish",
+            "rawText": "Dried fish",
+            "brand": "Walkthrough",
+            "packSize": "419 g",
+            "priceCents": null,
+            "frames": [
+              0
+            ],
+            "confidence": 0.96
+          },
+          {
+            "name": "Unlabelled spice",
+            "rawText": "Unlabelled spice",
+            "brand": "Walkthrough",
+            "packSize": "37 g",
+            "priceCents": null,
+            "frames": [
+              1
+            ],
+            "confidence": 0.3
+          },
+          {
+            "name": "Display sample",
+            "rawText": "Display sample",
+            "brand": "Walkthrough",
+            "packSize": "81 g",
+            "priceCents": null,
+            "frames": [
+              1
+            ],
+            "confidence": 0.3
+          }
+        ]
+      }
+    }
+  ],
+  "usage": {
+    "input_tokens": 1150,
+    "output_tokens": 390
+  }
+}

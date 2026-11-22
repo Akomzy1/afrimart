@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ProductGlyph,
   CheckIcon,
@@ -44,12 +46,15 @@ type Tab = "camera" | "orders" | "messages";
  * than a UI one. Flagged, not built.
  */
 export default function MerchantApp() {
+  const router = useRouter();
   // Signed in or not is whatever the server says when asked which shop this is:
   // the session is an httpOnly cookie this page cannot read. Until it has
   // answered, show the shell rather than flashing the sign-in screen at someone
   // who is signed in. Any later request that comes back UNAUTHORIZED refreshes
   // this answer (providers.tsx) and the sign-in screen takes over.
   const me = trpc.merchant.me.useQuery(undefined, { retry: false, staleTime: 60_000, refetchOnWindowFocus: true });
+  useEffect(() => { if (me.data?.needsOnboarding) router.replace("/onboarding"); }, [me.data?.needsOnboarding, router]);
+  if (me.data?.needsOnboarding) return <div className="mr-shell" />;
   if (me.isPending) return <div className="mr-shell" />;
   return me.data ? <MerchantAppInner /> : <SignIn />;
 }
@@ -327,7 +332,7 @@ function MerchantAppInner() {
 
       <div className="mr-scroll">
         {tab === "orders" && <OrdersInbox orders={orders} onOpen={setOpenId} onAccept={(id) => update(id, { status: "packing", step: 0 })} />}
-        {tab === "camera" && <CameraSurface onListed={() => setSub("listed")} />}
+        {tab === "camera" && <CameraSurface hasReview={Boolean(store?.hasShelfReview)} canFilm={Boolean(store?.canFilmShelves)} onListed={() => setSub("listed")} />}
         {tab === "messages" && (
           <MessagesSurface
             onSupport={() => setSub("support")}
@@ -510,10 +515,12 @@ function OrdersInbox({
 }
 
 /** MCH-1/ONB-2 — photo and voice first, words second. */
-function CameraSurface({ onListed }: { onListed: () => void }) {
+function CameraSurface({ hasReview, canFilm, onListed }: { hasReview: boolean; canFilm: boolean; onListed: () => void }) {
   return (
     <div className="mr-cam">
       <div className="mr-cam-prompt">What changed today?</div>
+      {hasReview && <Link className="mr-bigaction stock" href="/onboarding/review"><span className="ic"><CameraIcon /></span><span className="m"><span className="t">Review catalogue</span><span className="s">Check the products from your shelves.</span></span><span className="arr"><ArrowRightIcon /></span></Link>}
+      {canFilm && !hasReview && <Link className="mr-bigaction stock" href="/onboarding/shelves"><span className="ic"><CameraIcon /></span><span className="m"><span className="t">Film your shelves</span><span className="s">Capture or revisit your shelf photos.</span></span><span className="arr"><ArrowRightIcon /></span></Link>}
       <button type="button" className="mr-bigaction stock">
         <span className="ic">
           <CookPotIcon />

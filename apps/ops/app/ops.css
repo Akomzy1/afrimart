@@ -73,3 +73,9 @@
 .op-uri { font-size: 10px; word-break: break-all; line-height: 1.4; }
 .op-err { margin-top: 14px; font-size: 12.5px; color: #8c2f1d; background: #fbeceb; border: 1px solid #f0cfc4; border-radius: var(--r-sm); padding: 10px 12px; }
 .op-signout { margin-left: auto; }
+.op-table-scroll { max-width: 100%; overflow-x: auto; }
+.op-onboarding-actions { margin-top: 10px; min-width: 210px; max-width: 340px; }
+.op-kit-form, .op-invite { display: grid; gap: 6px; margin-top: 10px; }
+.op-kit-form label, .op-invite label { font-size: 12px; color: var(--ink-2); }
+.op-onboarding-actions .op-input { max-width: 100%; }
+.op-table td:first-child { overflow-wrap: anywhere; }

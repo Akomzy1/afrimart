@@ -61,8 +61,11 @@ function canDeliver(kind: UserKind): boolean {
   return kind === "buyer" ? email.name !== "file" || isDevelopment() : sms.enabled;
 }
 
-export async function requestSignInCode(input: { kind: UserKind; identifier: string }): Promise<void> {
-  const { kind, identifier } = input;
+export type CodePurpose = "sign_in" | "store_onboarding";
+
+export async function requestSignInCode(input: { kind: UserKind; identifier: string; purpose?: CodePurpose }): Promise<void> {
+  const { kind, identifier, purpose = "sign_in" } = input;
+  if (purpose === "store_onboarding" && kind !== "store") throw new Error("Onboarding codes are for stores only.");
 
   if (!canDeliver(kind)) {
     throw new TRPCError({
@@ -71,36 +74,44 @@ export async function requestSignInCode(input: { kind: UserKind; identifier: str
     });
   }
 
-  const now = Date.now();
-  const recent = await prisma.authCode.findMany({
-    where: { kind, identifier, createdAt: { gte: new Date(now - 3600_000) } },
-    orderBy: { createdAt: "desc" },
-    select: { createdAt: true },
+  const delivery = await prisma.$transaction(async (tx) => {
+    // Serialize requests across both purposes and all backend instances. Otherwise
+    // parallel requests could each pass the resend check and send multiple codes.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`auth-code:${kind}:${identifier}`}))`;
+    const now = Date.now();
+    const recent = await tx.authCode.findMany({
+      where: { kind, identifier, createdAt: { gte: new Date(now - 3600_000) } },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    if (recent.length >= SIGN_IN_CODES_PER_HOUR) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many codes asked for. Please try again in a little while." });
+    }
+    if (recent[0] && now - recent[0].createdAt.getTime() < SIGN_IN_CODE_RESEND_SECONDS * 1000) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "A code was just sent. Please wait a moment before asking for another." });
+    }
+
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const salt = randomBytes(12).toString("hex");
+    const store = kind === "store"
+      ? await tx.store.findUnique({ where: { ownerPhone: identifier }, select: { id: true, ownerPhoneVersion: true } })
+      : null;
+
+    // Asking again replaces the earlier code rather than leaving two live.
+    await tx.authCode.updateMany({ where: { kind, identifier, consumedAt: null }, data: { consumedAt: new Date() } });
+    await tx.authCode.create({
+      data: { kind, identifier, purpose, storeIdAtIssue: store?.id, storePhoneVersion: store?.ownerPhoneVersion,
+        salt, codeHash: hashCode(salt, code), expiresAt: new Date(now + SIGN_IN_CODE_MINUTES * 60_000) },
+    });
+    return { code, deliver: kind === "buyer" || Boolean(store) || purpose === "store_onboarding" };
   });
-  if (recent.length >= SIGN_IN_CODES_PER_HOUR) {
-    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many codes asked for. Please try again in a little while." });
-  }
-  if (recent[0] && now - recent[0].createdAt.getTime() < SIGN_IN_CODE_RESEND_SECONDS * 1000) {
-    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "A code was just sent. Please wait a moment before asking for another." });
-  }
-
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  const salt = randomBytes(12).toString("hex");
-
-  // Asking again replaces the earlier code rather than leaving two live.
-  await prisma.$transaction([
-    prisma.authCode.updateMany({ where: { kind, identifier, consumedAt: null }, data: { consumedAt: new Date() } }),
-    prisma.authCode.create({
-      data: { kind, identifier, salt, codeHash: hashCode(salt, code), expiresAt: new Date(now + SIGN_IN_CODE_MINUTES * 60_000) },
-    }),
-  ]);
+  const { code } = delivery;
+  if (!delivery.deliver) return;
 
   // Only deliver to someone who can use it. A buyer address is always fine (the
-  // account is made on first sign-in); a store needs its phone on file. The row
-  // above is written either way, so the pacing does not tell the two apart.
+  // account is made on first sign-in). Ordinary store sign-in needs a phone on
+  // file; onboarding also accepts new numbers. Both share the same pacing.
   if (kind === "store") {
-    const store = await prisma.store.findUnique({ where: { ownerPhone: identifier }, select: { id: true } });
-    if (!store) return;
     await getSenders().sms.send({
       to: identifier,
       body: `Your AfriMart code is ${code}. It works for ${SIGN_IN_CODE_MINUTES} minutes. If you didn't ask for it, ignore this message.`,
@@ -115,13 +126,13 @@ export async function requestSignInCode(input: { kind: UserKind; identifier: str
 }
 
 /**
- * Checks a code and, if right, consumes it. Resolves to nothing: the caller
- * then finds or creates who this is. Every failure is the same message.
+ * Checks and consumes a code, returning its store/phone binding so the caller
+ * can safely resolve the owner. Every failure uses the same message.
  */
-export async function consumeSignInCode(input: { kind: UserKind; identifier: string; code: string }): Promise<void> {
-  const { kind, identifier } = input;
+export async function consumeSignInCode(input: { kind: UserKind; identifier: string; code: string; purpose?: CodePurpose }) {
+  const { kind, identifier, purpose = "sign_in" } = input;
   const live = await prisma.authCode.findFirst({
-    where: { kind, identifier, consumedAt: null, expiresAt: { gt: new Date() } },
+    where: { kind, identifier, purpose, consumedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
   });
   if (!live) throw new TRPCError({ code: "UNAUTHORIZED", message: WRONG });
@@ -142,6 +153,7 @@ export async function consumeSignInCode(input: { kind: UserKind; identifier: str
   // The update that accepts the code is the one that spends it.
   const spent = await prisma.authCode.updateMany({ where: { id: live.id, consumedAt: null }, data: { consumedAt: new Date() } });
   if (spent.count !== 1) throw new TRPCError({ code: "UNAUTHORIZED", message: WRONG });
+  return { storeIdAtIssue: live.storeIdAtIssue, storePhoneVersion: live.storePhoneVersion };
 }
 
 function signInEmail(code: string): string {

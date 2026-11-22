@@ -287,9 +287,14 @@ export class S3PhotoStore implements PhotoStore {
   }
 
   /** Same contract as the local store: sanitise first, store under a random name, return the path. */
-  async put(kind: PhotoKind, upload: Buffer): Promise<string> {
-    const clean = await sanitizePhoto(upload);
-    const name = `${randomBytes(16).toString("hex")}.jpg`;
+  async removeShelfFrame(name: string): Promise<void> {
+    if (!PHOTO_NAME.test(name)) throw new Error("Invalid shelf photo name");
+    await this.client.deleteObject(this.key("shelf", name));
+  }
+
+  async put(kind: PhotoKind, upload: Buffer, name = `${randomBytes(16).toString("hex")}.jpg`): Promise<string> {
+    if (!PHOTO_NAME.test(name)) throw new Error("Invalid photo name");
+    const clean = await sanitizePhoto(upload, kind === "shelf" ? 1600 : undefined);
     await this.client.putObject(this.key(kind, name), clean, "image/jpeg");
     return `/photos/${kind}/${name}`;
   }

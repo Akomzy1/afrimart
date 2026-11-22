@@ -1,12 +1,21 @@
 # Store onboarding and vision cataloguing: the plan
 
-Status: planned, not started (2026-10-15). Covers PRD ONB-1, ONB-2, ONB-3, ONB-6, ONB-8, CAT-2, CAT-3, CAT-6 and the QC-1 rules as they meet a draft catalogue.
+Status: Parts 1, 2a and 2b are implemented locally. Part 2c remains planned. Covers PRD ONB-1, ONB-2, ONB-3, ONB-6, ONB-8, CAT-2, CAT-3, CAT-6 and the QC-1 rules as they meet a draft catalogue.
 
 ## Where things stand
 
-- **The merchant app's `/onboarding` is a mock.** Its phone and code steps, film capture, "reading" and review screens are the prototype's, with sample products. Nothing on the server creates a store, verifies a number or reads a shelf.
-- **Stores exist only because someone inserted them.** `Store.ownerPhone` is set only by staff in the ops console (audited, ends sessions). Sign-in proves control of that number on every sign-in, but nothing records that it was ever verified or when.
+- **Registration is real.** `/onboarding` uses six-digit codes, saves the owner's details and food-safety attestation, and persists the filming/website preference. The filming preference opens guided shelf capture. Structured website import remains planned.
+- **Both entry paths are implemented.** Staff can create a pending store, issue a seven-day single-use invitation and record packaging/printer issuance. Self-service creates a pending, unverified store only after a correct code. Public catalogue reads require a live, staff-verified store.
+- **Phone ownership is recorded and bound to the code.** `ownerPhoneVerifiedAt` is set by verification; staff reassignment clears it, ends sessions, invalidates invites and increments the phone-assignment version. A previously issued code cannot take over a newly assigned store or become valid if an old number is assigned back.
 - **Pieces that exist and will be reused:** one-time codes and paced sending (`auth/signInCodes.ts`), sessions and cookies, the photo store and its signed links, `CatalogueDraft` with a confidence column and the ops review queue (`admin.approveDraft`, CAT-6 threshold), `NameAlias` for the knowledge graph, the QC-1 listing check (`checkListingForStore`), the ops Onboarding tab (hub assignment, status).
+
+Implementation choices for Part 1: a self-service registration gets the first active hub alphabetically as a provisional assignment; operations must confirm or change it. A missing active hub refuses registration. The tighter per-IP signup ceiling applies to all onboarding requests to avoid exposing whether a number exists (five per 15-minute window on each backend instance). Per-number limits span both code purposes and are serialized in PostgreSQL. Invitations use URL fragments and are accepted only after the invited store's owner verifies their phone. An invitation is never a login credential. Phone verification, profile completion and food-safety attestation are required for staff approval; go-live additionally requires a catalogue, an issued kit and an active hub.
+
+Verification entry points: `npm run verify:onboarding --workspace=@afrimart/backend` and `npm run e2e:onboarding`. Migration `20261119090000_store_onboarding` invalidates old store codes and sessions because they were not bound to phone assignments. No existing number is silently marked verified.
+
+Validation on 2026-11-19: the existing 330 backend tests, sign-in integration checks and the initial 12 onboarding regression groups passed. An expanded run subsequently timed out during store creation.
+
+On 2026-11-21, all 13 onboarding regression groups passed against local PostgreSQL. The Chrome walkthrough completed staff-assisted and self-service registration, verified persistence after reload, checked mobile layouts at 320 and 390 pixels, and exercised staff approval, kit recording and refusal to publish without a catalogue. The earlier transaction timeout did not recur.
 
 ## Part 1: store onboarding, with the sign-in number set and verified
 
@@ -22,13 +31,13 @@ Both use the existing code machinery with one new purpose, so the same limits ap
 ### Data
 
 - `Store.ownerPhoneVerifiedAt` (nullable). Set on the first successful code for the number, whichever path. Cleared, with all sessions, when staff change the number.
-- `Store.onboardingStartedAt`; the existing `onboardingStatus` stages (`pending` → `filming` → `reviewing` → `kit_issued` → `live`) become real transitions rather than labels.
+- `Store.onboardingStartedAt`; the existing `onboardingStatus` stages (`pending` Ã¢â€ â€™ `filming` Ã¢â€ â€™ `reviewing` Ã¢â€ â€™ `kit_issued` Ã¢â€ â€™ `live`) become real transitions rather than labels.
 - `OnboardingInvite` for assisted starts: a single-use token (hash only), the store it opens, who made it, an expiry. Delivered as a link or QR code the field rep shows on their own device, so assisted onboarding does not depend on texting the invite. (Texting codes still depends on the 10DLC campaign; see below.)
 - ONB-8 kit record: packaging issued, label printer serial, issue date, who recorded it.
 
 ### Behaviour that matters
 
-- A number that already belongs to a store gets the ordinary sign-in code, and nothing says it was already registered. A number that does not exist and is not in the self-serve path says what an unknown number says today.
+- A number that already belongs to a store keeps the same account when it uses signup, and nothing says it was already registered. The code purpose follows the entry point. Ordinary sign-in still sends nothing to unknown store numbers.
 - Sign-in is allowed only for a verified number. A number staff set but the owner has not yet verified can still receive a code (that is how it gets verified), and a successful code both verifies and signs in.
 - Changing the number is the same audited staff action as today, now also clearing `ownerPhoneVerifiedAt`.
 - ONB-1's "digital maturity" question (do you have a website? a Shopify store?) picks the rail: filming (ONB-2) or website import (ONB-4). ONB-4 is its own piece of work and is not part of this plan.
@@ -46,6 +55,10 @@ Both use the existing code machinery with one new purpose, so the same limits ap
 Film the shelves with the camera. In the browser, sample frames about twice a second, score each for sharpness (variance of a Laplacian on a downscaled copy), size of the subject, and exposure, and prompt the owner in the prototype's words: closer, slower, more light. Keep the best frame per stretch of shelf (a perceptual hash separates repeats), cap at about 60 frames, downscale to 1600px on the long edge, and upload JPEG frames, not video. Frames go through the same photo store: re-encoded, stripped of metadata, private, a new kind `shelf`, deleted after publishing (retention below).
 
 A `FilmSession` row groups the frames for one store and one attempt, so "re-shoot a shelf" (the prototype's redo pass) replaces frames rather than adding to them.
+
+**Part 2a implementation.** A verified seller with a completed profile and the filming preference opens `/onboarding/shelves`. The browser evaluates exposure, Laplacian variance, and the spread of edges around the centre, then keeps the sharpest candidate for each distinct view. The seller saves each shelf as a unit and can resume or replace it before finishing. The server enforces a 60-frame session limit. A replacement commits only after every new JPEG has been sanitised and stored. Superseded or interrupted uploads are tracked for cleanup on save and server startup. Finishing leaves a private session available for Part 2b.
+
+The local browser check is `npm run e2e:shelves`. Image-quality cutoffs are provisional until the real-store evaluation. The retention period for accepted frames remains an open decision before deployment.
 
 ### Reading
 
@@ -66,6 +79,10 @@ A draft's confidence combines the reading confidence, the match similarity and w
 ### Publishing and the QC-1 rules
 
 Publishing goes through `checkListingForStore`, the same check every listing path uses, so a draft in meat, poultry, fish or dairy asks for the one-time permit confirmation, a chilled or frozen item for a home seller is blocked unless the licence counts, and a category switched off for them refuses with the same words. The owner is told at review, item by item, not after the fact. A listing still reaches buyers only for a store that is verified and live.
+
+**Part 2b implementation.** Finishing a capture queues one durable job. Live reading is opt-in. The worker claims a lease, reads four frames per batch, validates frame references and leaves unreadable prices empty. A seller must review or refer every draft. Publication runs QC-1 again inside the listing transaction. Staff can resolve referred items, correct their prices and explicitly adopt a seller's corrected name as a canonical alias. Shelf photos are detached for deletion after the last outstanding item is resolved. Existing draft queues remain supported.
+
+The local walkthrough `npm run e2e:catalogue` exercises the provider adapters with recorded responses and verifies review in a mobile browser. Model selection, provider terms, real-store accuracy and the approved live spending budget remain deployment decisions.
 
 ### Testing
 
@@ -88,7 +105,7 @@ Part 1 can ship alone and is what lets a real store sign in. Part 2 depends on p
 
 - **Keys and accounts:** an Anthropic API key and a Voyage key (the `.env.example` names are already there); the S3 or R2 bucket for frames (the same one as licence photos, under its own prefix).
 - **Decisions:**
-  1. Self-serve "Become a seller", assisted-only for stores, or both as above. Home sellers have no field rep, so they need self-serve.
+  1. Implemented: both assisted and self-service registration as above; home sellers can register without a field rep.
   2. Who verifies a pending store (SEL-2), and how quickly. This is the gate between onboarding and trading.
   3. Retention for shelf frames. Proposal: delete the frames when the draft is published or abandoned, and in any case after 30 days. They can show people and homes.
   4. A per-store budget for reading (a number of cents), so a runaway case cannot spend without limit.

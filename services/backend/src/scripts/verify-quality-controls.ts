@@ -103,6 +103,7 @@ async function makeStore(tag: string, sellerType: "store" | "home_seller" | "asp
       id: id(tag),
       name: `QC1 ${tag}`,
       ownerName: tag,
+      ownerPhoneVerifiedAt: new Date(),
       sellerType,
       hubMetroId: hub.id,
       onboardingStatus: "live",

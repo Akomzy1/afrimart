@@ -248,6 +248,12 @@
 .mr-rtile .edit { font-size: 12px; font-weight: 700; color: var(--green); margin-top: 8px; display: flex; align-items: center; gap: 5px; }
 .mr-rtile .edit svg { width: 13px; height: 13px; }
 
+.mr-profile-form { display: grid; gap: 22px; margin-top: 24px; }
+.mr-profile-form select { width: 100%; min-height: 52px; padding: 12px; background: var(--card); color: var(--ink); border: 2px solid var(--line); border-radius: var(--r-md); font: inherit; }
+.mr-attestation { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 1.5; }
+.mr-attestation input { width: 22px; height: 22px; flex: none; margin-top: 2px; accent-color: var(--green); }
+.mr-onb-head > svg { width: 40px; height: 40px; color: var(--green); margin-bottom: 16px; }
+.mr-actionbar > a.mr-bigbtn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .mr-editrow { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
 .mr-editrow input { flex: 1; min-width: 0; height: 44px; border: 2px solid var(--line); border-radius: var(--r-sm); padding: 0 12px; font-size: 16px; font-family: var(--sans); outline: 0; }
 .mr-editrow input:focus { border-color: var(--green); }
@@ -574,3 +580,27 @@
 .mr-qr:active { transform: translateY(1px); }
 .mr-qr .ic { width: 44px; height: 44px; border-radius: 50%; background: var(--amber); display: flex; align-items: center; justify-content: center; flex: none; }
 .mr-qr .ic svg { width: 24px; height: 24px; }
+
+/* Guided merchant shelf capture uses the onboarding viewfinder and coach card. */
+.mr-shelf-camera .mr-filmview { min-height: 220px; height: clamp(220px, 42dvh, 440px); flex: none; }
+.mr-shelf-camera .mr-filmview video, .mr-shelf-camera .mr-filmview img { width: 100%; height: 100%; object-fit: contain; }
+.mr-shelf-camera .mr-filmview > svg { width: 48px; color: var(--gold-soft); }
+.mr-shelf-camera .mr-coachcard { margin: 0; --tone: var(--green); }
+.mr-shelf-camera .mr-linkbtn, .mr-shelf-list button { min-height: 44px; margin-right: 12px; }
+.mr-shelf-list { list-style: none; padding: 0; }
+.mr-shelf-list li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.mr-shelf-list li > div { flex: 1; }
+.mr-shelf-list img { border-radius: var(--r-sm); object-fit: cover; }
+.mr-shelf-list span { display: block; color: var(--ink-2); font-size: 14px; }
+.mr-cam a.mr-bigaction { text-decoration: none; }
+.mr-rtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mr-rtile .b { overflow-wrap: anywhere; }
+.mr-rtile .b p { color: var(--ink-2); font-size: 13px; }
+.mr-review-photo { width: 100%; height: 100px; object-fit: cover; }
+.mr-review-source { width: 100%; max-height: 40dvh; object-fit: contain; background: var(--panel); border-radius: var(--r-md); }
+.mr-review-editor { display: grid; gap: 14px; }
+.mr-review-editor label { display: grid; gap: 6px; font-weight: 600; }
+.mr-review-editor input, .mr-review-editor select { min-width: 0; width: 100%; height: 48px; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0 10px; background: var(--card); font: inherit; }
+.mr-review-actions { display: flex; gap: 12px; }
+.mr-review-actions button { min-height: 44px; border: 1px solid var(--line); background: var(--panel); border-radius: var(--r-sm); padding: 0 14px; font: inherit; }
+.mr-rtile .mr-linkbtn, .mr-review-editor .mr-linkbtn { min-height: 44px; }

@@ -8,8 +8,14 @@ import { claimsRouter } from "./routers/claims.js";
 import { adminRouter } from "./routers/admin.js";
 import { staffAuthRouter } from "./routers/staffAuth.js";
 import { userAuthRouter } from "./routers/userAuth.js";
+import { catalogueReviewRouter } from "./routers/catalogueReview.js";
+import { shelfCaptureRouter } from "./routers/shelfCapture.js";
+import { onboardingRouter } from "./routers/onboarding.js";
 
 export const appRouter = router({
+  onboarding: onboardingRouter,
+  shelfCapture: shelfCaptureRouter,
+  catalogueReview: catalogueReviewRouter,
   userAuth: userAuthRouter,
   health: healthRouter,
   catalogue: catalogueRouter,

@@ -15,7 +15,7 @@ import { IP_WINDOW_MINUTES, MAX_ATTEMPTS_PER_IP } from "../config.js";
  */
 const hits = new Map<string, { count: number; resetAt: number }>();
 
-export function tooManyFromIp(ip: string | undefined): boolean {
+export function tooManyFromIp(ip: string | undefined, limit = MAX_ATTEMPTS_PER_IP): boolean {
   if (!ip) return false;
   const now = Date.now();
   const entry = hits.get(ip);
@@ -24,7 +24,7 @@ export function tooManyFromIp(ip: string | undefined): boolean {
     return false;
   }
   entry.count += 1;
-  return entry.count > MAX_ATTEMPTS_PER_IP;
+  return entry.count > limit;
 }
 
 export function clearIp(ip: string | undefined): void {

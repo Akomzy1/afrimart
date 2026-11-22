@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@afrimart/api-client";
 import { LogoMark } from "@afrimart/ui";
+import Link from "next/link";
 
 /**
  * Sign in to the merchant app with the mobile number on file for the shop and a
@@ -22,7 +23,7 @@ import { LogoMark } from "@afrimart/ui";
 
 const DIGITS = 6;
 
-export function SignIn() {
+export function SignIn({ onboarding = false, onSignedIn }: { onboarding?: boolean; onSignedIn?: () => void } = {}) {
   const utils = trpc.useUtils();
   const [phone, setPhone] = useState("");
   const [step, setStep] = useState<"phone" | "code">("phone");
@@ -30,20 +31,27 @@ export function SignIn() {
   const [notice, setNotice] = useState<string | null>(null);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const request = trpc.userAuth.requestStoreCode.useMutation({
+  const requested = () => { setNotice(null); setStep("code"); };
+  const signedIn = async () => { await utils.invalidate(); onSignedIn?.(); };
+  const failed = () => { setCode(Array(DIGITS).fill("")); refs.current[0]?.focus(); };
+  const onboardingRequest = trpc.userAuth.requestOnboardingCode.useMutation({ onSuccess: requested });
+  const onboardingVerify = trpc.userAuth.verifyOnboardingCode.useMutation({ onSuccess: signedIn, onError: failed });
+  const storeRequest = trpc.userAuth.requestStoreCode.useMutation({
     onSuccess: () => {
       setNotice(null);
       setStep("code");
     },
   });
-  const verify = trpc.userAuth.verifyStoreCode.useMutation({
+  const storeVerify = trpc.userAuth.verifyStoreCode.useMutation({
     // The cookie is already set by the response; refreshing `me` is what moves the app on.
-    onSuccess: () => utils.invalidate(),
+    onSuccess: signedIn,
     onError: () => {
       setCode(Array(DIGITS).fill(""));
       refs.current[0]?.focus();
     },
   });
+  const request = onboarding ? onboardingRequest : storeRequest;
+  const verify = onboarding ? onboardingVerify : storeVerify;
 
   useEffect(() => {
     if (step === "code") refs.current[0]?.focus();
@@ -97,9 +105,9 @@ export function SignIn() {
             </span>
           </div>
           <div className="mr-onb-hero">
-            <p className="eyebrow">Seller sign in</p>
-            <h1 className="serif">Welcome back to your shop.</h1>
-            <div className="sub">Use the phone number we have for your shop.</div>
+            <p className="eyebrow">{onboarding ? "Become a seller" : "Seller sign in"}</p>
+            <h1 className="serif">{onboarding ? "You stock the shelf. We handle the rest." : "Welcome back to your shop."}</h1>
+            <div className="sub">{onboarding ? "Sell what you know, to everyone who misses it — across America." : "Use the phone number we have for your shop."}</div>
           </div>
           <div className="mr-onb-form">
             <label htmlFor="si-phone">Your phone number</label>
@@ -129,6 +137,7 @@ export function SignIn() {
           >
             {request.isPending ? "Sending…" : "Send my code"}
           </button>
+          <div className="mr-onb-resend"><Link href={onboarding ? "/" : "/onboarding"}>{onboarding ? "Already a seller? Sign in" : "New to AfriMart? Become a seller"}</Link></div>
         </div>
       </div>
     );

@@ -6,6 +6,7 @@ import { SignIn } from "./SignIn";
 import { readStaffToken, writeStaffToken } from "./providers";
 import { SellerRules } from "./SellerRules";
 import { Claims } from "./Claims";
+import { CreateStore, StoreOnboardingActions } from "./StoreOnboarding";
 
 const EMPTY = {
   canonicalName: "", shortDescription: "", usedDescription: "", category: "", cuisine: "",
@@ -23,9 +24,8 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
  * for internal tooling. Plain tables and obvious buttons: the job is to let
  * someone resolve a queue quickly, not to look like the buyer app.
  *
- * There is no staff authentication yet. Every tab here mutates catalogue,
- * onboarding or money, so this must sit behind a login before it is deployed
- * anywhere reachable.
+ * Staff sign in with a password and MFA. Tabs and write controls follow their
+ * named permissions; the backend enforces the same permissions independently.
  */
 type Tab = "queue" | "stores" | "rules" | "claims" | "fulfilment" | "graph" | "finance";
 
@@ -116,7 +116,7 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
       </div>
 
       {active === "queue" && <ReviewQueue />}
-      {active === "stores" && <Onboarding />}
+      {active === "stores" && <Onboarding canWrite={can("stores:write")} />}
       {active === "rules" && (
         <SellerRules canWrite={can("stores:write")} canSettings={can("settings:write")} canAudit={can("audit:read")} />
       )}
@@ -137,6 +137,13 @@ function ReviewQueue() {
   const approve = trpc.admin.approveDraft.useMutation({ onSuccess: () => utils.admin.reviewQueue.invalidate() });
   const reject = trpc.admin.rejectDraft.useMutation({ onSuccess: () => utils.admin.reviewQueue.invalidate() });
   const [choice, setChoice] = useState<Record<string, string>>({});
+  const [learnAlias, setLearnAlias] = useState<Record<string, boolean>>({});
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  const reviewedPrice = (id: string, suggested: number | null) => {
+    const entry = prices[id];
+    if (entry === undefined) return suggested;
+    return /^\d+(?:\.\d{1,2})?$/.test(entry) ? Math.round(Number(entry) * 100) : null;
+  };
 
   if (queue.isLoading) return <p className="op-note">Loading the queue…</p>;
   if (queue.isError) return <p className="op-note">Couldn&apos;t reach the backend. Is it running on :4000?</p>;
@@ -179,6 +186,7 @@ function ReviewQueue() {
                 </td>
                 <td>
                   <code>{d.rawText}</code>
+                  {d.shelfPhoto && <a href={new URL(d.shelfPhoto, process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").href} target="_blank" rel="noreferrer">View shelf photo</a>}
                 </td>
                 <td>
                   {d.suggestedName}
@@ -207,19 +215,23 @@ function ReviewQueue() {
                     ))}
                   </select>
                   {d.matchedProduct && <div className="muted">matched: {d.matchedProduct.canonicalName}</div>}
+                  {d.shelfPhoto && <label><input type="checkbox" checked={!!learnAlias[d.id]} onChange={e => setLearnAlias(prev => ({...prev, [d.id]: e.target.checked}))} /> Save seller’s name as an alias</label>}
                 </td>
-                <td className="num">{d.suggestedPriceCents ? money(d.suggestedPriceCents) : "—"}</td>
+                <td className="num"><input className="op-input" aria-label={`Price in dollars for ${d.suggestedName}`} inputMode="decimal"
+                  value={prices[d.id] ?? (d.suggestedPriceCents ? (d.suggestedPriceCents/100).toFixed(2) : "")}
+                  onChange={e => setPrices(previous => ({ ...previous, [d.id]: e.target.value }))} /></td>
                 <td>
                   <div className="op-actions">
                     <button
                       type="button"
                       className="op-btn primary"
-                      disabled={!(choice[d.id] ?? d.matchedProduct?.id) || !d.suggestedPriceCents || approve.isPending}
+                      disabled={!(choice[d.id] ?? d.matchedProduct?.id) || !reviewedPrice(d.id, d.suggestedPriceCents) || approve.isPending}
                       onClick={() =>
                         approve.mutate({
                           id: d.id,
                           canonicalProductId: (choice[d.id] ?? d.matchedProduct?.id)!,
-                          priceCents: d.suggestedPriceCents!,
+                          priceCents: reviewedPrice(d.id, d.suggestedPriceCents)!,
+                          learnAlias: learnAlias[d.id],
                         })
                       }
                     >
@@ -262,7 +274,7 @@ function ReviewQueue() {
  * with who did it, and signs the shop out everywhere. Only the last four digits
  * are shown.
  */
-function OwnerPhone({ storeId, last4 }: { storeId: string; last4: string | null }) {
+function OwnerPhone({ storeId, last4, canWrite }: { storeId: string; last4: string | null; canWrite: boolean }) {
   const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState("");
@@ -280,7 +292,7 @@ function OwnerPhone({ storeId, last4 }: { storeId: string; last4: string | null 
     return (
       <div className="muted">
         Sign-in phone: {last4 ? `••• ${last4}` : "none"}{" "}
-        <button type="button" className="op-btn" onClick={() => setOpen(true)}>
+        <button type="button" className="op-btn" disabled={!canWrite} onClick={() => setOpen(true)}>
           {last4 ? "Change" : "Set"}
         </button>
       </div>
@@ -305,7 +317,7 @@ function OwnerPhone({ storeId, last4 }: { storeId: string; last4: string | null 
 
 const ONBOARDING_STATES = ["pending", "filming", "reviewing", "kit_issued", "live", "suspended", "delisted"] as const;
 
-function Onboarding() {
+function Onboarding({ canWrite }: { canWrite: boolean }) {
   const utils = trpc.useUtils();
   const stores = trpc.admin.stores.useQuery();
   const hubs = trpc.admin.hubs.useQuery();
@@ -322,7 +334,8 @@ function Onboarding() {
         store that is not both verified and live receives no orders, however much catalogue it has.
       </p>
 
-      <table className="op-table">
+      {canWrite && <CreateStore />}
+      <div className="op-table-scroll"><table className="op-table">
         <thead>
           <tr>
             <th>Store</th>
@@ -341,13 +354,20 @@ function Onboarding() {
               <td>
                 {s.name}
                 <div className="muted">{s.ownerName}</div>
-                <OwnerPhone storeId={s.id} last4={s.ownerPhoneLast4} />
+                <OwnerPhone storeId={s.id} last4={s.ownerPhoneLast4} canWrite={canWrite} />
+                <div className="muted">{s.ownerPhoneVerifiedAt ? "Phone verified" : "Phone not verified"}</div>
+                <div className="muted">{s.onboardingProfileAt ? "Details complete" : "Details needed"} · {s.foodSafetyAttestedAt ? "Food safety attested" : "Attestation needed"}</div>
+                {s.onboardingRail && <div className="muted">Catalogue: {s.onboardingRail === "film" ? "shelf filming" : "website"}{s.onboardingWebsite ? ` (${s.onboardingWebsite})` : ""}</div>}
+                {s.onboardingKits.map((k) => <div className="muted" key={k.id}>Kit: {k.packaging} · printer {k.labelPrinterSerial}</div>)}
+                {canWrite && <StoreOnboardingActions storeId={s.id} />}
+                {update.error && update.variables?.id === s.id && <p className="op-err" role="alert">{update.error.message}</p>}
               </td>
               <td className="muted">{s.sellerType}</td>
               <td>
                 <select
                   className="op-select"
                   value={s.hubMetroId}
+                  disabled={!canWrite || update.isPending}
                   onChange={(e) => update.mutate({ id: s.id, hubMetroId: e.target.value })}
                 >
                   {hubs.data?.map((h) => (
@@ -361,6 +381,7 @@ function Onboarding() {
                 <select
                   className="op-select"
                   value={s.onboardingStatus}
+                  disabled={!canWrite || update.isPending}
                   onChange={(e) =>
                     update.mutate({ id: s.id, onboardingStatus: e.target.value as (typeof ONBOARDING_STATES)[number] })
                   }
@@ -376,6 +397,7 @@ function Onboarding() {
                 <select
                   className="op-select"
                   value={s.verificationStatus}
+                  disabled={!canWrite || update.isPending}
                   onChange={(e) =>
                     update.mutate({
                       id: s.id,
@@ -421,6 +443,7 @@ function Onboarding() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

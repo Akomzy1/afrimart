@@ -75,6 +75,16 @@ model Store {
   /// merchant app (a code is texted to it). Set at onboarding. Null until then,
   /// and a store with none cannot sign in.
   ownerPhone            String?           @unique
+  ownerPhoneVerifiedAt  DateTime?
+  ownerPhoneVersion     Int               @default(0)
+  onboardingStartedAt   DateTime?
+  onboardingProfileAt   DateTime?
+  /// film | web; website import itself is a separate implementation.
+  onboardingRail        String?
+  onboardingWebsite     String?
+  filmSession           FilmSession?
+  onboardingInvites     OnboardingInvite[]
+  onboardingKits        OnboardingKit[]
   userSessions          UserSession[]
   messages              SellerMessage[]
   sellerType            SellerType
@@ -349,6 +359,10 @@ enum UserKind {
 model AuthCode {
   id         String    @id @default(cuid())
   kind       UserKind
+  purpose    String    @default("sign_in")
+  /// Bind a store code to the account and phone assignment that received it.
+  storeIdAtIssue String?
+  storePhoneVersion Int?
   /// Normalised: a lower-case email for a buyer, an E.164 number for a store.
   identifier String
   salt       String
@@ -462,6 +476,12 @@ model CatalogueDraft {
   id                  String               @id @default(cuid())
   store               Store                @relation(fields: [storeId], references: [id])
   storeId             String
+  jobId               String?
+  job                 ExtractionJob?       @relation(fields: [jobId], references: [sessionId], onDelete: Cascade)
+  frameNames          String[]             @default([])
+  candidateIds        String[]             @default([])
+  brand               String?
+  decision            String               @default("open")
   /// What the model actually read, kept verbatim so a reviewer can judge it.
   rawText             String
   suggestedName       String
@@ -478,6 +498,7 @@ model CatalogueDraft {
   createdAt           DateTime             @default(now())
 
   @@index([status, confidence])
+  @@index([jobId])
 }
 
 /// Staff roles for the operations console. Deliberately coarse: four roles
@@ -513,8 +534,93 @@ model StaffUser {
   lockedUntil         DateTime?
   sessions      StaffSession[]
   auditEntries  AuditLogEntry[]
+  onboardingInvites OnboardingInvite[]
+  onboardingKits OnboardingKit[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+}
+
+/// An invitation locates a store; it never replaces proof of phone ownership.
+/// One resumable initial catalogue capture per store.
+model FilmSession {
+  id         String       @id @default(cuid())
+  storeId    String       @unique
+  store      Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  revision   Int          @default(0)
+  finishedAt DateTime?
+  createdAt  DateTime     @default(now())
+  frames     ShelfFrame[]
+  extraction ExtractionJob?
+}
+
+model ExtractionJob {
+  sessionId   String           @id
+  session     FilmSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  state       String           @default("queued")
+  lease       String?
+  leaseUntil  DateTime?
+  attempts    Int              @default(0)
+  message     String?
+  revision    Int              @default(0)
+  submittedAt DateTime?
+  createdAt   DateTime         @default(now())
+  drafts      CatalogueDraft[]
+
+  @@index([state, leaseUntil])
+}
+
+model ExtractionUsage {
+  id           String   @id @default(cuid())
+  storeId      String
+  model        String
+  inputBytes   Int
+  inputTokens  Int?
+  outputTokens Int?
+  micros       Int
+  latencyMs    Int?
+  createdAt    DateTime @default(now())
+
+  @@index([storeId, createdAt])
+}
+
+model ShelfFrame {
+  name        String       @id
+  sessionId   String?
+  session     FilmSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  shelf       Int
+  position    Int
+  passId      String
+  /// Detached rows track uploads and replaced photos until private storage is cleaned.
+  deleteAfter DateTime?
+
+  @@unique([sessionId, shelf, position])
+  @@index([sessionId, deleteAfter])
+}
+
+model OnboardingInvite {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  tokenHash   String   @unique
+  createdById String
+  createdBy   StaffUser @relation(fields: [createdById], references: [id])
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+  @@index([storeId])
+}
+
+model OnboardingKit {
+  id                  String   @id @default(cuid())
+  storeId             String
+  store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  packaging           String
+  labelPrinterSerial  String
+  issuedAt            DateTime
+  recordedById        String
+  recordedBy          StaffUser @relation(fields: [recordedById], references: [id])
+  createdAt           DateTime @default(now())
+  @@index([storeId, issuedAt])
 }
 
 /// A logged-in staff session. Opaque random token, stored hashed, with real

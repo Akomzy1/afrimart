@@ -69,7 +69,7 @@ async function resolveBasket(input: BasketInput) {
   // never be filled from a listing a buyer could not see. If another seller
   // stocks the same product, the line routes there instead.
   const rows = await prisma.listing.findMany({
-    where: await visibleListings(prisma, { canonicalProductId: { in: lines.map((l) => l.canonicalProductId) } }),
+    where: await visibleListings(prisma, { canonicalProductId: { in: lines.map((l) => l.canonicalProductId) } }, "routing"),
     include: { store: { include: { hubMetro: true } } },
   });
 

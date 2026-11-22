@@ -14,6 +14,10 @@ import type { ResolvedSession } from "./session.js";
 
 /** Actions that must be audited. Naming them here keeps the list reviewable. */
 export const AUDITED_ACTIONS = [
+  "store.create",
+  "store.invite",
+  "store.kit_issued",
+  "store.onboarding_change",
   "store.suspend",
   "store.delist",
   "store.reinstate",

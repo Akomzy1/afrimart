@@ -7,6 +7,7 @@ import { tooManyFromIp } from "../auth/rateLimit.js";
 import { consumeSignInCode, normaliseEmail, normalisePhone, requestSignInCode } from "../auth/signInCodes.js";
 import { issueUserSession, revokeAllForUser, revokeSessionById } from "../auth/userSession.js";
 import { clearSessionCookie, setSessionCookie } from "../auth/cookies.js";
+import { signInVerifiedStore } from "../auth/storeSignIn.js";
 
 /**
  * Sign-in for buyers and for store owners. These are the only buyer-facing and
@@ -89,12 +90,31 @@ export const userAuthRouter = router({
     const identifier = normalisePhone(input.phone);
     const wrong = new TRPCError({ code: "UNAUTHORIZED", message: "That code didn't work. Check it and try again, or ask for a new one." });
     if (!identifier) throw wrong;
-    await consumeSignInCode({ kind: "store", identifier, code: input.code });
-    const store = await prisma.store.findUnique({ where: { ownerPhone: identifier }, select: { id: true } });
-    // A code only exists for a number that had a store when it was texted, but the
-    // store could have been removed since; the answer is the same as any wrong code.
-    if (!store) throw wrong;
-    return startSession(ctx, { kind: "store", storeId: store.id });
+    const proof = await consumeSignInCode({ kind: "store", identifier, code: input.code });
+    const session = await signInVerifiedStore(identifier, proof, false, { ip: ctx.ip, userAgent: ctx.userAgent });
+    sendCookie(ctx, setSessionCookie("store", session.token, session.expiresAt));
+    return { expiresAt: session.expiresAt };
+  }),
+
+  requestOnboardingCode: publicProcedure.input(z.object({ phone: z.string().max(40) })).mutation(async ({ input, ctx }) => {
+    throttle("code", ctx.ip);
+    // Apply the tighter ceiling to every onboarding request so its response
+    // cannot disclose whether a number already belongs to a store.
+    if (tooManyFromIp(`onboarding:${ctx.ip ?? "unknown"}`, 5)) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: TOO_MANY });
+    const identifier = normalisePhone(input.phone);
+    if (!identifier) throw new TRPCError({ code: "BAD_REQUEST", message: "Enter your mobile number, with the area code." });
+    await requestSignInCode({ kind: "store", identifier, purpose: "store_onboarding" });
+    return { sent: true as const };
+  }),
+
+  verifyOnboardingCode: publicProcedure.input(z.object({ phone: z.string().max(40), code })).mutation(async ({ input, ctx }) => {
+    throttle("verify", ctx.ip);
+    const identifier = normalisePhone(input.phone);
+    if (!identifier) throw new TRPCError({ code: "UNAUTHORIZED", message: "That code didn't work. Check it and try again, or ask for a new one." });
+    const proof = await consumeSignInCode({ kind: "store", identifier, code: input.code, purpose: "store_onboarding" });
+    const session = await signInVerifiedStore(identifier, proof, true, { ip: ctx.ip, userAgent: ctx.userAgent });
+    sendCookie(ctx, setSessionCookie("store", session.token, session.expiresAt));
+    return { expiresAt: session.expiresAt };
   }),
 
   /** Who the signed-in buyer is. UNAUTHORIZED is how the app learns it has to ask them to sign in. */

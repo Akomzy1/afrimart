@@ -63,9 +63,10 @@ describe("how a code is kept and checked", () => {
 
   test("an unknown shop gets the same answer as a known one: the code row is written either way", async () => {
     const text = await src("./signInCodes.ts");
-    const create = text.indexOf("prisma.authCode.create");
-    const lookup = text.indexOf("prisma.store.findUnique");
-    assert.ok(create > -1 && lookup > create, "the pacing row must exist before anyone is looked up");
+    const create = text.indexOf("tx.authCode.create");
+    const suppress = text.indexOf("if (!delivery.deliver) return");
+    assert.ok(create > -1 && suppress > create, "the pacing row must exist even when no message is delivered");
+    assert.match(text, /pg_advisory_xact_lock/, "concurrent sends must share the same pacing lock");
   });
 
   test("the code is never logged or returned to the client", async () => {

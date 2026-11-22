@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -33,8 +33,8 @@ import sharp from "sharp";
  *    `assertCanKeepDocuments` in store.ts).
  */
 
-export type PhotoKind = "packing" | "claim" | "document";
-export const PHOTO_KINDS: readonly PhotoKind[] = ["packing", "claim", "document"];
+export type PhotoKind = "packing" | "claim" | "document" | "shelf";
+export const PHOTO_KINDS: readonly PhotoKind[] = ["packing", "claim", "document", "shelf"];
 
 /** Decoded size ceiling. Clients downscale before upload, so this is generous. */
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -75,7 +75,7 @@ function looksLikeImage(b: Buffer): boolean {
  * writes no metadata unless asked to, which is the whole mechanism — so the
  * result is checked rather than trusted: a failure here refuses to store.
  */
-export async function sanitizePhoto(input: Buffer): Promise<Buffer> {
+export async function sanitizePhoto(input: Buffer, maxEdge = MAX_EDGE_PX): Promise<Buffer> {
   if (!looksLikeImage(input)) {
     throw new PhotoRejected("That doesn't look like a photo. Please take it again.");
   }
@@ -83,7 +83,7 @@ export async function sanitizePhoto(input: Buffer): Promise<Buffer> {
   try {
     out = await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error" })
       .rotate()
-      .resize({ width: MAX_EDGE_PX, height: MAX_EDGE_PX, fit: "inside", withoutEnlargement: true })
+      .resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true })
       .jpeg({ quality: 85 })
       .toBuffer();
   } catch {
@@ -112,7 +112,8 @@ export interface PhotoStore {
    */
   readonly durable: boolean;
   /** Sanitises, stores, and returns the path the photo is served from. */
-  put(kind: PhotoKind, upload: Buffer): Promise<string>;
+  put(kind: PhotoKind, upload: Buffer, name?: string): Promise<string>;
+  removeShelfFrame(name: string): Promise<void>;
   read(kind: PhotoKind, name: string): Promise<Buffer | null>;
 }
 
@@ -124,9 +125,14 @@ export class LocalPhotoStore implements PhotoStore {
   readonly durable = false;
   constructor(private readonly root: string) {}
 
-  async put(kind: PhotoKind, upload: Buffer): Promise<string> {
-    const clean = await sanitizePhoto(upload);
-    const name = `${randomBytes(16).toString("hex")}.jpg`;
+  async removeShelfFrame(name: string): Promise<void> {
+    if (!PHOTO_NAME.test(name)) throw new Error("Invalid shelf photo name");
+    await rm(path.join(this.root, "shelf", name), { force: true });
+  }
+
+  async put(kind: PhotoKind, upload: Buffer, name = `${randomBytes(16).toString("hex")}.jpg`): Promise<string> {
+    if (!PHOTO_NAME.test(name)) throw new Error("Invalid photo name");
+    const clean = await sanitizePhoto(upload, kind === "shelf" ? 1600 : MAX_EDGE_PX);
     const dir = path.join(this.root, kind);
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, name), clean);

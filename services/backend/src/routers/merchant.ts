@@ -64,8 +64,11 @@ async function storeDocument(photo: string): Promise<string> {
 export const merchantRouter = router({
   /** The signed-in shop, for the app's header. UNAUTHORIZED is how the app learns it has to ask for a code. */
   me: merchantProcedure.query(async ({ ctx }) => {
-    const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, include: { hubMetro: true } });
-    return { name: store.name, ownerName: store.ownerName, metro: `${store.hubMetro.name}, ${store.hubMetro.state}` };
+    const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, include: { hubMetro: true, filmSession: { select: { finishedAt: true } } } });
+    return { name: store.name, ownerName: store.ownerName, metro: `${store.hubMetro.name}, ${store.hubMetro.state}`,
+      hasShelfReview: Boolean(store.ownerPhoneVerifiedAt && store.onboardingRail === "film" && store.filmSession?.finishedAt && !["suspended","delisted"].includes(store.onboardingStatus)),
+      canFilmShelves: Boolean(store.ownerPhoneVerifiedAt && store.onboardingProfileAt && store.onboardingStatus === "filming" && store.onboardingRail === "film"),
+      needsOnboarding: ["pending", "filming"].includes(store.onboardingStatus) && (!store.onboardingProfileAt || !store.onboardingRail) };
   }),
 
   /** MCH-2 — this store's inbox: one card per shipment it has to fulfil. */

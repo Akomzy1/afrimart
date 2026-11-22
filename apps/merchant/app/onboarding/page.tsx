@@ -1,659 +1,105 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { trpc, type RouterOutputs } from "@afrimart/api-client";
+import { CheckIcon, ChevronLeftIcon, CookPotIcon, ShipCheckIcon } from "@afrimart/ui";
+import { SignIn } from "../SignIn";
 import { InstallPrompt } from "./InstallPrompt";
-import {
-  LogoMark,
-  ProductGlyph,
-  CheckIcon,
-  ChevronLeftIcon,
-  LockIcon,
-  TruckIcon,
-  CookPotIcon,
-  ShipCheckIcon,
-  SealIcon,
-  RedoIcon,
-  type ProductGlyphKind,
-} from "@afrimart/ui";
-import {
-  CAPTURE_STATES,
-  CAPTURE_PASS,
-  REDO_PASS,
-  type CaptureState,
-  type CaptureCopy,
-  type PassStep,
-  type ShelfState,
-} from "./capture";
 
-type Step = "welcome" | "code" | "path" | "film" | "connect" | "review" | "live";
-type Path = "film" | "web";
+/** The prototype's welcome, code and rail selection, backed by persisted
+ * onboarding. The film path leads to private shelf capture; no sample catalogue or
+ * pretend publication is reachable from this real registration flow. */
+export default function OnboardingPage() {
+  const utils = trpc.useUtils();
+  const state = trpc.onboarding.state.useQuery(undefined, { retry: false });
+  const [invite, setInvite] = useState<string | null>(null);
+  const [inviteResult, setInviteResult] = useState(false);
+  const accept = trpc.onboarding.acceptInvite.useMutation({ onSuccess: () => { setInvite(null); setInviteResult(true); } });
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.hash.slice(1)).get("invite");
+    if (token) {
+      setInvite(token);
+      // Keep a reload on this device resumable until the verified owner accepts.
+      // The fragment is never sent in an HTTP request or Referer header.
+    }
+  }, []);
+  useEffect(() => {
+    if (invite && state.data && !accept.isPending && !accept.isError && !accept.isSuccess) accept.mutate({ token: invite });
+  }, [invite, state.data, accept]);
+  useEffect(() => {
+    if (inviteResult) window.history.replaceState(null, "", window.location.pathname);
+  }, [inviteResult]);
 
-interface DraftProduct {
-  name: string;
-  meta: string;
-  priceCents: number;
-  glyph: ProductGlyphKind;
+  if (state.isPending) return <div className="mr-shell"><p className="mr-onb-content" role="status">Opening your store…</p></div>;
+  if (state.error?.data?.code === "UNAUTHORIZED") return <SignIn onboarding onSignedIn={() => { void state.refetch(); }} />;
+  if (!state.data) return <div className="mr-shell"><div className="mr-onb-content"><p role="alert">We couldn&apos;t open your store. Please try again.</p><button className="mr-bigbtn accent" onClick={() => { void state.refetch(); }}>Try again</button></div></div>;
+  return <StoreSetup store={state.data} refresh={() => Promise.all([state.refetch(), utils.merchant.me.invalidate()])} inviteError={accept.error?.message} />;
 }
 
-/** ONB-2 — what vision cataloguing extracts: name, pack size, shelf-tag price. */
-const DRAFT: DraftProduct[] = [
-  { name: "Egusi", meta: "Ground melon seeds · 500g", priceCents: 850, glyph: "leaf" },
-  { name: "Garri", meta: "Cassava flakes · 2kg", priceCents: 1200, glyph: "wheat" },
-  { name: "Red Palm Oil", meta: "Cold-pressed · 1L", priceCents: 1530, glyph: "jar" },
-  { name: "Ata Rodo", meta: "Scotch bonnet · 250g", priceCents: 675, glyph: "pepper" },
-  { name: "Crayfish", meta: "Ground · 150g", priceCents: 780, glyph: "seed" },
-  { name: "Berbere", meta: "Fresh-blended · 250g", priceCents: 990, glyph: "seed" },
-];
+type StoreState = RouterOutputs["onboarding"]["state"];
 
-const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const STEP_ORDER: Step[] = ["welcome", "code", "path", "film", "review", "live"];
-
-/**
- * AfriMart Merchant - Onboarding.html — PRD 6.1.
- *
- * Built (Phase 1): ONB-1 adaptive routing, ONB-2 capture, ONB-3 unusable-frame
- * detection and re-shoot (see ./capture.ts), ONB-4 website import, ONB-6
- * human-in-the-loop review, ONB-8 kit issuance and hub assignment.
- * Not built (Phase 2): ONB-5 AI extraction fallback, ONB-7 two-way sync.
- */
-export default function OnboardingPage() {
-  const router = useRouter();
-  const [step, setStep] = useState<Step>("welcome");
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState(["", "", "", ""]);
-  const [path, setPath] = useState<Path | null>(null);
-  const [site, setSite] = useState("");
-  const [importing, setImporting] = useState(false);
-  // ONB-3 capture state. `saved` only counts frames that actually captured a
-  // product; anything unusable lands in `redo` instead.
-  const [capState, setCapState] = useState<CaptureState>("seek");
-  const [capCopy, setCapCopy] = useState<CaptureCopy>(CAPTURE_STATES.seek);
-  const [saved, setSaved] = useState(0);
-  const [redo, setRedo] = useState(0);
-  const [shelves, setShelves] = useState<ShelfState[]>([0, 0, 0]);
-  const [currentShelf, setCurrentShelf] = useState(0);
-  const [noted, setNoted] = useState<string | null>(null);
-  const [reshootOpen, setReshootOpen] = useState(false);
-  const passTimer = useRef<number | null>(null);
-  const noteTimer = useRef<number | null>(null);
-  const [products, setProducts] = useState<DraftProduct[]>(DRAFT);
-  const [editing, setEditing] = useState<number | null>(null);
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  /**
-   * Walks a capture pass. A step carrying `save` books a product; one carrying
-   * `miss` books a redo against its shelf — never a save. Nothing here can
-   * increment the counter on a frame the model rejected.
-   */
-  function runPass(pass: PassStep[], index: number) {
-    const stepDef = pass[index];
-    if (!stepDef) {
-      setReshootOpen(true);
-      return;
-    }
-    setCapState(stepDef.state);
-    setCapCopy({ ...CAPTURE_STATES[stepDef.state], ...stepDef.copy });
-
-    if (typeof stepDef.save === "number") {
-      const shelf = stepDef.save;
-      setCurrentShelf(shelf);
-      setSaved((n) => n + 1);
-      setShelves((prev) => prev.map((s, i) => (i === shelf && s !== 2 ? 1 : s)));
-    }
-    if (typeof stepDef.miss === "number") {
-      const shelf = stepDef.miss;
-      setCurrentShelf(shelf);
-      noteTimer.current = window.setTimeout(() => {
-        setRedo((n) => n + 1);
-        setShelves((prev) => prev.map((s, i) => (i === shelf ? 2 : s)));
-        setNoted(`Kept a note — shelf ${shelf + 1} needs one more pass`);
-        window.setTimeout(() => setNoted(null), 1600);
-      }, Math.max(stepDef.ms - 900, 300));
-    }
-
-    if (stepDef.ms > 0) {
-      passTimer.current = window.setTimeout(() => runPass(pass, index + 1), stepDef.ms);
-    }
-  }
-
-  useEffect(() => {
-    if (step !== "film") return;
-    setSaved(0);
-    setRedo(0);
-    setShelves([0, 0, 0]);
-    setCurrentShelf(0);
-    setReshootOpen(false);
-    runPass(CAPTURE_PASS, 0);
-    return () => {
-      if (passTimer.current) window.clearTimeout(passTimer.current);
-      if (noteTimer.current) window.clearTimeout(noteTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
-  /** Re-film only the shelf that needs it; everything already saved stays saved. */
-  function startRedoPass() {
-    setReshootOpen(false);
-    setRedo(0);
-    setShelves((prev) => prev.map((s, i) => (i === 1 ? 0 : s)));
-    setCurrentShelf(1);
-    runPass(REDO_PASS, 0);
-  }
-
-  function enterCode(index: number, value: string) {
-    const digit = value.replace(/\D/g, "").slice(-1);
-    const next = [...code];
-    next[index] = digit;
-    setCode(next);
-    if (digit && index < 3) otpRefs.current[index + 1]?.focus();
-    if (next.every((d) => d)) window.setTimeout(() => setStep("path"), 260);
-  }
-
-  function startImport() {
-    setImporting(true);
-    window.setTimeout(() => {
-      setImporting(false);
-      setStep("review");
-    }, 1600);
-  }
-
-  const stepIndex = Math.max(0, STEP_ORDER.indexOf(step === "connect" ? "film" : step));
-
-  // ---- welcome (phone) ----
-  if (step === "welcome") {
-    return (
-      <div className="mr-shell mr-onb">
-        <div className="mr-onb-dark">
-          <div className="wm">
-            <LogoMark tone="on-dark" size={30} />
-            <span>
-              Afri<span className="m">Mart</span>
-            </span>
-          </div>
-          <div className="mr-onb-hero">
-            <p className="eyebrow">Become a seller</p>
-            <h1 className="serif">You stock the shelf. We handle the rest.</h1>
-            <div className="sub">Sell what you know, to everyone who misses it — across America.</div>
-          </div>
-          <div className="mr-onb-form">
-            <label htmlFor="onb-phone">Your phone number</label>
-            <div className="mr-phone-in">
-              <span className="flag">🇺🇸 +1</span>
-              <input
-                id="onb-phone"
-                inputMode="numeric"
-                maxLength={14}
-                placeholder="(555) 123 4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-            <div className="mr-onb-note">We&apos;ll text you a code. No passwords to remember.</div>
-          </div>
-        </div>
-        <div className="mr-actionbar">
-          <button
-            type="button"
-            className={`mr-bigbtn ${phone.replace(/\D/g, "").length >= 10 ? "accent" : "disabled"}`}
-            disabled={phone.replace(/\D/g, "").length < 10}
-            onClick={() => setStep("code")}
-          >
-            Send my code
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ---- live (final) ----
-  if (step === "live") {
-    return (
-      <div className="mr-shell mr-onb">
-        <div className="mr-live">
-          <div className="seal">
-            <div className="ring" />
-            <div className="ring2" />
-            <div className="core">
-              <CheckIcon strokeWidth={2.4} />
-            </div>
-          </div>
-          <p className="eyebrow">You&apos;re live</p>
-          <h1 className="serif">Your store is open to all of America.</h1>
-          <div className="sub">Buyers can find you now. We&apos;ll send your first order to your phone.</div>
-          <div className="count">
-            <b>{products.length}</b> products listed · Mama Ngozi, Bronx
-          </div>
-
-          {/* Without this, the promise above is false on iOS: web push only
-              reaches a PWA installed to the home screen. */}
-          <InstallPrompt />
-
-          {/* ONB-8 — kit issuance and hub assignment, recorded at go-live. */}
-          <div className="mr-kit">
-            <div className="kh">Your onboarding kit</div>
-            <div className="mr-kitrow">
-              <span className="ic">
-                <ShipCheckIcon />
-              </span>
-              <span className="m">
-                <span className="t">Packaging issued</span>
-                <span className="s">Boxes and tape · arriving Thursday</span>
-              </span>
-            </div>
-            <div className="mr-kitrow">
-              <span className="ic">
-                <SealIcon />
-              </span>
-              <span className="m">
-                <span className="t">Label printer issued</span>
-                <span className="s">Serial AM-LP-2291 · set up on arrival</span>
-              </span>
-            </div>
-            <div className="mr-kitrow">
-              <span className="ic">
-                <TruckIcon />
-              </span>
-              <span className="m">
-                <span className="t">Supply hub assigned</span>
-                <span className="s">Bronx, NY · daily carrier pickup</span>
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="mr-actionbar">
-          <button type="button" className="mr-bigbtn accent" onClick={() => router.push("/")}>
-            Go to my orders
-          </button>
-        </div>
-      </div>
-    );
-  }
+function StoreSetup({ store, refresh, inviteError }: { store: StoreState; refresh: () => Promise<unknown>; inviteError?: string }) {
+  const [editRail, setEditRail] = useState(false);
+  const [name, setName] = useState(store.name === "New seller" ? "" : store.name);
+  const [ownerName, setOwnerName] = useState(store.ownerName);
+  const [sellerType, setSellerType] = useState(store.sellerType);
+  const [attested, setAttested] = useState(Boolean(store.foodSafetyAttestedAt));
+  const [rail, setRail] = useState<"film" | "web">(store.onboardingRail === "web" ? "web" : "film");
+  const [website, setWebsite] = useState(store.onboardingWebsite ?? "");
+  const save = trpc.onboarding.saveProfile.useMutation({ onSuccess: () => { void refresh(); } });
+  const choose = trpc.onboarding.chooseRail.useMutation({ onSuccess: async () => { await refresh(); setEditRail(false); } });
+  const needsProfile = !store.onboardingProfileAt && store.onboardingStatus !== "live";
+  const choosing = !needsProfile && (!store.onboardingRail || editRail) && !["live", "suspended", "delisted"].includes(store.onboardingStatus);
+  const live = store.onboardingStatus === "live" && store.verificationStatus === "verified";
+  const paused = ["suspended", "delisted"].includes(store.onboardingStatus);
+  const canEdit = ["pending", "filming"].includes(store.onboardingStatus);
+  const error = save.error?.message ?? choose.error?.message;
 
   return (
     <div className="mr-shell mr-onb">
       <div className="mr-header">
-        <button
-          type="button"
-          className="back"
-          aria-label="Back"
-          onClick={() => {
-            const order: Step[] = ["welcome", "code", "path", path === "web" ? "connect" : "film", "review"];
-            const i = order.indexOf(step);
-            setStep(i > 0 ? order[i - 1] : "welcome");
-          }}
-        >
-          <ChevronLeftIcon />
-        </button>
-        <h2 className="serif">
-          {step === "code" ? "Verify" : step === "path" ? "Get started" : step === "review" ? "Your catalogue" : "Set up"}
-        </h2>
+        {editRail ? <button className="back" aria-label="Back" onClick={() => setEditRail(false)}><ChevronLeftIcon /></button> : <Link className="back" aria-label="Back to store" href="/"><ChevronLeftIcon /></Link>}
+        <h2 className="serif">{needsProfile ? "Your store" : choosing ? "Get started" : "Store setup"}</h2>
       </div>
-
-      <div className="mr-onb-steps">
-        {STEP_ORDER.slice(0, 5).map((s, i) => (
-          <div className={`s${i <= stepIndex ? " on" : ""}`} key={s} />
-        ))}
+      <div className="mr-onb-steps" aria-label={needsProfile ? "Store details" : choosing ? "Catalogue preference" : "Registration saved"}>
+        {[0, 1, 2].map((i) => <div key={i} className={`s${i <= (needsProfile ? 0 : choosing ? 1 : 2) ? " on" : ""}`} />)}
       </div>
-
-      <div className="mr-scroll">
-        {step === "code" && (
-          <div className="mr-onb-content">
-            <div className="mr-onb-head">
-              <h1 className="serif">Enter your code</h1>
-              <p>We texted a 4-digit code to your phone.</p>
-            </div>
-            <div className="mr-otp">
-              {code.map((d, i) => (
-                <input
-                  key={i}
-                  ref={(el) => {
-                    otpRefs.current[i] = el;
-                  }}
-                  inputMode="numeric"
-                  maxLength={1}
-                  className={d ? "filled" : ""}
-                  value={d}
-                  aria-label={`Digit ${i + 1}`}
-                  onChange={(e) => enterCode(i, e.target.value)}
-                />
-              ))}
-            </div>
-            <div className="mr-onb-resend">
-              Didn&apos;t get it? <b>Resend code</b>
-            </div>
+      <div className="mr-scroll"><div className="mr-onb-content">
+        {inviteError && <div className="mr-signin-err" role="alert">{inviteError}</div>}
+        {needsProfile && !paused ? <>
+          <div className="mr-onb-head"><h1 className="serif">Tell us about your store.</h1><p>Your phone is verified. These details help AfriMart review your store.</p></div>
+          <form id="store-profile" className="mr-profile-form" onSubmit={(e) => { e.preventDefault(); if (attested) save.mutate({ name, ownerName, sellerType, foodSafetyAttested: true }); }}>
+            <div className="mr-gfield"><label htmlFor="onb-name">Store or business name</label><div className="in"><input id="onb-name" required minLength={2} maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="organization" /></div></div>
+            <div className="mr-gfield"><label htmlFor="onb-owner">Your name</label><div className="in"><input id="onb-owner" required minLength={2} maxLength={120} value={ownerName} onChange={(e) => setOwnerName(e.target.value)} autoComplete="name" /></div></div>
+            <div className="mr-gfield"><label htmlFor="onb-type">How do you sell?</label><select id="onb-type" value={sellerType} onChange={(e) => setSellerType(e.target.value as typeof sellerType)}><option value="store">I run a grocery store</option><option value="home_seller">I sell from home</option><option value="aspiring_entrepreneur">I am starting a food business</option></select></div>
+            <label className="mr-attestation"><input type="checkbox" checked={attested} onChange={(e) => setAttested(e.target.checked)} required /><span>I will follow the food-safety, storage and labelling requirements that apply to my products and hold the permits required to sell them.</span></label>
+            <p className="mr-onb-resend">Your store stays private until AfriMart reviews and approves it.</p>
+          </form>
+        </> : choosing ? <>
+          <div className="mr-onb-head"><h1 className="serif">How would you like to start?</h1><p>Choose how you would like to add your products.</p></div>
+          <div className="mr-paths">
+            <button type="button" className={`mr-pathcard film${rail === "film" ? " on" : ""}`} aria-pressed={rail === "film"} onClick={() => setRail("film")}><span className="ic"><CookPotIcon /></span><span className="m"><span className="t">Film your shelves</span><span className="s">Use your shelves to build your catalogue.</span><span className="badge">Most sellers start here</span></span></button>
+            <button type="button" className={`mr-pathcard web${rail === "web" ? " on" : ""}`} aria-pressed={rail === "web"} onClick={() => setRail("web")}><span className="ic"><ShipCheckIcon /></span><span className="m"><span className="t">Connect your website</span><span className="s">Start with the products you already sell online.</span></span></button>
           </div>
-        )}
-
-        {/* ONB-1 — the adaptive fork: filming rail or structured import rail. */}
-        {step === "path" && (
-          <div className="mr-onb-content">
-            <div className="mr-onb-head">
-              <h1 className="serif">How would you like to start?</h1>
-              <p>Either way takes a few minutes.</p>
-            </div>
-            <div className="mr-paths">
-              <button
-                type="button"
-                className={`mr-pathcard film${path === "film" ? " on" : ""}`}
-                onClick={() => setPath("film")}
-                aria-pressed={path === "film"}
-              >
-                <span className="ic">
-                  <CookPotIcon />
-                </span>
-                <span className="m">
-                  <span className="t">Film your shelves</span>
-                  <span className="s">Walk your store with the camera. We&apos;ll build your catalogue.</span>
-                  <span className="badge">Most sellers start here</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`mr-pathcard web${path === "web" ? " on" : ""}`}
-                onClick={() => setPath("web")}
-                aria-pressed={path === "web"}
-              >
-                <span className="ic">
-                  <ShipCheckIcon />
-                </span>
-                <span className="m">
-                  <span className="t">Connect your website</span>
-                  <span className="s">We&apos;ll bring your products across automatically.</span>
-                </span>
-              </button>
-            </div>
+          {rail === "web" && <div className="mr-gfield mr-profile-form"><label htmlFor="onb-site">Your website</label><div className="in"><input id="onb-site" type="url" placeholder="https://your-store.com" maxLength={500} value={website} onChange={(e) => setWebsite(e.target.value)} /></div></div>}
+        </> : <>
+          <div className="mr-onb-head"><CheckIcon /><h1 className="serif">{paused ? "Your store needs attention." : live ? "Your store is open." : "Your store is registered."}</h1><p>{paused ? "Contact AfriMart in Messages about the next step." : live ? "Buyers can find your approved products." : "Your store is not public yet. An AfriMart team member will help you add your products and review your store."}</p></div>
+          <div className="mr-kit"><div className="kh">{store.name}</div><p>Owner: {store.ownerName}</p><p>Phone verified</p><p>{store.verificationStatus === "verified" ? "Seller approved" : "Seller approval pending"}</p>{store.onboardingRail && <p>Catalogue preference: {store.onboardingRail === "film" ? "Film your shelves" : "Connect your website"}</p>}
+            {store.onboardingKits.map((kit) => <div className="mr-kitrow" key={kit.id}><span className="m"><span className="t">{kit.packaging}</span><span className="s">Printer {kit.labelPrinterSerial} · issued {new Date(kit.issuedAt).toLocaleDateString()}</span></span></div>)}
           </div>
-        )}
-
-        {/* ONB-2 — guided capture. */}
-        {step === "film" && (
-          <div className={`mr-onb-film mr-fw s-${capState}${capCopy.paused ? " paused" : ""}${noted ? " noted" : ""}`}>
-            <div className="mr-filmview">
-              {/* Stand-in for the camera feed; the states act on it so the
-                  failure is visible rather than described. */}
-              <div className="mr-lens">
-                {[0, 1, 2].map((b) => (
-                  <div className="mr-band" key={b}>
-                    <i /><i /><i /><i />
-                    <b>{["EGUSI 8.50", "PALM OIL 15.30", "ATA RODO 6.75"][b]}</b>
-                  </div>
-                ))}
-              </div>
-              <div className="scan" />
-              <div className="corner c1" />
-              <div className="corner c2" />
-              <div className="corner c3" />
-              <div className="corner c4" />
-              <div className="mr-edge" />
-
-              <div className="mr-hud">
-                <div className="row">
-                  <div className="mr-pill rec">
-                    <span className="dot" /> {capCopy.paused ? "PAUSED — NOT SAVING" : "REC"}
-                  </div>
-                  <div className="mr-pill saved">
-                    <b>{saved}</b> saved
-                  </div>
-                  {redo > 0 && (
-                    <div className="mr-pill redo">
-                      <RedoIcon /> {redo} to redo
-                    </div>
-                  )}
-                </div>
-                <div className="mr-strip">
-                  {shelves.map((s, i) => (
-                    <div className={`mr-seg${s === 1 ? " done" : s === 2 ? " redo" : i === currentShelf ? " now" : ""}`} key={i}>
-                      {s === 1 && <CheckIcon strokeWidth={2.6} />}
-                      {s === 2 && <RedoIcon />}
-                      Shelf {i + 1}
-                    </div>
-                  ))}
-                </div>
-                <div className="mr-readout">
-                  <div className="lb">Tag reading</div>
-                  <div className="val">{capCopy.read}</div>
-                </div>
-              </div>
-
-              <div className="mr-gotit">
-                <CheckIcon strokeWidth={2.6} /> {capCopy.toast ?? "Saved"}
-              </div>
-              <div className="mr-missnote">
-                <RedoIcon /> {noted}
-              </div>
-            </div>
-
-            <div className="mr-coachcard">
-              <span className="ic">
-                <CaptureIcon state={capCopy.icon} />
-              </span>
-              <div className="m">
-                <div className="t">{capCopy.line}</div>
-                <div className="h">{capCopy.hint}</div>
-                {capCopy.act && (
-                  <button type="button" className="act on" onClick={() => setNoted("We'll ask you for this one at review")}>
-                    {capCopy.act}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ONB-4 — website import, detection-first. */}
-        {step === "connect" && (
-          <div className="mr-onb-content">
-            {importing ? (
-              <div className="mr-importing">
-                <div className="spin" />
-                <div className="t serif">Reading your store…</div>
-                <div className="s">Found a product feed — bringing them across.</div>
-              </div>
-            ) : (
-              <>
-                <div className="mr-onb-head">
-                  <h1 className="serif">Connect your store</h1>
-                  <p>Paste your website and we&apos;ll bring your products in.</p>
-                </div>
-                <div className="mr-gfield" style={{ marginTop: 20 }}>
-                  <label htmlFor="onb-site">Your website</label>
-                  <div className="in">
-                    <span className="pre">https://</span>
-                    <input id="onb-site" placeholder="mamangozi.shop" value={site} onChange={(e) => setSite(e.target.value)} autoComplete="off" />
-                  </div>
-                </div>
-                <div className="mr-connect-note">
-                  <LockIcon />
-                  <span>We only read your product names, photos and prices. Nothing else.</span>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ONB-6 — the owner corrects the draft before anything publishes. */}
-        {step === "review" && (
-          <div className="mr-onb-content">
-            <div className="mr-onb-head">
-              <h1 className="serif">Check your catalogue</h1>
-              <p>We found these. Fix anything that looks off.</p>
-            </div>
-            <div className="mr-review-hint">
-              <CheckIcon /> Tap any product to correct its name or price.
-            </div>
-            <div className="mr-rtiles">
-              {products.map((p, i) => (
-                <div className="mr-rtile" key={p.name}>
-                  <div className="pic">
-                    <ProductGlyph kind={p.glyph} />
-                  </div>
-                  <div className="b">
-                    {editing === i ? (
-                      <>
-                        <input
-                          className="mr-edit-name"
-                          value={p.name}
-                          aria-label="Product name"
-                          onChange={(e) =>
-                            setProducts((prev) => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))
-                          }
-                          style={{ width: "100%", height: 40, border: "2px solid var(--green)", borderRadius: "var(--r-sm)", padding: "0 8px", fontSize: 16, outline: 0 }}
-                        />
-                        <div className="mr-editrow">
-                          <button type="button" className="edit" onClick={() => setEditing(null)}>
-                            <CheckIcon /> Done
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="nm">{p.name}</div>
-                        <div className="meta">{p.meta}</div>
-                        <div className="price tnum">{money(p.priceCents)}</div>
-                        <button type="button" className="edit" onClick={() => setEditing(i)}>
-                          <CheckIcon /> Fix this
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="mr-spacer" />
-      </div>
-
+          {canEdit && <button type="button" className="mr-linkbtn" onClick={() => setEditRail(true)}>Change catalogue preference</button>}
+          <InstallPrompt />
+        </>}
+        {error && <div className="mr-signin-err" role="alert">{error}</div>}
+      </div></div>
       <div className="mr-actionbar">
-        {step === "code" && <div className="mr-barhint">Enter the code to continue</div>}
-        {step === "path" && (
-          <button
-            type="button"
-            className={`mr-bigbtn ${path ? "accent" : "disabled"}`}
-            disabled={!path}
-            onClick={() => setStep(path === "web" ? "connect" : "film")}
-          >
-            Continue
-          </button>
-        )}
-        {step === "film" && (
-          <>
-            <button
-              type="button"
-              className={`mr-bigbtn ${saved > 0 ? "accent" : "disabled"}`}
-              disabled={saved === 0}
-              onClick={() => (redo > 0 ? setReshootOpen(true) : setStep("review"))}
-            >
-              <CheckIcon strokeWidth={2.6} /> Done filming
-            </button>
-            <div className="mr-barhint">
-              {saved} saved{redo > 0 ? ` · ${redo} still to redo` : ""}
-            </div>
-          </>
-        )}
-        {step === "connect" && !importing && (
-          <button
-            type="button"
-            className={`mr-bigbtn ${site.trim() ? "accent" : "disabled"}`}
-            disabled={!site.trim()}
-            onClick={startImport}
-          >
-            Bring my products in
-          </button>
-        )}
-        {step === "review" && (
-          <>
-            <button type="button" className="mr-bigbtn green" onClick={() => setStep("live")}>
-              <CheckIcon strokeWidth={2.6} /> Publish {products.length} products
-            </button>
-            <div className="mr-barhint">Nothing goes live until you tap this</div>
-          </>
-        )}
+        {needsProfile && !paused ? <button form="store-profile" type="submit" className="mr-bigbtn accent" disabled={save.isPending || !attested || name.trim().length < 2 || ownerName.trim().length < 2}>{save.isPending ? "Saving…" : "Save my details"}</button>
+          : choosing ? <button type="button" className="mr-bigbtn accent" disabled={choose.isPending || (rail === "web" && !website.trim())} onClick={() => choose.mutate({ rail, website: rail === "web" ? website : undefined })}>{choose.isPending ? "Saving…" : "Save and continue"}</button>
+          : store.onboardingRail === "film" && store.filmSession?.finishedAt && !paused ? <Link className="mr-bigbtn accent" href="/onboarding/review">Review catalogue</Link>
+          : store.onboardingRail === "film" && store.onboardingStatus === "filming" ? <Link className="mr-bigbtn accent" href="/onboarding/shelves">Open shelf filming</Link>
+          : <Link className="mr-bigbtn accent" href="/">Go to my store</Link>}
       </div>
-
-      {/* The re-shoot ask: what's safe first, then the request, then a way out. */}
-      {reshootOpen && (
-        <div className="mr-sheet on">
-          <div className="scrim" onClick={() => setReshootOpen(false)} />
-          <div className="card">
-            <div className="ic">
-              <RedoIcon />
-            </div>
-            <p className="eyebrow">One more pass</p>
-            <h2 className="serif">Shelf 2 could use a second look.</h2>
-            <p>
-              Two tags there were too shiny to read. That corner catches the light — it happens to everyone. Stand a step
-              to the side and film just that shelf.
-            </p>
-            <div className="safe">
-              <CheckIcon strokeWidth={2.2} /> Your {saved} other products are already saved.
-            </div>
-            <div className="btns">
-              <button type="button" className="mr-bigbtn green" onClick={startRedoPass}>
-                Film shelf 2 again
-              </button>
-              <button type="button" className="ghost" onClick={() => { setReshootOpen(false); setStep("review"); }}>
-                I&apos;ll type those two in
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  );
-}
-
-/**
- * One glyph per capture verdict — the frame's tone colour carries the rest.
- *
- * Stays local rather than moving to `packages/ui`: it switches on
- * `CaptureState`, a type that only means anything inside this flow, so sharing
- * it would drag the onboarding state machine into the design system. The
- * generic icons it would otherwise duplicate (check, redo) come from there.
- */
-function CaptureIcon({ state }: { state: CaptureState }) {
-  const common = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9 } as const;
-  if (state === "good" || state === "done") {
-    return (
-      <svg {...common} strokeWidth={2.6}>
-        <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (state === "blur") {
-    return (
-      <svg {...common}>
-        <path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.4 5.6A9 9 0 0 1 21 12c-.7 1.1-1.5 2.1-2.4 2.9M6.4 8.3A16 16 0 0 0 3 12a9 9 0 0 0 12.2 4.6" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (state === "far") {
-    return (
-      <svg {...common}>
-        <path d="M9 15l-5 5M4 15v5h5M15 9l5-5M20 9V4h-5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (state === "near") {
-    return (
-      <svg {...common}>
-        <path d="M4 20l5-5M9 20H4v-5M20 4l-5 5M15 4h5v5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (state === "tag") {
-    return (
-      <svg {...common}>
-        <path d="M20.6 13.4L13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6z" strokeLinejoin="round" />
-        <path d="M7.5 7.5h.01" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...common}>
-      <circle cx="11" cy="11" r="7" />
-      <path d="M21 21l-4-4" strokeLinecap="round" />
-    </svg>
   );
 }

@@ -13,7 +13,7 @@ const stripComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").re
 
 describe("no buyer-facing or merchant-facing endpoint takes an identity as input", () => {
   /** Routers a buyer or a seller can reach. Admin routers act on a named seller by design. */
-  const FACING = ["merchant.ts", "checkout.ts", "orders.ts", "claims.ts"];
+  const FACING = ["merchant.ts", "checkout.ts", "orders.ts", "claims.ts", "onboarding.ts", "shelfCapture.ts", "catalogueReview.ts"];
 
   test("no input schema in those routers names a buyer or a store", async () => {
     const dir = new URL("./routers/", import.meta.url);
@@ -96,7 +96,7 @@ describe("only the sign-in routes are open to the world", () => {
   test("userAuth has no unauthenticated route besides the code request, the code exchange and sign-out", async () => {
     const text = await src("./routers/userAuth.ts");
     const open = [...text.matchAll(/^\s{2}(\w+):\s*publicProcedure/gm)].map((m) => m[1]).sort();
-    assert.deepEqual(open, ["requestBuyerCode", "requestStoreCode", "signOutBuyer", "signOutStore", "verifyBuyerCode", "verifyStoreCode"]);
+    assert.deepEqual(open, ["requestBuyerCode", "requestOnboardingCode", "requestStoreCode", "signOutBuyer", "signOutStore", "verifyBuyerCode", "verifyOnboardingCode", "verifyStoreCode"]);
   });
 
   test("every public procedure in the buyer-facing and merchant-facing routers is accounted for", async () => {
@@ -110,7 +110,7 @@ describe("only the sign-in routes are open to the world", () => {
       const open = [...text.matchAll(/^\s{2}(\w+):\s*publicProcedure/gm)].map((m) => m[1]).sort();
       assert.deepEqual(open, [...names].sort(), `${file}: a procedure became public, or one stopped being`);
     }
-    for (const file of ["merchant.ts", "orders.ts", "claims.ts"]) {
+    for (const file of ["merchant.ts", "orders.ts", "claims.ts", "onboarding.ts", "shelfCapture.ts", "catalogueReview.ts"]) {
       assert.ok(!/publicProcedure/.test(stripComments(await src(`./routers/${file}`))), `${file} has a public procedure`);
     }
   });

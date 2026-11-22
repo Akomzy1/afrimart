@@ -113,9 +113,9 @@ export class Browser {
     return this.eval<string>("document.body ? document.body.innerText : ''");
   }
 
-  /** Horizontal overflow against the viewport (not the body), as CLAUDE.md asks. */
+  /** The root client width is the viewport available to content, excluding any scrollbar. */
   overflow(): Promise<number> {
-    return this.eval<number>("document.documentElement.scrollWidth - window.innerWidth");
+    return this.eval<number>("document.documentElement.scrollWidth - document.documentElement.clientWidth");
   }
 
   async waitFor(predicate: string, label: string, ms = 60_000) {
@@ -180,7 +180,11 @@ export class Browser {
     }
     await sleep(500);
     try {
-      rmSync(this.profile, { recursive: true, force: true, maxRetries: 3 });
+      const profile = path.resolve(this.profile);
+      if (path.dirname(profile) !== path.resolve(tmpdir()) || !path.basename(profile).startsWith("afrimart-chrome-")) {
+        throw new Error("Refusing to remove a directory outside the temporary Chrome profile location.");
+      }
+      rmSync(profile, { recursive: true, force: true, maxRetries: 3 });
     } catch {
       /* a profile left in the temp folder is harmless */
     }

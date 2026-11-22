@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { UserKind } from "@prisma/client";
+import type { UserKind, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { USER_SESSION_ABSOLUTE_DAYS, USER_SESSION_IDLE_DAYS } from "../config.js";
 
@@ -32,10 +32,11 @@ const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 export async function issueUserSession(
   who: { kind: "buyer"; buyerId: string } | { kind: "store"; storeId: string },
   meta: { ip?: string; userAgent?: string } = {},
+  db: Prisma.TransactionClient = prisma,
 ): Promise<IssuedUserSession> {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + USER_SESSION_ABSOLUTE_DAYS * 86_400_000);
-  await prisma.userSession.create({
+  await db.userSession.create({
     data: {
       kind: who.kind,
       buyerId: who.kind === "buyer" ? who.buyerId : null,
@@ -56,8 +57,9 @@ export async function issueUserSession(
  */
 export async function resolveUserSession(token: string | null): Promise<ResolvedUser | null> {
   if (!token) return null;
-  const session = await prisma.userSession.findUnique({ where: { tokenHash: sha256(token) } });
+  const session = await prisma.userSession.findUnique({ where: { tokenHash: sha256(token) }, include: { store: { select: { ownerPhoneVerifiedAt: true } } } });
   if (!session || session.revokedAt) return null;
+  if (session.kind === "store" && !session.store?.ownerPhoneVerifiedAt) return null;
 
   const now = Date.now();
   if (session.expiresAt.getTime() <= now) return null;

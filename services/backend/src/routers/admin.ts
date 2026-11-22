@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createHash, randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
 import { router, staffProcedure } from "../trpc.js";
@@ -6,7 +7,8 @@ import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
 import { computeHold } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
-import { checkListingForStore } from "../quality/categoryAccess.js";
+import { publishDraft, releaseReviewedFrames, staffDraft, staffDrafts } from "../catalogue/publication.js";
+import { cleanShelfUploads } from "./shelfCapture.js";
 import { refundClaim } from "../quality/claimService.js";
 import { claimRef } from "../quality/claims.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier } from "../quality/listingStandards.js";
@@ -18,13 +20,10 @@ import { normalisePhone } from "../auth/signInCodes.js";
 const isPhotoPath = (v: string | null): v is string => v !== null && parsePhotoPath(v) !== null;
 
 /**
- * PRD 6.11 — the internal operations console's API (ADM-1 to ADM-5).
+ * PRD 6.11 â€” the internal operations console's API (ADM-1 to ADM-5).
  *
- * No auth yet, in common with the rest of the build. That matters more here
- * than elsewhere: every procedure in this file is an internal surface that
- * mutates catalogue, onboarding or money. Nothing is exposed to the buyer or
- * merchant apps, and the whole router should sit behind staff authentication
- * before it is deployed anywhere reachable.
+ * Every route requires an authenticated staff session, MFA and a named
+ * permission. Changes to seller standing and onboarding are audited.
  */
 
 const idInput = z.object({ id: z.string() });
@@ -58,14 +57,14 @@ export const adminRouter = router({
 
   /**
    * The catalogue review queue. Low-confidence entries first, because those
-   * are the ones CAT-6 is actually protecting the catalogue from — a reviewer
+   * are the ones CAT-6 is actually protecting the catalogue from â€” a reviewer
    * working top-down should meet the riskiest items while fresh.
    */
   reviewQueue: staffProcedure("catalogue:read")
     .input(z.object({ includeResolved: z.boolean().default(false) }).optional())
     .query(async ({ input }) => {
       const drafts = await prisma.catalogueDraft.findMany({
-        where: input?.includeResolved ? {} : { status: "pending_review" },
+        where: { ...staffDrafts, ...(input?.includeResolved ? {} : { status: "pending_review" as const }) },
         include: { store: { include: { hubMetro: true } } },
         orderBy: [{ confidence: "asc" }, { createdAt: "asc" }],
         take: 200,
@@ -86,12 +85,13 @@ export const adminRouter = router({
         sellerType: d.store.sellerType,
         metro: d.store.hubMetro.name,
         rawText: d.rawText,
+        shelfPhoto: d.jobId && d.status === "pending_review" && d.frameNames[0] ? signedPhotoUrl("/photos/shelf/" + d.frameNames[0]) : null,
         suggestedName: d.suggestedName,
         suggestedPriceCents: d.suggestedPriceCents,
         packSize: d.packSize,
         temperatureClass: d.temperatureClass,
         confidence: d.confidence,
-        /** CAT-6 — below this a human must confirm before it can be published. */
+        /** CAT-6 â€” below this a human must confirm before it can be published. */
         belowThreshold: d.confidence < CATALOGUE_AUTO_APPROVE_CONFIDENCE,
         matchedProduct: d.matchedProductId ? (matchById.get(d.matchedProductId) ?? null) : null,
         status: d.status,
@@ -101,7 +101,7 @@ export const adminRouter = router({
 
   /**
    * Approving a draft is what creates the public listing. The reviewer must
-   * name the canonical product it resolves to — an approval cannot invent one
+   * name the canonical product it resolves to â€” an approval cannot invent one
    * implicitly, or the knowledge graph fills with near-duplicates (CAT-3).
    */
   approveDraft: staffProcedure("catalogue:write")
@@ -110,61 +110,41 @@ export const adminRouter = router({
         id: z.string(),
         canonicalProductId: z.string(),
         priceCents: z.number().int().positive(),
+        learnAlias: z.boolean().optional(),
         note: z.string().optional(),
       }),
     )
     .mutation(async ({ input }) => {
-      const draft = await prisma.catalogueDraft.findUnique({ where: { id: input.id } });
-      if (!draft) throw new TRPCError({ code: "NOT_FOUND", message: "That draft no longer exists." });
-      if (draft.status !== "pending_review") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "That draft has already been resolved." });
-      }
-      const product = await prisma.canonicalProduct.findUnique({ where: { id: input.canonicalProductId } });
-      if (!product) throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown canonical product." });
-
-      // QC-1 — the listing standards are enforced here, at the one place a
-      // public listing is created, not described in a policy page. Refusing
-      // leaves the draft pending so the reviewer can reject it with a note.
-      const standards = await checkListingForStore(prisma, draft.storeId, product);
-      if (!standards.ok) {
-        const permitOnly = standards.violations.every((v) => v.code === "permit_confirmation_required");
-        throw new TRPCError({
-          // A missing permit confirmation is something the seller can supply;
-          // every other violation is a refusal.
-          code: permitOnly ? "PRECONDITION_FAILED" : "FORBIDDEN",
-          message: standards.violations.map((v) => v.message).join(" "),
-        });
-      }
-
-      return prisma.$transaction(async (tx) => {
-        const listing = await tx.listing.create({
-          data: {
-            storeId: draft.storeId,
-            canonicalProductId: product.id,
-            priceCents: input.priceCents,
-            temperatureClass: product.temperatureClass,
-            shippingWeightOz: product.shippingWeightOz,
-            lengthIn: product.lengthIn,
-            widthIn: product.widthIn,
-            heightIn: product.heightIn,
-          },
-        });
-        await tx.catalogueDraft.update({
-          where: { id: draft.id },
-          data: { status: "approved", reviewNote: input.note, reviewedAt: new Date() },
-        });
-        return { listingId: listing.id };
+      const result = await prisma.$transaction(async tx => {
+        const draft = await staffDraft(tx, input.id);
+        const listing = await publishDraft(tx, draft, input.canonicalProductId, input.priceCents, input.note);
+        if (draft.jobId && input.learnAlias) {
+          // Only a staff-confirmed correction enters the shared multilingual catalogue.
+          await tx.$queryRaw`SELECT "id" FROM "CanonicalProduct" WHERE "id"=${input.canonicalProductId} FOR UPDATE`;
+          const alias = draft.suggestedName.trim();
+          const existing = await tx.nameAlias.findFirst({ where: { canonicalProductId: input.canonicalProductId, alias: { equals: alias, mode: "insensitive" } } });
+          if (!existing && alias) await tx.nameAlias.create({ data: { canonicalProductId: input.canonicalProductId, alias, language: "und", confidence: 1 } });
+        }
+        if (draft.jobId) await releaseReviewedFrames(tx, draft.jobId);
+        return listing;
       });
+      void cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
+      return result;
     }),
 
   rejectDraft: staffProcedure("catalogue:write")
     .input(z.object({ id: z.string(), note: z.string().min(1) }))
-    .mutation(({ input }) =>
-      prisma.catalogueDraft.update({
-        where: { id: input.id },
-        data: { status: "rejected", reviewNote: input.note, reviewedAt: new Date() },
-      }),
-    ),
+    .mutation(async ({ input }) => {
+      const result = await prisma.$transaction(async tx => {
+        const draft = await staffDraft(tx, input.id);
+        const rejected = await tx.catalogueDraft.update({ where: { id: draft.id },
+          data: { status: "rejected", reviewNote: input.note, reviewedAt: new Date() } });
+        if (draft.jobId) await releaseReviewedFrames(tx, draft.jobId);
+        return rejected;
+      });
+      void cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
+      return result;
+    }),
 
   /* ---------------------------------------------------------------- ADM-2 */
 
@@ -173,6 +153,7 @@ export const adminRouter = router({
     const stores = await prisma.store.findMany({
       include: {
         hubMetro: true,
+        onboardingKits: { orderBy: { issuedAt: "desc" } },
         kitchenLicence: { select: { status: true, licenceExpiresOn: true } },
         categoryControls: { where: { disabled: true }, select: { category: true } },
         _count: { select: { listings: true, catalogueDrafts: true } },
@@ -190,20 +171,74 @@ export const adminRouter = router({
       hubMetroId: s.hubMetroId,
       /** The number the shop signs in with, shown as its last four digits only. */
       ownerPhoneLast4: s.ownerPhone ? s.ownerPhone.slice(-4) : null,
+      ownerPhoneVerifiedAt: s.ownerPhoneVerifiedAt,
+      onboardingRail: s.onboardingRail,
+      onboardingWebsite: s.onboardingWebsite,
+      onboardingProfileAt: s.onboardingProfileAt,
+      foodSafetyAttestedAt: s.foodSafetyAttestedAt,
+      onboardingKits: s.onboardingKits,
       listingCount: s._count.listings,
       pendingDrafts: s._count.catalogueDrafts,
-      /** QC-1 — null for a seller who has never applied. */
+      /** QC-1 â€” null for a seller who has never applied. */
       kitchenLicence: licenceState(s.kitchenLicence),
-      /** QC-1 — controlled categories switched off for this seller. */
+      /** QC-1 â€” controlled categories switched off for this seller. */
       disabledCategories: s.categoryControls.map((c) => c.category),
-      /** SEL-2 — a store cannot be routed orders until this is true. */
+      /** SEL-2 â€” a store cannot be routed orders until this is true. */
       canReceiveOrders: s.verificationStatus === "verified" && s.onboardingStatus === "live",
     }));
   }),
 
   hubs: staffProcedure("stores:read").query(() =>
-    prisma.hubMetro.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, state: true } }),
+    prisma.hubMetro.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, state: true } }),
   ),
+
+  createStore: staffProcedure("stores:write").input(z.object({
+    name: z.string().trim().min(2).max(120), ownerName: z.string().trim().min(2).max(120),
+    sellerType: z.enum(["store", "home_seller", "aspiring_entrepreneur"]),
+    hubMetroId: z.string(), phone: z.string().max(40),
+  })).mutation(async ({ input, ctx }) => {
+    const phone = normalisePhone(input.phone);
+    if (!phone) throw new TRPCError({ code: "BAD_REQUEST", message: "Enter the owner's mobile number with its area code." });
+    return prisma.$transaction(async (tx) => {
+      if (!await tx.hubMetro.findFirst({ where: { id: input.hubMetroId, active: true } })) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose an active supply hub." });
+      if (await tx.store.findUnique({ where: { ownerPhone: phone } })) throw new TRPCError({ code: "CONFLICT", message: "Another store already signs in with that number." });
+      const store = await tx.store.create({ data: { name: input.name, ownerName: input.ownerName, sellerType: input.sellerType,
+        hubMetroId: input.hubMetroId, ownerPhone: phone, onboardingStartedAt: new Date() } });
+      await writeAudit(tx, ctx.staff, { action: "store.create", subjectType: "store", subjectId: store.id,
+        after: { name: store.name, sellerType: store.sellerType, hubMetroId: store.hubMetroId, ownerPhoneLast4: phone.slice(-4) } });
+      return { id: store.id };
+    });
+  }),
+
+  issueOnboardingInvite: staffProcedure("stores:write").input(idInput).mutation(async ({ input, ctx }) => {
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000);
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id" = ${input.id} FOR UPDATE`;
+      const store = await tx.store.findUnique({ where: { id: input.id } });
+      if (!store?.ownerPhone) throw new TRPCError({ code: "BAD_REQUEST", message: "Set the owner's phone number first." });
+      await tx.onboardingInvite.updateMany({ where: { storeId: input.id, consumedAt: null }, data: { consumedAt: new Date() } });
+      await tx.onboardingInvite.create({ data: { storeId: input.id, tokenHash: createHash("sha256").update(token).digest("hex"), createdById: ctx.staff.staffUserId, expiresAt } });
+      await writeAudit(tx, ctx.staff, { action: "store.invite", subjectType: "store", subjectId: input.id, after: { expiresAt } });
+    });
+    return { path: `/onboarding#invite=${token}`, expiresAt };
+  }),
+
+  recordOnboardingKit: staffProcedure("stores:write").input(z.object({
+    id: z.string(), packaging: z.string().trim().min(1).max(500),
+    labelPrinterSerial: z.string().trim().min(1).max(120), issuedAt: z.coerce.date().max(new Date("2100-01-01")),
+  })).mutation(async ({ input, ctx }) => {
+    if (input.issuedAt > new Date()) throw new TRPCError({ code: "BAD_REQUEST", message: "The issue date cannot be in the future." });
+    return prisma.$transaction(async (tx) => {
+      const store = await tx.store.findUnique({ where: { id: input.id } });
+      if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "No such store." });
+      const kit = await tx.onboardingKit.create({ data: { storeId: input.id, packaging: input.packaging,
+        labelPrinterSerial: input.labelPrinterSerial, issuedAt: input.issuedAt, recordedById: ctx.staff.staffUserId } });
+      await writeAudit(tx, ctx.staff, { action: "store.kit_issued", subjectType: "store", subjectId: input.id,
+        after: { kitId: kit.id, packaging: kit.packaging, labelPrinterSerial: kit.labelPrinterSerial, issuedAt: kit.issuedAt } });
+      return { id: kit.id };
+    });
+  }),
 
   /**
    * Set the mobile number a shop signs in to the merchant app with. This is how
@@ -225,7 +260,8 @@ export const adminRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "Another store already signs in with that number." });
       }
       return prisma.$transaction(async (tx) => {
-        await tx.store.update({ where: { id: input.id }, data: { ownerPhone: phone } });
+        await tx.store.update({ where: { id: input.id }, data: { ownerPhone: phone, ownerPhoneVerifiedAt: null, ownerPhoneVersion: { increment: 1 } } });
+        await tx.onboardingInvite.updateMany({ where: { storeId: input.id, consumedAt: null }, data: { consumedAt: new Date() } });
         const ended = await tx.userSession.updateMany({ where: { storeId: input.id, revokedAt: null }, data: { revokedAt: new Date() } });
         await writeAudit(tx, ctx.staff, {
           action: "store.owner_phone_change",
@@ -256,24 +292,39 @@ export const adminRouter = router({
       if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such store." });
 
       return prisma.$transaction(async (tx) => {
+        // Lock the store before checking activation, serializing against owner
+        // edits and phone reassignment. Approval applies to the details reviewed.
+        await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id" = ${id} FOR UPDATE`;
+        const current = await tx.store.findUniqueOrThrow({ where: { id }, include: { _count: { select: { listings: true, onboardingKits: true } } } });
+        if (patch.hubMetroId && !await tx.hubMetro.findFirst({ where: { id: patch.hubMetroId, active: true } })) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose an active supply hub." });
+        const verifies = patch.verificationStatus === "verified";
+        const activates = patch.onboardingStatus === "live";
+        if (activates && !await tx.hubMetro.findFirst({ where: { id: patch.hubMetroId ?? current.hubMetroId, active: true } })) throw new TRPCError({ code: "BAD_REQUEST", message: "Assign an active supply hub before making the store live." });
+        if ((verifies || activates) && (!current.ownerPhoneVerifiedAt || !current.onboardingProfileAt || !current.foodSafetyAttestedAt)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "The owner must verify their phone, complete their details and attest to food safety before approval." });
+        }
+        if (activates && ((patch.verificationStatus ?? current.verificationStatus) !== "verified" || !current._count.listings || !current._count.onboardingKits)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Verify the seller, approve their catalogue and record their kit before making the store live." });
+        }
+        if (patch.onboardingStatus === "kit_issued" && !current._count.onboardingKits) throw new TRPCError({ code: "BAD_REQUEST", message: "Record the issued kit first." });
+        if (["filming", "reviewing"].includes(patch.onboardingStatus ?? "") && (!current.ownerPhoneVerifiedAt || !current.onboardingProfileAt || !current.onboardingRail)) throw new TRPCError({ code: "BAD_REQUEST", message: "The owner must complete their details and choose a catalogue setup method first." });
         const after = await tx.store.update({
           where: { id },
           data: {
             ...patch,
-            // SEL-2 — stamp the moment verification was granted, for the record.
+            // SEL-2 â€” stamp the moment verification was granted, for the record.
             ...(patch.verificationStatus === "verified" ? { verifiedAt: new Date() } : {}),
           },
         });
 
-        // Anything that changes a seller's standing is audited; a hub move or
-        // a step through onboarding is routine and is not.
-        const action = auditActionForStoreChange(before, after);
+        // Record routine onboarding changes as well as changes in standing.
+        const action = auditActionForStoreChange(current, after) ?? "store.onboarding_change";
         if (action) {
           await writeAudit(tx, ctx.staff, {
             action,
             subjectType: "store",
             subjectId: id,
-            before: { onboardingStatus: before.onboardingStatus, verificationStatus: before.verificationStatus },
+            before: { onboardingStatus: current.onboardingStatus, verificationStatus: current.verificationStatus },
             after: { onboardingStatus: after.onboardingStatus, verificationStatus: after.verificationStatus },
           });
         }
@@ -315,7 +366,7 @@ export const adminRouter = router({
       createdAt: s.createdAt,
       itemCount: s.items.reduce((n, i) => n + i.quantity, 0),
       valueCents: s.items.reduce((n, i) => n + i.lineTotalCents, 0),
-      /** Not accepted or not moved inside the window — needs a human. */
+      /** Not accepted or not moved inside the window â€” needs a human. */
       stuck: s.createdAt < cutoff && ["pending", "label_created"].includes(s.status),
       hoursWaiting: Math.floor((Date.now() - s.createdAt.getTime()) / 3600_000),
     }));
@@ -382,7 +433,7 @@ export const adminRouter = router({
         cuisine: z.string().min(1),
         packSize: z.string().min(1),
         temperatureClass: z.enum(["ambient", "refrigerated", "frozen"]),
-        /** QC-1 — set for meat, poultry, fish and dairy, including dried and smoked. */
+        /** QC-1 â€” set for meat, poultry, fish and dairy, including dried and smoked. */
         controlledCategory: controlledCategoryInput.nullish(),
         shippingWeightOz: z.number().positive(),
         lengthIn: z.number().positive(),
@@ -393,7 +444,7 @@ export const adminRouter = router({
     .mutation(({ input }) => prisma.canonicalProduct.create({ data: { ...input, images: [] } })),
 
   /**
-   * QC-1 — reclassify a product as meat, poultry, fish or dairy (or none).
+   * QC-1 â€” reclassify a product as meat, poultry, fish or dairy (or none).
    * Audited because it moves listings in and out of the category controls: a
    * product reclassified into a switched-off category disappears for the
    * sellers it applies to.
@@ -466,7 +517,7 @@ export const adminRouter = router({
     const fulfilmentFeeCents = payouts.reduce((n, p) => n + p.fulfilmentFeeCents, 0);
     const adjustmentsCents = adjustments.reduce((n, a) => n + a.amountCents, 0);
 
-    // PAY-8 — what is owed but not yet releasable, and why.
+    // PAY-8 â€” what is owed but not yet releasable, and why.
     const heldPayouts = payouts.filter((p) => p.heldUntil && p.heldUntil > new Date());
 
     return {
@@ -479,7 +530,7 @@ export const adminRouter = router({
       commissionCents,
       fulfilmentFeeCents,
       adjustmentsCents,
-      /** PAY-3 — commission plus the order fee. Never includes shipping. */
+      /** PAY-3 â€” commission plus the order fee. Never includes shipping. */
       platformRevenueCents: commissionCents + fulfilmentFeeCents,
       heldCents: heldPayouts.reduce((n, p) => n + p.netCents, 0),
       heldCount: heldPayouts.length,
@@ -510,7 +561,7 @@ export const adminRouter = router({
     };
   }),
 
-  /** PAY-8 — what hold a seller would get today, for the console to explain. */
+  /** PAY-8 â€” what hold a seller would get today, for the console to explain. */
   payoutHoldFor: staffProcedure("finance:read").input(idInput).query(async ({ input }) => {
     const [clean, disputed] = await Promise.all([
       prisma.shipment.count({ where: { storeId: input.id, status: "delivered" } }),
@@ -522,7 +573,7 @@ export const adminRouter = router({
   /* ------------------------------------------- ADM-5 money, all audited */
 
   /**
-   * PAY-8 — put a payout on hold, or release one. Finance only: `operations`
+   * PAY-8 â€” put a payout on hold, or release one. Finance only: `operations`
    * can read the reconciliation screen to chase a problem but cannot move the
    * money, which is the separation the roles exist for.
    */
@@ -577,7 +628,7 @@ export const adminRouter = router({
     }),
 
   /**
-   * PAY-9 — record a carrier billing correction against the seller that
+   * PAY-9 â€” record a carrier billing correction against the seller that
    * declared the wrong weight or dimensions. Recording it is the audited act;
    * `applyAdjustments` nets it off the next payout.
    */
@@ -613,7 +664,7 @@ export const adminRouter = router({
       }),
     ),
 
-  /** QC-9 — refund claims waiting on a human. */
+  /** QC-9 â€” refund claims waiting on a human. */
   refundClaims: staffProcedure("finance:read").query(async () => {
     const claims = await prisma.refundClaim.findMany({
       where: { status: { in: ["manual_review", "auto_approved"] } },
@@ -622,7 +673,7 @@ export const adminRouter = router({
       take: 200,
     });
 
-    // QC-3 — a reviewer judging a "missing from the box" report needs the seller's
+    // QC-3 â€” a reviewer judging a "missing from the box" report needs the seller's
     // packing photo beside the buyer's, so both come back with the claim.
     const shipments = await prisma.shipment.findMany({
       where: { id: { in: claims.map((c) => c.shipmentId).filter((v): v is string => Boolean(v)) } },
@@ -724,7 +775,7 @@ export const adminRouter = router({
     }),
 
   /**
-   * QC-8 — resolve a claim and say where the cost lands.
+   * QC-8 â€” resolve a claim and say where the cost lands.
    *
    * For a claim that was auto-approved the buyer was already refunded and this
    * records the recovery, the part that affects a seller's money. For one that
@@ -801,7 +852,7 @@ export const adminRouter = router({
       });
     }),
 
-  /** The trail itself. Read-only everywhere — nothing edits or deletes it. */
+  /** The trail itself. Read-only everywhere â€” nothing edits or deletes it. */
   auditLog: staffProcedure("audit:read")
     .input(
       z
@@ -842,7 +893,7 @@ export const adminRouter = router({
 
   /* ------------------------------------------- QC-4 / QC-6 / CAT-8 */
 
-  /** QC-4 — every seller's score, with whether it is actionable yet. */
+  /** QC-4 â€” every seller's score, with whether it is actionable yet. */
   sellerQuality: staffProcedure("stores:read").query(async () => {
     const stores = await prisma.store.findMany({
       include: {
@@ -871,7 +922,7 @@ export const adminRouter = router({
       const delivered = s.shipments.filter((sh) => sh.status === "delivered").length;
       const quality = computeScore({
         deliveredOrders: delivered,
-        // QC-4 — confirmed only. A submitted claim moves nothing until a
+        // QC-4 â€” confirmed only. A submitted claim moves nothing until a
         // reviewer upholds it, and carrier-recovered claims never count.
         confirmedSellerClaims: confirmedByStore.get(s.id) ?? 0,
         averageRating: s.qualityScore,
@@ -897,7 +948,7 @@ export const adminRouter = router({
   }),
 
   /**
-   * QC-6 — record an enforcement step.
+   * QC-6 â€” record an enforcement step.
    *
    * Suspension and delisting are refused here unless a human is driving:
    * they end a seller's income, and the ladder deliberately stops short of
@@ -929,7 +980,7 @@ export const adminRouter = router({
         });
 
         // Suspension and delisting also change whether the seller can trade,
-        // so they move onboarding state too — and are audited as standing
+        // so they move onboarding state too â€” and are audited as standing
         // changes, like every other suspension.
         if (input.level === "suspended" || input.level === "delisted") {
           const before = { onboardingStatus: store.onboardingStatus };
@@ -950,7 +1001,7 @@ export const adminRouter = router({
       });
     }),
 
-  /** CAT-8 — badge applications waiting on a reviewer. */
+  /** CAT-8 â€” badge applications waiting on a reviewer. */
   badgeApplications: staffProcedure("stores:read")
     .input(z.object({ status: z.enum(["applied", "approved", "rejected", "revoked"]).default("applied") }).optional())
     .query(async ({ input }) => {
@@ -974,7 +1025,7 @@ export const adminRouter = router({
   }),
 
   /**
-   * CAT-8 — approve or refuse a badge.
+   * CAT-8 â€” approve or refuse a badge.
    *
    * A seller applies; a reviewer decides. A badge a seller could switch on
    * themselves would carry no information for the buyer it is meant to
@@ -1016,7 +1067,7 @@ export const adminRouter = router({
   /* ------------------------------------------------------------ QC-1 */
 
   /**
-   * QC-1 — kitchen licence applications. Defaults to what is waiting on a
+   * QC-1 â€” kitchen licence applications. Defaults to what is waiting on a
    * reviewer; pass a status to see approvals (to revoke one) or refusals.
    */
   kitchenLicences: staffProcedure("stores:read")
@@ -1050,7 +1101,7 @@ export const adminRouter = router({
     }),
 
   /**
-   * QC-1 — approve, refuse or revoke a licensed-kitchen status. Approval lifts
+   * QC-1 â€” approve, refuse or revoke a licensed-kitchen status. Approval lifts
    * the chilled-and-frozen restriction for that seller, so it is granted only
    * by a reviewer, only after they say they have checked the licence, and is
    * audited in the same transaction. Revoking restores the restriction and
@@ -1156,7 +1207,7 @@ export const adminRouter = router({
       });
     }),
 
-  /** QC-1 — the current state of every category switch, platform-wide and per seller. */
+  /** QC-1 â€” the current state of every category switch, platform-wide and per seller. */
   categoryControls: staffProcedure("stores:read").query(async () => {
     const [platform, sellers] = await Promise.all([
       prisma.platformCategoryControl.findMany(),
@@ -1191,7 +1242,7 @@ export const adminRouter = router({
   }),
 
   /**
-   * QC-1 — switch one controlled category off (or back on) for one home-based
+   * QC-1 â€” switch one controlled category off (or back on) for one home-based
    * or aspiring seller. Their existing listings in it are hidden and new ones
    * refused, with a plain message to the seller. Refused outright for a store:
    * stores are outside these rules, and a switch that silently did nothing
@@ -1243,7 +1294,7 @@ export const adminRouter = router({
     }),
 
   /**
-   * QC-1 — switch one controlled category off (or back on) for every
+   * QC-1 â€” switch one controlled category off (or back on) for every
    * home-based and aspiring seller at once. A setting, not a deploy, so it can
    * move the day legal advice changes. Hidden listings return the moment it is
    * switched back on; nothing is deleted. Admin only (`settings:write`): it
