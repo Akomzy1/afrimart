@@ -8,7 +8,7 @@ import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.
 import { computeHold } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 import { publishDraft, releaseReviewedFrames, staffDraft, staffDrafts } from "../catalogue/publication.js";
-import { cleanShelfUploads } from "./shelfCapture.js";
+import { availableFrame, cleanShelfUploads, reviewPhotos } from "../catalogue/photoRetention.js";
 import { refundClaim } from "../quality/claimService.js";
 import { claimRef } from "../quality/claims.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier } from "../quality/listingStandards.js";
@@ -79,13 +79,15 @@ export const adminRouter = router({
         : [];
       const matchById = new Map(matches.map((m) => [m.id, m]));
 
+      const photos = await reviewPhotos(drafts);
       return drafts.map((d) => ({
         id: d.id,
         storeName: d.store.name,
         sellerType: d.store.sellerType,
         metro: d.store.hubMetro.name,
         rawText: d.rawText,
-        shelfPhoto: d.jobId && d.status === "pending_review" && d.frameNames[0] ? signedPhotoUrl("/photos/shelf/" + d.frameNames[0]) : null,
+        ...(d.jobId && d.status === "pending_review" ? photos(d.frameNames) : { shelfPhoto: null, photoExpired: false }),
+        photoRequested: d.status === "pending_review" && !!d.photoRequestId,
         suggestedName: d.suggestedName,
         suggestedPriceCents: d.suggestedPriceCents,
         packSize: d.packSize,
@@ -128,9 +130,23 @@ export const adminRouter = router({
         if (draft.jobId) await releaseReviewedFrames(tx, draft.jobId);
         return listing;
       });
-      void cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
+      await cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
       return result;
     }),
+
+  requestShelfPhoto: staffProcedure("catalogue:write").input(idInput).mutation(({ input }) =>
+    prisma.$transaction(async tx => {
+      const draft = await staffDraft(tx, input.id);
+      if (!draft.jobId) throw new TRPCError({ code: "BAD_REQUEST", message: "This item has no shelf capture." });
+      if (draft.photoRequestId) return { requested: true };
+      const names = [...new Set(draft.frameNames)];
+      const available = await tx.shelfFrame.count({ where: { ...availableFrame(), name: { in: names } } });
+      if (available === names.length) return { requested: false };
+      await tx.catalogueDraft.update({ where: { id: draft.id }, data: { photoRequestId: randomBytes(16).toString("hex") } });
+      await tx.sellerMessage.create({ data: { storeId: draft.storeId, kind: "notice", orderRefs: [],
+        body: "Please upload a fresh shelf photo for " + draft.suggestedName + " in your catalogue review." } });
+      return { requested: true };
+    })),
 
   rejectDraft: staffProcedure("catalogue:write")
     .input(z.object({ id: z.string(), note: z.string().min(1) }))
@@ -142,7 +158,7 @@ export const adminRouter = router({
         if (draft.jobId) await releaseReviewedFrames(tx, draft.jobId);
         return rejected;
       });
-      void cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
+      await cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
       return result;
     }),
 

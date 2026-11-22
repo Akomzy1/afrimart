@@ -8,6 +8,8 @@ import { decodeUpload, PhotoRejected } from "../storage/photos.js";
 import { photoStore } from "../storage/store.js";
 import { signedPhotoUrl } from "../storage/access.js";
 
+import { cleanShelfUploads, cutoff } from "../catalogue/photoRetention.js";
+
 const eligible = {
   ownerPhoneVerifiedAt: { not: null }, onboardingProfileAt: { not: null },
   onboardingRail: "film", onboardingStatus: "filming",
@@ -21,21 +23,12 @@ async function lockStore(tx: Prisma.TransactionClient, storeId: string) {
   if (!await tx.store.count({ where: { id: storeId, ...eligible } })) throw forbidden();
 }
 
-/** Detached rows cover interrupted uploads, replaced frames and deleted stores.
- * The upload lease prevents cleanup during an active save. A live frame never expires here. */
-export async function cleanShelfUploads() {
-  const orphaned = await prisma.shelfFrame.findMany({ where: { sessionId: null,
-    OR: [{ deleteAfter: null }, { deleteAfter: { lte: new Date() } }] }, take: 120, select: { name: true } });
-  for (const { name } of orphaned) {
-    await photoStore.removeShelfFrame(name);
-    await prisma.shelfFrame.deleteMany({ where: { name, sessionId: null } });
-  }
-}
+export { cleanShelfUploads } from "../catalogue/photoRetention.js";
 
 export const shelfCaptureRouter = router({
   session: merchantProcedure.query(async ({ ctx }) => {
     const store = await prisma.store.findFirst({ where: { id: ctx.storeId, ...eligible }, select: { filmSession: {
-      select: { revision: true, finishedAt: true, frames: { orderBy: [{ shelf: "asc" }, { position: "asc" }],
+      select: { revision: true, finishedAt: true, frames: { where: { uploadedAt: { gt: cutoff() } }, orderBy: [{ shelf: "asc" }, { position: "asc" }],
         select: { shelf: true, name: true } } }
     } } });
     if (!store) throw forbidden();
@@ -55,7 +48,7 @@ export const shelfCaptureRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const where = { id: ctx.storeId, ...eligible };
     const store = await prisma.store.findFirst({ where, select: { filmSession: { select: { revision: true, finishedAt: true,
-      frames: { select: { shelf: true, passId: true } } } } } });
+      frames: { where: { uploadedAt: { gt: cutoff() } }, select: { shelf: true, passId: true } } } } } });
     if (!store) throw forbidden();
     const session = store.filmSession;
     if (session?.frames.some(f => f.shelf === input.shelf && f.passId === input.passId)) return { saved: true };
@@ -108,6 +101,8 @@ export const shelfCaptureRouter = router({
       const session = await tx.filmSession.findUnique({ where: { storeId: ctx.storeId } });
       if (!session) throw new TRPCError({ code: "BAD_REQUEST", message: "Save at least one shelf first." });
       if (!session.finishedAt) {
+        if (!await tx.shelfFrame.count({ where: { sessionId: session.id, uploadedAt: { gt: cutoff() } } }))
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Your shelf photos expired. Save a fresh shelf before finishing." });
         if (session.revision !== input.revision) throw conflict();
         await tx.filmSession.update({ where: { id: session.id }, data: { finishedAt: new Date(), revision: { increment: 1 } } });
       }

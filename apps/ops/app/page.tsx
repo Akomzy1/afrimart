@@ -132,7 +132,8 @@ function Console({ onSignedOut }: { onSignedOut: () => void }) {
 
 function ReviewQueue() {
   const utils = trpc.useUtils();
-  const queue = trpc.admin.reviewQueue.useQuery({ includeResolved: false });
+  const queue = trpc.admin.reviewQueue.useQuery({ includeResolved: false }, { refetchInterval: 5000 });
+  const requestPhoto = trpc.admin.requestShelfPhoto.useMutation({ onSuccess: () => utils.admin.reviewQueue.invalidate() });
   const products = trpc.admin.graph.useQuery({});
   const approve = trpc.admin.approveDraft.useMutation({ onSuccess: () => utils.admin.reviewQueue.invalidate() });
   const reject = trpc.admin.rejectDraft.useMutation({ onSuccess: () => utils.admin.reviewQueue.invalidate() });
@@ -186,6 +187,10 @@ function ReviewQueue() {
                 </td>
                 <td>
                   <code>{d.rawText}</code>
+                  {d.photoExpired && <p>A shelf photo expired after 30 days.</p>}
+                  {d.photoRequested ? <p>Fresh photo requested from seller.</p> : d.photoExpired && <button type="button" disabled={requestPhoto.isPending}
+                    onClick={() => requestPhoto.mutate({ id: d.id })}>Request fresh photo</button>}
+                  {requestPhoto.error && requestPhoto.variables?.id === d.id && <p role="alert">{requestPhoto.error.message}</p>}
                   {d.shelfPhoto && <a href={new URL(d.shelfPhoto, process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").href} target="_blank" rel="noreferrer">View shelf photo</a>}
                 </td>
                 <td>

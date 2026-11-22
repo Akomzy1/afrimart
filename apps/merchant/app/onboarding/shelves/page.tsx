@@ -17,6 +17,11 @@ export default function ShelvesPage() {
   if (pass && data && !session.error) return <FilmShelf {...pass} onClose={() => { setPass(null); void session.refetch(); }}
     onSaved={async () => { await session.refetch(); setPass(null); }} />;
   const total = data?.shelves.reduce((count, shelf) => count + shelf.count, 0) ?? 0;
+  let nextShelf = 1;
+  for (const shelf of data?.shelves ?? []) {
+    if (shelf.number !== nextShelf) break;
+    nextShelf++;
+  }
   function open(shelf: number, oldCount = 0) {
     if (data) setPass({ shelf, revision: data.revision, limit: 60 - total + oldCount });
   }
@@ -31,7 +36,7 @@ export default function ShelvesPage() {
           <div><strong>Shelf {s.number}</strong><span>{s.count} {s.count === 1 ? "frame" : "frames"} saved</span></div>
           {!data.finished && <button className="mr-linkbtn" onClick={() => open(s.number, s.count)} disabled={finish.isPending} aria-label={`Re-film shelf ${s.number}`}>Re-film</button>}
         </li>)}</ul>
-        {!data.finished && total < 60 && <button className="mr-bigbtn accent" disabled={finish.isPending} onClick={() => open(data.shelves.length + 1)}><CameraIcon /> Film shelf {data.shelves.length + 1}</button>}
+        {!data.finished && total < 60 && <button className="mr-bigbtn accent" disabled={finish.isPending} onClick={() => open(nextShelf)}><CameraIcon /> Film shelf {nextShelf}</button>}
         {total >= 60 && !data.finished && <p>All 60 frames are saved. You can re-film a shelf or finish.</p>}
         {finish.error && <p role="alert">{finish.error.message}</p>}
       </>}

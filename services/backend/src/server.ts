@@ -1,5 +1,5 @@
 import { runExtractionWorker } from "./catalogue/worker.js";
-import { cleanShelfUploads } from "./routers/shelfCapture.js";
+import { runShelfRetention } from "./catalogue/photoRetention.js";
 import { buildServer } from "./app.js";
 import { assertPhotoSigningConfigured } from "./storage/access.js";
 import { assertPhotoStorageReady } from "./storage/store.js";
@@ -9,8 +9,8 @@ await assertPhotoStorageReady();
 assertPhotoSigningConfigured();
 
 const server = await buildServer();
-void cleanShelfUploads().catch(() => server.log.warn("Shelf photo cleanup will retry on the next save."));
 const extraction = new AbortController();
+void runShelfRetention(extraction.signal);
 if (process.env.SHELF_EXTRACTION_ENABLED === "yes") void runExtractionWorker(extraction.signal);
 server.addHook("onClose", async () => { extraction.abort(); });
 const port = Number(process.env.PORT ?? 4000);

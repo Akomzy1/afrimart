@@ -52,13 +52,15 @@ Both use the existing code machinery with one new purpose, so the same limits ap
 
 ### Capture (ONB-3), in the browser
 
-Film the shelves with the camera. In the browser, sample frames about twice a second, score each for sharpness (variance of a Laplacian on a downscaled copy), size of the subject, and exposure, and prompt the owner in the prototype's words: closer, slower, more light. Keep the best frame per stretch of shelf (a perceptual hash separates repeats), cap at about 60 frames, downscale to 1600px on the long edge, and upload JPEG frames, not video. Frames go through the same photo store: re-encoded, stripped of metadata, private, a new kind `shelf`, deleted after publishing (retention below).
+Film the shelves with the camera. In the browser, sample frames about twice a second, score each for sharpness (variance of a Laplacian on a downscaled copy), size of the subject, and exposure, and prompt the owner in the prototype's words: closer, slower, more light. Keep the best frame per stretch of shelf (a perceptual hash separates repeats), cap at about 60 frames, downscale to 1600px on the long edge, and upload JPEG frames, not video. Frames go through the same photo store: re-encoded, stripped of metadata, private, a new kind `shelf`, deleted according to the per-photo deadline below.
 
 A `FilmSession` row groups the frames for one store and one attempt, so "re-shoot a shelf" (the prototype's redo pass) replaces frames rather than adding to them.
 
 **Part 2a implementation.** A verified seller with a completed profile and the filming preference opens `/onboarding/shelves`. The browser evaluates exposure, Laplacian variance, and the spread of edges around the centre, then keeps the sharpest candidate for each distinct view. The seller saves each shelf as a unit and can resume or replace it before finishing. The server enforces a 60-frame session limit. A replacement commits only after every new JPEG has been sanitised and stored. Superseded or interrupted uploads are tracked for cleanup on save and server startup. Finishing leaves a private session available for Part 2b.
 
-The local browser check is `npm run e2e:shelves`. Image-quality cutoffs are provisional until the real-store evaluation. The retention period for accepted frames remains an open decision before deployment.
+The local browser check is `npm run e2e:shelves`. Image-quality cutoffs are provisional until the real-store evaluation. Each shelf photo is due for deletion when its final linked draft is resolved or 30 days after upload, whichever comes first. Merged drafts carry their evidence forward. The upload time is immutable. For older photos without a recorded upload time, the migration uses the capture session’s start as a conservative lower bound.
+
+The API checks the deadline before serving shelf photos, including previously signed links. The backend runs cleanup at startup and continuously, independent of extraction, and keeps a deletion record until storage confirms the object is gone. A failed delete retries automatically. Expiry also covers abandoned captures, failed extractions and open staff reviews. Staff can request a fresh photo on the open draft. The seller receives a message and uploads it from catalogue review. Each replacement gets its own upload time. Run `npm run verify:shelf-retention` against local PostgreSQL to exercise this lifecycle using an isolated schema and real files. With the merchant and ops dev servers running on ports 3001 and 3002 and port 4000 free, add `-- --browser` to exercise the staff request and seller upload in Chrome.
 
 ### Running the Part 2c shelf evaluation
 
@@ -117,7 +119,7 @@ Part 1 can ship alone and is what lets a real store sign in. Part 2 depends on p
 - **Decisions:**
   1. Implemented: both assisted and self-service registration as above; home sellers can register without a field rep.
   2. Who verifies a pending store (SEL-2), and how quickly. This is the gate between onboarding and trading.
-  3. Retention for shelf frames. Proposal: delete the frames when the draft is published or abandoned, and in any case after 30 days. They can show people and homes.
+  3. Shelf-frame retention is decided and implemented as described above.
   4. A per-store budget for reading (a number of cents), so a runaway case cannot spend without limit.
   5. Whether the owner's data may go to the vision provider under its zero-retention terms (check the account's agreement).
 - **Material:** 30 to 50 labelled shelf photos from real stores, including difficult ones (glare, handwritten tags, shelves in other languages), for the evaluation set.

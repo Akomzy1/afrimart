@@ -7,8 +7,10 @@ import { CATALOGUE_AUTO_APPROVE_CONFIDENCE } from "../config.js";
 import { publishDraft, releaseReviewedFrames } from "../catalogue/publication.js";
 import { checkListingForStore } from "../quality/categoryAccess.js";
 import { permitStatement, requiresManualReview } from "../quality/listingStandards.js";
-import { signedPhotoUrl } from "../storage/access.js";
-import { cleanShelfUploads } from "./shelfCapture.js";
+import { randomBytes } from "node:crypto";
+import { cleanShelfUploads, reviewPhotos, availableFrame } from "../catalogue/photoRetention.js";
+import { photoStore } from "../storage/store.js";
+import { decodeUpload } from "../storage/photos.js";
 
 const selection = { id: true, canonicalName: true, packSize: true, category: true, controlledCategory: true, temperatureClass: true } as const;
 const eligible: Prisma.StoreWhereInput = { ownerPhoneVerifiedAt: { not: null }, onboardingRail: "film",
@@ -33,16 +35,50 @@ export const catalogueReviewRouter = router({
     const ids = [...new Set(job.drafts.flatMap(d => [...d.candidateIds, ...(d.matchedProductId ? [d.matchedProductId] : [])]))];
     const products = await prisma.canonicalProduct.findMany({ where: { id: { in: ids } }, select: selection });
     const byId = new Map(products.map(p => [p.id,p]));
+    const photos = await reviewPhotos(job.drafts);
     const items = job.drafts.filter(d => d.decision !== "removed").map(d => ({
       id: d.id, name: d.suggestedName, rawText: d.rawText, brand: d.brand, packSize: d.packSize, priceCents: d.suggestedPriceCents,
       needsCheck: d.confidence < CATALOGUE_AUTO_APPROVE_CONFIDENCE, selected: d.matchedProductId, decision: d.decision,
       status: d.status, note: d.reviewNote,
-      preview: !job.submittedAt && d.frameNames[0] ? signedPhotoUrl("/photos/shelf/" + d.frameNames[0]) : null,
+      preview: !job.submittedAt ? photos(d.frameNames).shelfPhoto : null,
+      photoRequestId: d.status === "pending_review" ? d.photoRequestId : null,
       candidates: [...new Set([...d.candidateIds, ...(d.matchedProductId ? [d.matchedProductId] : [])])].flatMap(id => byId.get(id) ?? []),
     }));
-    return { state: job.state, revision: job.revision, submitted: !!job.submittedAt, message: job.message, items,
+    const captureExpired = ["failed", "queued"].includes(job.state) && !await prisma.shelfFrame.count({ where: { ...availableFrame(), sessionId: job.sessionId } });
+    return { captureExpired, state: job.state, revision: job.revision, submitted: !!job.submittedAt, message: job.message, items,
       paused: process.env.SHELF_EXTRACTION_ENABLED !== "yes" && job.state === "queued" };
   }),
+
+  supplyPhoto: merchantProcedure.input(z.object({ id: z.string(), requestId: z.string().length(32), image: z.string().min(1).max(10_000_000) }))
+    .mutation(async ({ ctx, input }) => {
+      const where = { id: input.id, storeId: ctx.storeId, store: eligible, decision: "staff", status: "pending_review" as const,
+        photoRequestId: input.requestId, job: { submittedAt: { not: null } } };
+      const pending = await prisma.catalogueDraft.findFirst({ where, select: { jobId: true } });
+      if (!pending?.jobId) throw bad("This photo request is no longer open.");
+      const bytes = decodeUpload(input.image);
+      const name = randomBytes(16).toString("hex") + ".jpg";
+      await prisma.shelfFrame.create({ data: { name, shelf: 0, position: 0, passId: input.requestId,
+        deleteAfter: new Date(Date.now() + 3_600_000) } });
+      try {
+        await photoStore.put("shelf", bytes, name);
+        await prisma.$transaction(async tx => {
+          await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id"=${ctx.storeId} FOR UPDATE`;
+          const draft = await tx.catalogueDraft.findFirst({ where });
+          if (!draft?.jobId) throw bad("This photo request is no longer open.");
+          const sessionId = draft.jobId;
+          const last = await tx.shelfFrame.aggregate({ where: { sessionId, shelf: 0 }, _max: { position: true } });
+          const attached = await tx.shelfFrame.updateMany({ where: { name, sessionId: null, deleteAfter: { gt: new Date() } },
+            data: { sessionId, position: (last._max.position ?? -1) + 1, deleteAfter: null } });
+          if (!attached.count) throw bad("The upload timed out. Please send the photo again.");
+          const previous = await tx.shelfFrame.findMany({ where: { ...availableFrame(), sessionId, name: { in: draft.frameNames } }, select: { name: true } });
+          await tx.catalogueDraft.update({ where: { id: draft.id }, data: { frameNames: [name, ...previous.map(f => f.name)], photoRequestId: null } });
+        });
+      } finally {
+        await prisma.shelfFrame.updateMany({ where: { name, sessionId: null }, data: { deleteAfter: new Date() } });
+        await cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
+      }
+      return { saved: true };
+    }),
 
   search: merchantProcedure.input(z.object({ text: z.string().trim().min(2).max(120) })).query(({ input }) =>
     prisma.canonicalProduct.findMany({ where: { OR: [{ canonicalName: { contains: input.text, mode: "insensitive" } },
@@ -63,8 +99,8 @@ export const catalogueReviewRouter = router({
 
   edit: merchantProcedure.input(z.object({ id: z.string(), revision, name: z.string().trim().min(1).max(300),
     priceCents: z.number().int().positive().max(10_000_000).nullable(), productId: z.string().nullable(),
-    action: z.enum(["confirm","staff","remove","merge"]), target: z.string().optional() })).mutation(async ({ ctx, input }) =>
-    prisma.$transaction(async tx => {
+    action: z.enum(["confirm","staff","remove","merge"]), target: z.string().optional() })).mutation(async ({ ctx, input }) => {
+    const result = await prisma.$transaction(async tx => {
       const job = await lockedJob(tx, ctx.storeId, input.revision);
       const where = { jobId: job.sessionId, storeId: ctx.storeId, status: "pending_review" as const };
       const draft = await tx.catalogueDraft.findFirst({ where: { ...where, id: input.id } });
@@ -90,8 +126,12 @@ export const catalogueReviewRouter = router({
           matchedProductId: product?.id ?? null, decision: input.action, temperatureClass: product?.temperatureClass ?? draft.temperatureClass } });
       }
       await tx.extractionJob.update({ where: { sessionId: job.sessionId }, data: { revision: { increment: 1 } } });
+      if (input.action === "remove" || input.action === "merge") await releaseReviewedFrames(tx, job.sessionId);
       return { saved: true };
-    })),
+    });
+    if (input.action === "remove" || input.action === "merge") await cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
+    return result;
+  }),
 
   publish: merchantProcedure.input(z.object({ revision })).mutation(async ({ ctx, input }) => {
     const result = await prisma.$transaction(async tx => {
@@ -112,16 +152,20 @@ export const catalogueReviewRouter = router({
       await releaseReviewedFrames(tx, job.sessionId);
       return { submitted: true };
     }, { timeout: 30_000 });
-    void cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
+    await cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
     return result;
   }),
 
   refilm: merchantProcedure.input(z.object({ revision })).mutation(async ({ ctx, input }) =>
     prisma.$transaction(async tx => {
-      const job = await lockedJob(tx, ctx.storeId, input.revision);
+      await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id"=${ctx.storeId} FOR UPDATE`;
+      const job = await tx.extractionJob.findFirst({ where: { session: { storeId: ctx.storeId, store: eligible }, revision: input.revision, submittedAt: null } });
+      if (!job) throw bad("Reload the catalogue before re-filming.");
+      if (job.state !== "ready" && (!["failed", "queued"].includes(job.state) || await tx.shelfFrame.count({ where: { ...availableFrame(), sessionId: job.sessionId } })))
+        throw bad("This capture is still in use.");
       if (await tx.catalogueDraft.count({ where: { jobId: job.sessionId, decision: { not: "removed" } } }))
         throw bad("Remove remaining drafts before starting another pass.");
-      await tx.extractionJob.delete({ where: { sessionId: job.sessionId } });
+      if (!(await tx.extractionJob.deleteMany({ where: { sessionId: job.sessionId, state: job.state } })).count) throw bad("Reload the catalogue before re-filming.");
       await tx.filmSession.update({ where: { id: job.sessionId }, data: { finishedAt: null, revision: { increment: 1 } } });
       return { ready: true };
     })),

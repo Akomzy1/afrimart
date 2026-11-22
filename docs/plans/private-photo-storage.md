@@ -39,7 +39,7 @@ With none of them set, photos go to `.uploads/` on this machine. That is for dev
 ### Setting up the bucket (once, by a person)
 
 1. Create a private bucket in the US region you choose. On AWS, turn on Block Public Access for all four settings. On R2, do not attach a public domain or enable the r2.dev URL.
-2. Create an access key limited to that one bucket with read, write and delete on objects. Nothing else.
+2. Scope the access key to the private bucket. Shelf cleanup needs to confirm a missing object by HEAD/GET. On AWS, grant the appropriate bucket list permission for a missing key to return 404. With versioning, grant `s3:DeleteObjectVersion` for the shelf prefix so the worker can erase earlier versions as well as the current one. Object Lock or an external retention rule that prevents deletion is incompatible with the shelf-photo deadline.
 3. Set the variables above on the backend only. They never go to the apps.
 4. Start the server. At start-up it writes a probe object, asks for it with no credentials, and removes it; if the bucket answers an anonymous request it refuses to start.
 

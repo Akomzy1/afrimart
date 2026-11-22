@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { prisma } from "../db.js";
 import { photoStore } from "../storage/store.js";
 import { mergeReadings, readingSchema, resolveProducts, type Seen, type Reader } from "./extraction.js";
+import { cleanShelfUploads, cutoff, releaseReviewedFrames } from "./photoRetention.js";
 import { liveReader } from "./providers.js";
 
 export async function processNextCapture(readerFor: (storeId: string) => Reader = liveReader, onlySession?: string) {
@@ -23,7 +24,8 @@ export async function processNextCapture(readerFor: (storeId: string) => Reader 
   const claim = { sessionId, lease, state: "running" };
   try {
     const session = await prisma.filmSession.findUniqueOrThrow({ where: { id: sessionId },
-      include: { frames: { orderBy: [{ shelf: "asc" }, { position: "asc" }] } } });
+      include: { frames: { where: { uploadedAt: { gt: cutoff() } }, orderBy: [{ shelf: "asc" }, { position: "asc" }] } } });
+    if (!session.frames.length) throw new Error("No available shelf photos.");
     const provider = readerFor(session.storeId);
     async function renew() {
       const result = await prisma.extractionJob.updateMany({ where: { ...claim, session: { store: {
@@ -37,7 +39,7 @@ export async function processNextCapture(readerFor: (storeId: string) => Reader 
       const batch = session.frames.slice(i,i+4);
       const images = await Promise.all(batch.map(async f => {
         const image = await photoStore.read("shelf", f.name);
-        if (!image) throw new Error("A saved frame is unavailable.");
+        if (!image || f.uploadedAt <= cutoff()) throw new Error("A saved frame is unavailable.");
         return image;
       }));
       for (const raw of await provider.read(images, i/4)) {
@@ -55,10 +57,12 @@ export async function processNextCapture(readerFor: (storeId: string) => Reader 
       const won = await tx.extractionJob.updateMany({ where: claim, data: { state: "ready", lease: null, leaseUntil: null } });
       if (!won.count) throw new Error("Extraction lease expired.");
       if (drafts.length) await tx.catalogueDraft.createMany({ data: drafts.map(d => ({ ...d, storeId: session.storeId, jobId: sessionId })) });
+      await releaseReviewedFrames(tx, sessionId);
     });
+    await cleanShelfUploads().catch(() => console.warn("Shelf cleanup will retry."));
   } catch (error) {
     const budget = error instanceof Error && error.message === "Daily shelf reading budget reached.";
-    const message = budget ? "Today's reading budget has been reached. Try again tomorrow." : "We couldn't finish reading these shelves. Your photos are saved.";
+    const message = budget ? "Today's reading budget has been reached. Try again tomorrow." : "We couldn't finish reading these shelves. Check your saved photos before retrying.";
     await prisma.extractionJob.updateMany({ where: claim, data: { state: "failed", message, lease: null, leaseUntil: null } });
     console.warn("Shelf extraction failed", { sessionId, reason: error instanceof Error ? error.name : "Error", budget });
   }

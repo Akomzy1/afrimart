@@ -237,6 +237,32 @@ describe("the S3 photo store, against a server that checks every signature", () 
   });
   after(() => fake.close());
 
+  test("shelf purge removes stored versions and a delete marker, including after a failed delete", async () => {
+    const versions = new Map([["first+/=", Buffer.from("first upload")], ["second", Buffer.from("retry")], ["marker", Buffer.alloc(0)]]);
+    let unavailable = true;
+    const versioned = new S3Client(config, async (input, init) => {
+      const current = [...versions.keys()].at(-1);
+      if (init?.method === "HEAD") {
+        const headers = new Headers();
+        if (current) headers.set("x-amz-version-id", current);
+        if (current === "marker") headers.set("x-amz-delete-marker", "true");
+        return new Response(null, { headers, status: current && current !== "marker" ? 200 : 404 });
+      }
+      assert.equal(init?.method, "DELETE");
+      assert.equal(new URL(String(input)).searchParams.get("versionId"), current);
+      if (unavailable) return new Response(null, { status: 503 });
+      versions.delete(current!);
+      return new Response(null, { status: 204 });
+    });
+    const versionStore = new S3PhotoStore(versioned);
+    const name = "a".repeat(32) + ".jpg";
+    await assert.rejects(versionStore.removeShelfFrame(name));
+    assert.equal(versions.size, 3);
+    unavailable = false;
+    await versionStore.removeShelfFrame(name);
+    assert.equal(versions.size, 0);
+  });
+
   const jpegWithGps = () =>
     sharp({ create: { width: 64, height: 48, channels: 3, background: "#cc9966" } })
       .jpeg()

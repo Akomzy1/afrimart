@@ -179,13 +179,15 @@ export class S3Client {
     return { url: new URL(`https://${host}${uriEncode(path, true)}`), host, path };
   }
 
-  private async send(method: string, key: string, body: Buffer | null = null, headers: Record<string, string> = {}): Promise<Response> {
+  private async send(method: string, key: string, body: Buffer | null = null, headers: Record<string, string> = {}, query: Record<string, string> = {}): Promise<Response> {
     const { url, host, path } = this.target(key);
+    for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
     const payload = body ?? Buffer.alloc(0);
     const signed = signRequest({
       method,
       host,
       path,
+      query,
       // The length is signed along with everything else, so a body cannot be swapped for a longer or shorter one in transit.
       headers: body ? { ...headers, "content-length": String(payload.length) } : headers,
       payloadHash: sha256(payload),
@@ -229,6 +231,21 @@ export class S3Client {
     if (res.status === 404) return null;
     if (!res.ok) throw new S3Error(res.status, `The photo store refused a lookup (${res.status}).`);
     return { size: Number(res.headers.get("content-length") ?? 0) };
+  }
+
+  /** Keys are unique per upload. Remove each stored version, including versions
+   * created by a retried PUT, rather than installing a recoverable delete marker. */
+  async purgeShelfObject(key: string): Promise<void> {
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const head = await this.send("HEAD", key);
+      const version = head.headers.get("x-amz-version-id");
+      const marker = head.headers.get("x-amz-delete-marker") === "true";
+      if (head.status === 404 && !marker) return;
+      if (!head.ok && !(head.status === 404 && marker && version)) throw new S3Error(head.status, "Shelf photo lookup failed.");
+      const response = await this.send("DELETE", key, null, {}, version ? { versionId: version } : {});
+      if (!response.ok && response.status !== 404) throw new S3Error(response.status, "Shelf photo deletion failed.");
+    }
+    throw new Error("Shelf photo still has stored versions. Retry deletion.");
   }
 
   async deleteObject(key: string): Promise<void> {
@@ -289,7 +306,7 @@ export class S3PhotoStore implements PhotoStore {
   /** Same contract as the local store: sanitise first, store under a random name, return the path. */
   async removeShelfFrame(name: string): Promise<void> {
     if (!PHOTO_NAME.test(name)) throw new Error("Invalid shelf photo name");
-    await this.client.deleteObject(this.key("shelf", name));
+    await this.client.purgeShelfObject(this.key("shelf", name));
   }
 
   async put(kind: PhotoKind, upload: Buffer, name = `${randomBytes(16).toString("hex")}.jpg`): Promise<string> {

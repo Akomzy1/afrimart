@@ -1,3 +1,5 @@
+import { prisma } from "../db.js";
+import { availableFrame } from "../catalogue/photoRetention.js";
 import type { FastifyInstance } from "fastify";
 import type { PhotoKind } from "./photos.js";
 import { photoStore } from "./store.js";
@@ -24,7 +26,10 @@ export function registerPhotoRoute(server: FastifyInstance, store: PhotoStore = 
       let bytes: Buffer | null = null;
       if (allowed) {
         try {
-          bytes = await store.read(kind as PhotoKind, name);
+          if (kind !== "shelf" || await prisma.shelfFrame.count({ where: { name, ...availableFrame() } })) {
+            bytes = await store.read(kind as PhotoKind, name);
+            if (bytes && kind === "shelf" && !await prisma.shelfFrame.count({ where: { name, ...availableFrame() } })) bytes = null;
+          }
         } catch (e) {
           // The store being down is not "no such photo", and must not look like it to a caller.
           req.log.error({ err: e }, "photo store read failed");

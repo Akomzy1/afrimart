@@ -17,6 +17,7 @@
     "check:setup": "node tools/check-setup.mjs",
     "e2e:ops": "tsx tools/browser/ops-console.e2e.ts",
     "eval:shelves": "node --import tsx tools/evaluation/shelves.mts",
+    "verify:shelf-retention": "node --env-file=services/backend/.env --import tsx tools/evaluation/retention.mts",
     "test:shelf-evaluation": "node --import tsx --test tools/evaluation/shelves.test.mts",
     "e2e:catalogue": "node --env-file=services/backend/.env --import tsx tools/browser/catalogue-review.e2e.ts",
     "e2e:shelves": "node --env-file=services/backend/.env --import tsx tools/browser/shelf-capture.e2e.ts",

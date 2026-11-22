@@ -15,7 +15,7 @@ export default function ReviewPage() {
   const router = useRouter();
   const utils = trpc.useUtils();
   const review = trpc.catalogueReview.state.useQuery(undefined, { retry: false,
-    refetchInterval: q => ["queued","running"].includes(q.state.data?.state ?? "") && !q.state.data?.paused ? 3000 : false });
+    refetchInterval: q => ["queued","running"].includes(q.state.data?.state ?? "") && !q.state.data?.paused ? 3000 : q.state.data?.submitted ? 10000 : false });
   const [active, setActive] = useState("");
   const refresh = async () => { await review.refetch(); };
   const retry = trpc.catalogueReview.retry.useMutation({ onSuccess: refresh });
@@ -35,9 +35,9 @@ export default function ReviewPage() {
     <div className="mr-scroll"><div className="mr-onb-content">
       {failure && <p role="alert" className="mr-signin-err">{failure.message}</p>}
       {!data && !review.error && <p role="status">Opening your catalogue…</p>}
-      {data && !ready && <div className="mr-onb-head"><h1 className="serif">{data.state === "failed" ? "Your photos are saved." : data.paused ? "Your shelves are in the queue." : "Reading your shelves…"}</h1>
+      {data && !ready && <div className="mr-onb-head"><h1 className="serif">{data.state === "failed" ? "Shelf reading stopped." : data.paused ? "Your shelves are in the queue." : "Reading your shelves…"}</h1>
         <p>{data.message ?? (data.paused ? "Shelf reading is paused. You can return here when it resumes." : "You can leave and return to this screen.")}</p>
-        {data.state === "failed" && <button className="mr-linkbtn" disabled={retry.isPending} onClick={() => retry.mutate()}>Try reading again</button>}</div>}
+        {data.captureExpired ? <button className="mr-linkbtn" disabled={refilm.isPending} onClick={() => refilm.mutate({ revision: data.revision })}>Expired photos · film again</button> : data.state === "failed" && <button className="mr-linkbtn" disabled={retry.isPending} onClick={() => retry.mutate()}>Try reading again</button>}</div>}
       {data && ready && (item && !done ? <Editor key={item.id + "-" + data.revision} item={item} items={data.items} revision={data.revision}
         close={() => setActive("")} refresh={refresh} /> : <>
         <div className="mr-onb-head"><h1 className="serif">{done ? "Catalogue submitted." : data.items.length ? "Check your products." : "No products to review."}</h1>
@@ -49,6 +49,7 @@ export default function ReviewPage() {
             <div className="price">{i.priceCents === null ? "Price needed" : "$" + priceText(i.priceCents)}</div>
             <p>{i.status === "rejected" ? i.note ?? "Declined by staff" : i.status === "approved" ? "Listing saved" : i.decision === "staff" ? "For staff review" :
               i.decision === "confirm" ? "Confirmed" : i.needsCheck ? "Needs a closer look" : "Ready to check"}</p>
+            {i.photoRequestId && <FreshShelfPhoto id={i.id} requestId={i.photoRequestId} refresh={refresh} />}
             {!done && <button className="mr-linkbtn" onClick={() => { publish.reset(); setActive(i.id); }}>Review item</button>}</div>
         </div>)}</div>
         {!done && !data.items.length && <button className="mr-bigbtn green" disabled={refilm.isPending} onClick={() => refilm.mutate({ revision: data.revision })}>Re-film shelves</button>}
@@ -58,6 +59,30 @@ export default function ReviewPage() {
       onClick={() => publish.mutate({ revision: data.revision })}>{publish.isPending ? "Submitting…" : "Submit catalogue"}</button></div>}
     {done && <div className="mr-actionbar"><Link className="mr-bigbtn green" href="/">Go to my store</Link></div>}
   </div>;
+}
+
+function FreshShelfPhoto({ id, requestId, refresh }: { id: string; requestId: string; refresh: () => Promise<void> }) {
+  const upload = trpc.catalogueReview.supplyPhoto.useMutation({ onSuccess: refresh });
+  const [error, setError] = useState("");
+  async function choose(file?: File) {
+    if (!file) return;
+    setError("");
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas unavailable");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      upload.mutate({ id, requestId, image: canvas.toDataURL("image/jpeg", 0.85).split(",")[1]! });
+    } catch { setError("Choose a readable photo and try again."); }
+  }
+  return <div><label>Staff requested a fresh shelf photo
+    <input type="file" accept="image/*" disabled={upload.isPending} onChange={e => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
+  </label>{(error || upload.error) && <p role="alert">{error || upload.error?.message}</p>}</div>;
 }
 
 function Editor({ item, items, revision, close, refresh }: { item: Item; items: Item[]; revision: number; close: () => void; refresh: () => Promise<void> }) {

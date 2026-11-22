@@ -6,10 +6,7 @@ export const staffDrafts: Prisma.CatalogueDraftWhereInput = { OR: [{ jobId: null
   decision: "staff", job: { submittedAt: { not: null } },
 }] };
 
-export async function releaseReviewedFrames(tx: Prisma.TransactionClient, jobId: string) {
-  if (await tx.catalogueDraft.count({ where: { jobId, status: "pending_review" } })) return;
-  await tx.shelfFrame.updateMany({ where: { sessionId: jobId }, data: { sessionId: null, deleteAfter: new Date() } });
-}
+export { releaseReviewedFrames } from "./photoRetention.js";
 
 export async function publishDraft(tx: Prisma.TransactionClient, draft: CatalogueDraft, productId: string, priceCents: number, note?: string) {
   const product = await tx.canonicalProduct.findUnique({ where: { id: productId } });

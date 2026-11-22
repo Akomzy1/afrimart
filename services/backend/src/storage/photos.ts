@@ -145,8 +145,9 @@ export class LocalPhotoStore implements PhotoStore {
     if (!PHOTO_KINDS.includes(kind) || !PHOTO_NAME.test(name)) return null;
     try {
       return await readFile(path.join(this.root, kind, name));
-    } catch {
-      return null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
   }
 }
