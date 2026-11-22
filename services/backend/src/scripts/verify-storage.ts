@@ -34,7 +34,7 @@ if (!config || !config.endpoint) {
 }
 const client = new S3Client({ ...config, keyPrefix: "verify/", serverSideEncryption: null });
 const store = new S3PhotoStore(client);
-const made: { kind: "packing" | "claim" | "document"; name: string }[] = [];
+const made: { kind: "packing" | "claim" | "document" | "shelf"; name: string }[] = [];
 
 try {
   console.log(`=== a real S3-compatible server at ${config.endpoint}, bucket ${config.bucket} ===`);
@@ -56,6 +56,29 @@ try {
     check(`${kind}: nothing from the camera or GPS survived`, back !== null && !back.includes(Buffer.from("ZZREALMAKE")) && !back.includes(Buffer.from("GPS")) && (await sharp(back).metadata()).exif === undefined);
     check(`${kind}: it is a JPEG`, back?.subarray(0, 3).toString("hex") === "ffd8ff");
   }
+
+  const shelfPath = await store.put("shelf", jpeg);
+  const shelfName = shelfPath.split("/").pop()!;
+  made.push({ kind: "shelf", name: shelfName });
+  const original = await store.read("shelf", shelfName);
+  check("the shelf fixture exists in object storage", Boolean(original?.length));
+  let rejectedDeletes = 0;
+  const failing = new S3PhotoStore(new S3Client(client.config, async (url, init) => {
+    if (init?.method !== "DELETE") return fetch(url, init);
+    rejectedDeletes++;
+    return new Response(null, { status: 503 });
+  }));
+  let failedDelete = false;
+  try {
+    await failing.removeShelfFrame(shelfName);
+  } catch {
+    failedDelete = true;
+  }
+  const retained = await store.read("shelf", shelfName);
+  check("the injected delete failure is reported and the stored bytes survive", failedDelete && rejectedDeletes > 0 && !!original && !!retained?.equals(original));
+  await store.removeShelfFrame(shelfName);
+  check("the retry removes the object from both HEAD and GET", !await store.has("shelf", shelfName) && await store.read("shelf", shelfName) === null);
+  await store.removeShelfFrame(shelfName);
 
   check("a missing object is null, not an error", (await store.read("claim", "00000000000000000000000000000000.jpg")) === null);
   check("a photo is only found under the kind it was stored with", (await store.read("claim", made.find((m) => m.kind === "document")!.name)) === null);
@@ -127,7 +150,10 @@ try {
     await rm(root, { recursive: true, force: true });
   }
 } finally {
-  for (const m of made) await client.deleteObject(`verify/${m.kind}/${m.name}`).catch(() => undefined);
+  for (const m of made) {
+    const cleanup = m.kind === "shelf" ? store.removeShelfFrame(m.name) : client.deleteObject(`verify/${m.kind}/${m.name}`);
+    await cleanup.catch(() => undefined);
+  }
 }
 
 console.log(failures === 0 ? "\nAll storage checks passed against a real S3-compatible server." : `\n${failures} storage check(s) FAILED.`);

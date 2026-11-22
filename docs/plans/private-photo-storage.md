@@ -24,7 +24,7 @@ The bucket is never read by a browser. There are no presigned bucket URLs, so th
 
 ## Where photos live
 
-An S3-compatible bucket, chosen by configuration: AWS S3, Cloudflare R2, or MinIO. The adapter (`storage/s3.ts`) speaks the S3 REST API with Signature Version 4 directly, with no SDK. Its signer is checked against AWS's published worked examples, and against a real MinIO server by `npm run verify:storage`.
+An S3-compatible bucket, chosen by configuration: AWS S3, Cloudflare R2, or MinIO. The adapter (`storage/s3.ts`) speaks the S3 REST API with Signature Version 4 directly, with no SDK. The unit suite checks signing against AWS’s published examples. With a disposable S3-compatible endpoint configured, `npm run verify:storage --workspace=@afrimart/backend` also writes a shelf photo, injects a failed delete, compares the surviving bytes and checks both HEAD and GET after retrying. Run it against a dedicated test bucket. Production permissions and version deletion need verification on the selected provider.
 
 | Variable | Meaning |
 |---|---|
