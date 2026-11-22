@@ -47,7 +47,8 @@ export function liveReader(storeId: string, send: typeof fetch = fetch): Reader 
     midnight.setUTCHours(0,0,0,0);
     const reserved = Math.ceil(maxCost);
     const record = await prisma.$transaction(async tx => {
-      await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id" = ${storeId} FOR UPDATE`;
+      const owner = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Store" WHERE "id" = ${storeId} FOR UPDATE`;
+      if (!owner.length) throw new Error("The store for this reading budget does not exist.");
       const spent = await tx.extractionUsage.aggregate({ where: { storeId, createdAt: { gte: midnight } }, _sum: { micros: true } });
       if ((spent._sum.micros ?? 0) + reserved > cap) throw new Error("Daily shelf reading budget reached.");
       return tx.extractionUsage.create({ data: { storeId, model, inputBytes: bytes, micros: reserved } });

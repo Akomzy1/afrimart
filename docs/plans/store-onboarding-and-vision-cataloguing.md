@@ -1,6 +1,6 @@
 # Store onboarding and vision cataloguing: the plan
 
-Status: Parts 1, 2a and 2b are implemented locally. Part 2c remains planned. Covers PRD ONB-1, ONB-2, ONB-3, ONB-6, ONB-8, CAT-2, CAT-3, CAT-6 and the QC-1 rules as they meet a draft catalogue.
+Status: Parts 1, 2a and 2b are implemented locally. Part 2c has an offline evaluator and labelled placeholders. Real-store evaluation and threshold selection remain pending. Covers PRD ONB-1, ONB-2, ONB-3, ONB-6, ONB-8, CAT-2, CAT-3, CAT-6 and the QC-1 rules as they meet a draft catalogue.
 
 ## Where things stand
 
@@ -59,6 +59,16 @@ A `FilmSession` row groups the frames for one store and one attempt, so "re-shoo
 **Part 2a implementation.** A verified seller with a completed profile and the filming preference opens `/onboarding/shelves`. The browser evaluates exposure, Laplacian variance, and the spread of edges around the centre, then keeps the sharpest candidate for each distinct view. The seller saves each shelf as a unit and can resume or replace it before finishing. The server enforces a 60-frame session limit. A replacement commits only after every new JPEG has been sanitised and stored. Superseded or interrupted uploads are tracked for cleanup on save and server startup. Finishing leaves a private session available for Part 2b.
 
 The local browser check is `npm run e2e:shelves`. Image-quality cutoffs are provisional until the real-store evaluation. The retention period for accepted frames remains an open decision before deployment.
+
+### Running the Part 2c shelf evaluation
+
+Run `npm run eval:shelves` from the repository root. It generates 36 placeholder JPEGs in memory, replays scripted product readings through the catalogue matcher and checks camera guidance on the decoded images. Six shelf captures provide 18 calibration frames and six separate captures provide 18 validation frames. The script requires no provider credentials or database connection.
+
+To inspect the images and labels, run `npm run eval:shelves -- --write-placeholders tmp/shelf-evaluation/example --report tmp/shelf-evaluation/report.json` with fresh output paths. Replay an exported set with `npm run eval:shelves -- --dataset tmp/shelf-evaluation/example/manifest.json`. Run regression checks with `npm run test:shelf-evaluation`.
+
+The manifest records the data source, catalogue SKUs and capture split. For each capture, label the expected camera guidance per image, product names, pack size, optional brand, SKU, price in cents and zero-based supporting frame indices. A null price means unreadable. Each capture references a JSON recording with the reader model, ordered frame SHA-256 hashes and readings per batch (up to four images). If matching needs embeddings, include `embeddingModel` and the recorded `embeddings.query` and `embeddings.document` vectors keyed by the exact input text. Keep photos, labels and recordings together in the ignored local directory. For real evaluation, collect independent calibration and validation captures and record actual provider outputs.
+
+The baseline counts product detection precision and recall, correct prices across all legible labelled products, and incorrect draft pre-selections. Each missed legible tag counts against price accuracy. Trial cutoffs are chosen only on calibration captures and checked on held-out captures. Placeholder results exercise the scorer. The default production cutoff remains 0.92 pending evaluation on real-store photos.
 
 ### Reading
 

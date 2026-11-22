@@ -27,3 +27,5 @@ prisma/dev.db
 
 # Local visual verification artifacts
 tmp/onboarding-qa/
+# Private shelf evaluation photos, annotations and provider recordings
+tmp/shelf-evaluation/

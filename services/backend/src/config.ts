@@ -86,7 +86,10 @@ if (TAKE_RATE_BPS < TAKE_RATE_MIN_BPS || TAKE_RATE_BPS > TAKE_RATE_MAX_BPS) {
  * may be auto-approved; below it a human must confirm before publishing.
  * Provisional: set from real extraction accuracy once there is any.
  */
-export const CATALOGUE_AUTO_APPROVE_CONFIDENCE = Number(process.env.CATALOGUE_AUTO_APPROVE_CONFIDENCE ?? 0.92);
+export const CATALOGUE_AUTO_APPROVE_CONFIDENCE = Number(process.env.CATALOGUE_AUTO_APPROVE_CONFIDENCE?.trim() || 0.92);
+if (!Number.isFinite(CATALOGUE_AUTO_APPROVE_CONFIDENCE) || CATALOGUE_AUTO_APPROVE_CONFIDENCE < 0 || CATALOGUE_AUTO_APPROVE_CONFIDENCE > 1) {
+  throw new Error("CATALOGUE_AUTO_APPROVE_CONFIDENCE must be a number between 0 and 1.");
+}
 
 /**
  * ADM-3 — hours a shipment may sit unaccepted or unposted before the console

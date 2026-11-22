@@ -16,7 +16,7 @@ export interface Reader {
 }
 export const normalize = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
-function packKey(value: string) {
+export function packKey(value: string) {
   const compact = normalize(value.replace(/(\d)\.(\d)/g, "$1decimal$2")).replace(/\s/g, "").replace("decimal", ".");
   const unit = /^(\d+(?:\.\d+)?)(kg|g|ml|l)$/.exec(compact);
   if (!unit) return compact;
@@ -49,7 +49,7 @@ function cosine(a: number[], b: number[]) {
   return na && nb ? Math.max(0, Math.min(1, dot / Math.sqrt(na*nb))) : 0;
 }
 
-export async function resolveProducts(rows: Seen[], products: Product[], reader: Reader) {
+export async function resolveProducts(rows: Seen[], products: Product[], reader: Reader, threshold = CATALOGUE_AUTO_APPROVE_CONFIDENCE) {
   let docs: number[][] | undefined;
   const drafts = [];
   for (const row of rows) {
@@ -68,7 +68,7 @@ export async function resolveProducts(rows: Seen[], products: Product[], reader:
     const ranked = scores.sort((a,b) => b.score - a.score).filter(s => s.score >= 0.65).slice(0,3);
     const top = ranked[0];
     const confidence = Math.min(row.confidence, top?.score ?? 0, row.priceCents === null ? 0.5 : 1);
-    const clear = top && confidence >= CATALOGUE_AUTO_APPROVE_CONFIDENCE && !!row.packSize && top.score - (ranked[1]?.score ?? 0) >= 0.05;
+    const clear = top && row.priceCents !== null && confidence >= threshold && !!row.packSize && top.score - (ranked[1]?.score ?? 0) >= 0.05;
     drafts.push({ rawText: row.rawText, suggestedName: row.name, brand: row.brand, packSize: row.packSize,
       suggestedPriceCents: row.priceCents, confidence, matchedProductId: clear ? top.id : null,
       candidateIds: ranked.map(r => r.id), frameNames: row.frameNames });
