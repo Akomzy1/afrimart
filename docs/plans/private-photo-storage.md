@@ -43,6 +43,10 @@ With none of them set, photos go to `.uploads/` on this machine. That is for dev
 3. Set the variables above on the backend only. They never go to the apps.
 4. Start the server. At start-up it writes a probe object, asks for it with no credentials, and removes it; if the bucket answers an anonymous request it refuses to start.
 
+### Checking a private versioned staging bucket
+
+Load the staging bucket’s `S3_*` settings into the shell and run `npm run verify:storage:versioned --workspace=@afrimart/backend`. The check writes two synthetic images to one randomly named shelf key under the configured prefix. It verifies anonymous access is denied, reads the older version after the second upload, runs the application’s shelf purge and checks each version by ID. The staging credentials need permission to read object versions as well as delete them. The check uses the bucket’s existing privacy, encryption and versioning settings.
+
 ### Moving what is already on disk
 
 `npm run migrate:photos --workspace=@afrimart/backend` copies the `.uploads/` folder into the bucket, keeping each name so no database row changes. It reads every copy back and compares it, never overwrites a differing file (it reports it), never deletes anything, and copies nothing the second time. Run it with `-- --dry-run` first.

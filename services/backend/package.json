@@ -25,6 +25,7 @@
     "verify:claims": "tsx src/scripts/verify-claims.ts",
     "verify:sign-in": "tsx src/scripts/verify-sign-in.ts",
     "verify:onboarding": "tsx src/scripts/verify-onboarding.ts",
+    "verify:storage:versioned": "tsx src/scripts/verify-versioned-storage.ts",
     "verify:storage": "tsx src/scripts/verify-storage.ts",
     "migrate:photos": "tsx src/scripts/migrate-photos-to-s3.ts"
   },

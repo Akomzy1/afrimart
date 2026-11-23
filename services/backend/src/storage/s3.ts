@@ -211,16 +211,17 @@ export class S3Client {
     throw new S3Error(0, `The photo store could not be reached: ${(last as Error)?.message ?? "unknown error"}`);
   }
 
-  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  async putObject(key: string, body: Buffer, contentType: string): Promise<string | null> {
     const headers: Record<string, string> = { "content-type": contentType };
     if (this.config.serverSideEncryption) headers["x-amz-server-side-encryption"] = this.config.serverSideEncryption;
     const res = await this.send("PUT", key, body, headers);
     if (!res.ok) throw new S3Error(res.status, `The photo store refused a write (${res.status}).`);
+    return res.headers.get("x-amz-version-id");
   }
 
   /** The object's bytes, or null if there is no such object. Any other failure throws. */
-  async getObject(key: string): Promise<Buffer | null> {
-    const res = await this.send("GET", key);
+  async getObject(key: string, versionId?: string): Promise<Buffer | null> {
+    const res = await this.send("GET", key, null, {}, versionId ? { versionId } : {});
     if (res.status === 404) return null;
     if (!res.ok) throw new S3Error(res.status, `The photo store refused a read (${res.status}).`);
     return Buffer.from(await res.arrayBuffer());
@@ -248,8 +249,8 @@ export class S3Client {
     throw new Error("Shelf photo still has stored versions. Retry deletion.");
   }
 
-  async deleteObject(key: string): Promise<void> {
-    const res = await this.send("DELETE", key);
+  async deleteObject(key: string, versionId?: string): Promise<void> {
+    const res = await this.send("DELETE", key, null, {}, versionId ? { versionId } : {});
     if (!res.ok && res.status !== 404) throw new S3Error(res.status, `The photo store refused a delete (${res.status}).`);
   }
 
