@@ -4,6 +4,7 @@ import { readStorefront } from "./storefront.js";
 import { publicAddress, readPublicPage } from "./storefrontHttp.js";
 
 const site = "https://fixture.example/store/";
+const shopPage = '<script>var Shopify = {}; Shopify.shop = "fixture.myshopify.com";</script>';
 const product = (id: number, currency = "USD") => ({
   id, name: "Rice &amp; beans 1 kg", prices: { price: "499", currency_code: currency, currency_minor_unit: 2 },
 });
@@ -54,4 +55,67 @@ test("the public reader rejects local network destinations before connecting", a
   }
   assert.equal(publicAddress("1.1.1.1"), true);
   await assert.rejects(readPublicPage(new URL("http://127.0.0.1/"), AbortSignal.timeout(500)), /publicly accessible/);
+});
+
+test("Shopify follows both cursors and preserves variant identity, pack size and currency", async () => {
+  const last = { hasNextPage: false, endCursor: null };
+  const variant = (id: number, value: string, currencyCode = "USD") => ({
+    id: "gid://shopify/ProductVariant/" + id, title: value, selectedOptions: [{ name: "Size", value }],
+    price: { amount: "6.50", currencyCode },
+  });
+  const requests: string[] = [];
+  const rows = await readStorefront(site, async (url, _signal, body) => {
+    if (url.href === site) return { url, status: 200, body: shopPage };
+    assert.equal(url.href, "https://fixture.myshopify.com/api/2026-10/graphql.json");
+    const { query, variables } = JSON.parse(body!);
+    requests.push(variables.after ?? "first");
+    let data;
+    if (query.includes("query MoreVariants")) {
+      assert.deepEqual(variables, { id: "p1", after: "v2" });
+      data = { product: { variants: { pageInfo: last, nodes: [variant(12, "1 L", "CAD")] } } };
+    } else if (variables.after === "p2") {
+      data = { products: { pageInfo: last, nodes: [{ id: "p2", title: "Rice", vendor: "",
+        variants: { pageInfo: last, nodes: [variant(13, "1 kg")] } }] } };
+    } else {
+      data = { products: { pageInfo: { hasNextPage: true, endCursor: "p2" }, nodes: [{ id: "p1", title: "Oil", vendor: "Test",
+        variants: { pageInfo: { hasNextPage: true, endCursor: "v2" }, nodes: [variant(11, "500 ml")] } }] } };
+    }
+    return { url, status: 200, body: JSON.stringify({ data }) };
+  });
+  assert.deepEqual(requests, ["first", "v2", "p2"]);
+  assert.deepEqual(rows.map(p => [p.sourceKey, p.reading.name, p.reading.packSize, p.reading.priceCents]),
+    [["gid://shopify/ProductVariant/11", "Oil", "500 ml", 650], ["gid://shopify/ProductVariant/12", "Oil", "1 L", null],
+      ["gid://shopify/ProductVariant/13", "Rice", "1 kg", 650]]);
+});
+
+test("a repeat import keeps the source of existing Shopify and page-markup drafts", async () => {
+  const home = shopPage + '<script type="application/ld+json">{"@type":"Product","name":"Oil","sku":"A"}</script>';
+  const offline = async (url: URL) => ({ url, status: url.href === site ? 200 : 403, body: home });
+  const [fallback] = await readStorefront(site, offline);
+  const [legacy] = await readStorefront(site, async url => {
+    assert.equal(url.href, site);
+    return offline(url);
+  }, fallback!.sourceKey);
+  assert.equal(legacy!.sourceKey, fallback!.sourceKey);
+  await assert.rejects(readStorefront(site, offline, "gid://shopify/ProductVariant/1"), /feed is unavailable/);
+});
+
+test("Shopify rejects partial GraphQL results and non-advancing pagination", async () => {
+  const payload = { data: { products: { nodes: [], pageInfo: { hasNextPage: true, endCursor: "same" } } } };
+  for (const response of [payload, { ...payload, errors: [{ message: "partial data" }] }]) {
+    await assert.rejects(readStorefront(site, async url => ({
+      url, status: 200, body: url.href === site ? shopPage : JSON.stringify(response),
+    })), /incomplete catalogue/);
+  }
+});
+
+test("a saved Shopify domain still identifies the feed after a custom-domain redirect", async () => {
+  let queried = false;
+  await assert.rejects(readStorefront("https://fixture.myshopify.com/", async (url, _signal, body) => {
+    if (!body) return { url: new URL(site), status: 200, body: "<p>Fixture shop</p>" };
+    queried = true;
+    assert.equal(url.hostname, "fixture.myshopify.com");
+    return { url, status: 503, body: "" };
+  }), /Shopify catalogue could not be loaded/);
+  assert.equal(queried, true);
 });

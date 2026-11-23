@@ -3,6 +3,7 @@ import { parse, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 import { z } from "zod";
 import type { Seen } from "./extraction.js";
 import { readPublicPage, type PageReader } from "./storefrontHttp.js";
+import { shopifyVariantPrefix, shopifyVariants } from "./shopify.js";
 
 const limit = 500;
 type ProductRow = { sourceKey: string; reading: Seen };
@@ -25,7 +26,8 @@ function cents(value: unknown) {
 }
 function row(id: string, name: string, brand: string | null, size: string | null, priceCents: number | null): ProductRow {
   const packSize = size ?? name.match(/\b\d+(?:\.\d+)?\s*(?:kg|ml|g|l|oz|lb)\b/i)?.[0] ?? null;
-  return { sourceKey: createHash("sha256").update(id).digest("hex"), reading: {
+  const sourceKey = id.startsWith(shopifyVariantPrefix) ? id : createHash("sha256").update(id).digest("hex");
+  return { sourceKey, reading: {
     name, rawText: name, brand, packSize, priceCents, frameNames: [], confidence: 1 } };
 }
 const wooProduct = z.object({
@@ -64,14 +66,23 @@ function markupRows(value: unknown, rows: ProductRow[]) {
   }
 }
 
-export async function readStorefront(website: string, read: PageReader = readPublicPage) {
+export async function readStorefront(website: string, read: PageReader = readPublicPage, existingSourceKey?: string | null) {
   const signal = AbortSignal.timeout(30_000);
-  const home = await read(new URL(website), signal);
+  const saved = new URL(website);
+  const home = await read(saved, signal);
   if (home.status !== 200) throw Error("The saved storefront page could not be opened.");
   const scripts: string[] = [];
+  const useShopify = existingSourceKey ? existingSourceKey.startsWith(shopifyVariantPrefix) : undefined;
+  const shopHost = [home.url.hostname, saved.hostname].find(host => /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(host));
+  let shop = shopHost ? new URL("https://" + shopHost) : undefined;
   let woo = false, apiRoot = new URL("/wp-json/", home.url);
   for (const el of elements(parse(home.body))) {
     const attr = (name: string) => el.attrs.find(a => a.name === name)?.value ?? "";
+    if (el.tagName === "script" && !attr("src") && useShopify !== false) {
+      const script = el.childNodes.find(n => n.nodeName === "#text");
+      const domain = script && "value" in script && /\bShopify\.shop\s*=\s*["']([a-z0-9][a-z0-9-]*\.myshopify\.com)["']/i.exec(script.value);
+      if (domain) shop = new URL("https://" + domain[1]);
+    }
     if (el.tagName === "link" && attr("rel") === "https://api.w.org/") {
       const href = new URL(attr("href"), home.url);
       if (href.origin === home.url.origin) { apiRoot = href; woo = true; }
@@ -84,7 +95,20 @@ export async function readStorefront(website: string, read: PageReader = readPub
     }
   }
   const rows = new Map<string, ProductRow>();
-  if (woo) {
+  if (useShopify !== false && shop) {
+    for await (const { title, vendor, variant } of shopifyVariants(shop, read, signal)) {
+      const sizeOption = variant.selectedOptions.find(o => /^(size|weight|volume|pack size)$/i.test(o.name));
+      const otherOptions = variant.selectedOptions.filter(o => o !== sizeOption && o.value !== "Default Title");
+      const name = [title, ...otherOptions.map(o => o.value)].join(" · ");
+      const product = row(variant.id, field(name)!, field(vendor), field(sizeOption?.value),
+        variant.price.currencyCode === "USD" ? cents(variant.price.amount) : null);
+      product.reading.rawText = field(variant.title === "Default Title" ? title : title + " · " + variant.title)!;
+      rows.set(variant.id, product);
+      if (rows.size > limit) throw Error("This catalogue exceeds the 500-variant import limit.");
+    }
+  }
+  if (useShopify && !rows.size) throw Error("Your Shopify variant feed is unavailable. Try again.");
+  if (!rows.size && woo) {
     const url = new URL(apiRoot);
     if (url.searchParams.has("rest_route")) url.searchParams.set("rest_route", "/wc/store/v1/products");
     else url.pathname = url.pathname.replace(/\/?$/, "/wc/store/v1/products");
@@ -116,6 +140,6 @@ export async function readStorefront(website: string, read: PageReader = readPub
     }
     for (const product of markup) rows.set(product.sourceKey, product);
   }
-  if (!rows.size) throw Error("No supported products found. Use a WooCommerce storefront or a page with structured product details.");
+  if (!rows.size) throw Error("No supported products found. Use a Shopify or WooCommerce storefront, or a page with structured product details.");
   return [...rows.values()];
 }

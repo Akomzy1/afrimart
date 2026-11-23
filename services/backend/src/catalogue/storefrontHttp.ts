@@ -5,7 +5,7 @@ import { isIP } from "node:net";
 import ipaddr from "ipaddr.js";
 
 export type StorefrontPage = { url: URL; status: number; body: string; pages?: string };
-export type PageReader = (url: URL, signal: AbortSignal) => Promise<StorefrontPage>;
+export type PageReader = (url: URL, signal: AbortSignal, queryBody?: string) => Promise<StorefrontPage>;
 
 export function publicAddress(address: string) {
   const ip = ipaddr.parse(address);
@@ -13,7 +13,7 @@ export function publicAddress(address: string) {
   return ip.kind() === "ipv4" || (ip as ipaddr.IPv6).match(ipaddr.IPv6.parse("2000::"), 3);
 }
 
-export const readPublicPage: PageReader = async (start, signal) => {
+export const readPublicPage: PageReader = async (start, signal, queryBody) => {
   let url = start;
   for (let redirects = 0; redirects <= 3; redirects++) {
     signal.throwIfAborted();
@@ -27,10 +27,16 @@ export const readPublicPage: PageReader = async (start, signal) => {
       path: url.pathname + url.search, headers: { Host: url.host, Accept: "text/html, application/json", "Accept-Encoding": "identity" },
       signal, agent: false as const };
     const transport = url.protocol === "https:" ? https : http;
-    const response = await new Promise<http.IncomingMessage>((resolve, reject) => transport.get(options, resolve).on("error", reject));
+    const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
+      const request = transport.request({ ...options, method: queryBody ? "POST" : "GET" }, resolve);
+      request.on("error", reject);
+      if (queryBody) request.setHeader("Content-Type", "application/json");
+      request.end(queryBody);
+    });
     const status = response.statusCode ?? 0;
     if ([301,302,303,307,308].includes(status) && response.headers.location) {
       response.destroy();
+      if (queryBody) throw Error("The storefront API redirected its catalogue query.");
       url = new URL(response.headers.location, url);
       continue;
     }
