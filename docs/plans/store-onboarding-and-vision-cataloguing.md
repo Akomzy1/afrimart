@@ -4,7 +4,7 @@ Status: Parts 1, 2a and 2b are implemented locally. Part 2c has an offline evalu
 
 ## Where things stand
 
-- **Registration is real.** `/onboarding` uses six-digit codes, saves the owner's details and food-safety attestation, and persists the filming/website preference. The filming preference opens guided shelf capture. Structured website import remains planned.
+- **Registration is real.** `/onboarding` uses six-digit codes, saves the owner's details and food-safety attestation, and persists the filming/website preference. Sellers can film shelves or import a WooCommerce feed or Product JSON-LD from their saved website, then review the draft catalogue.
 - **Both entry paths are implemented.** Staff can create a pending store, issue a seven-day single-use invitation and record packaging/printer issuance. Self-service creates a pending, unverified store only after a correct code. Public catalogue reads require a live, staff-verified store.
 - **Phone ownership is recorded and bound to the code.** `ownerPhoneVerifiedAt` is set by verification; staff reassignment clears it, ends sessions, invalidates invites and increments the phone-assignment version. A previously issued code cannot take over a newly assigned store or become valid if an old number is assigned back.
 - **Pieces that exist and will be reused:** one-time codes and paced sending (`auth/signInCodes.ts`), sessions and cookies, the photo store and its signed links, `CatalogueDraft` with a confidence column and the ops review queue (`admin.approveDraft`, CAT-6 threshold), `NameAlias` for the knowledge graph, the QC-1 listing check (`checkListingForStore`), the ops Onboarding tab (hub assignment, status).

@@ -57,10 +57,14 @@ The last pre-takeover commit, `e68b41b`, records [the seller onboarding and visi
 |---|---|---|
 | Payments | Split/hold calculations, placeholder payment IDs, local refunds; an Express dashboard-link adapter exists | Stripe Connect onboarding, checkout collection, signed webhooks, transfers and real refunds |
 | Shipping and tax | Local carrier quotes, basic address checks, estimated tax | EasyPost rates/labels/tracking and Stripe Tax |
-| Seller onboarding | Staff-assisted and self-service registration, verified phones, private pending stores, invitations, kit records, private shelf capture, extraction and seller/staff catalogue review | Live provider evaluation and structured product-feed import |
+| Seller onboarding | Registration, verified phones, invitations, kits, private shelf capture, extraction, WooCommerce and Product JSON-LD import, and seller/staff catalogue review | Live shelf-extraction provider evaluation |
 | Cook and matching | Scripted recipe-to-cart; no Anthropic or Voyage connection | Model-backed assistance and canonical matching |
 | Notifications | Outbox/templates, local email, in-memory push, configurable Twilio sender | Real email/push delivery and provisioned SMS service |
 | Private photos | Local development storage and an S3-compatible adapter | Configure and verify the private bucket and signing secret for deployment |
+
+Website import reads up to 500 products from a public WooCommerce feed or from Product JSON-LD on the saved page. Sellers review each draft before submission and enter a USD price when the source price is ambiguous or uses another currency. Checking the website again adds newly identified products and preserves reviewed drafts. With local PostgreSQL configured and the merchant app running on port 3001, `npm run e2e:website-import` exercises this flow in Chrome against a local storefront fixture. The check starts its own API on port 4000.
+
+On November 23, 2026, a read-only pilot against TransAfrican Food Store’s public WooCommerce feed imported 108 distinct drafts from two pages into a temporary local PostgreSQL schema. A second import added zero drafts. Three sampled prices matched the merchant’s product pages. The pilot created zero listings and the temporary schema was removed. [TransAfrican Food Store](https://transafricanfoodstore.com/)
 
 Adding environment variables alone does not complete the missing integrations. Parts 1, 2a and 2b of the onboarding plan are implemented. Part 2c covers real-store evaluation and launch calibration. Keep Phase 2/3 work out of this pass.
 

@@ -79,7 +79,7 @@ model Store {
   ownerPhoneVersion     Int               @default(0)
   onboardingStartedAt   DateTime?
   onboardingProfileAt   DateTime?
-  /// film | web; website import itself is a separate implementation.
+  /// How the seller sources catalogue drafts: shelf capture (film) or website import (web).
   onboardingRail        String?
   onboardingWebsite     String?
   filmSession           FilmSession?
@@ -478,6 +478,7 @@ model CatalogueDraft {
   storeId             String
   jobId               String?
   job                 ExtractionJob?       @relation(fields: [jobId], references: [sessionId], onDelete: Cascade)
+  sourceKey           String?
   photoRequestId      String?
   frameNames          String[]             @default([])
   candidateIds        String[]             @default([])
@@ -500,6 +501,7 @@ model CatalogueDraft {
 
   @@index([status, confidence])
   @@index([jobId])
+  @@unique([jobId, sourceKey])
 }
 
 /// Staff roles for the operations console. Deliberately coarse: four roles
@@ -555,6 +557,7 @@ model FilmSession {
 }
 
 model ExtractionJob {
+  websiteUrl  String?
   sessionId   String           @id
   session     FilmSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   state       String           @default("queued")

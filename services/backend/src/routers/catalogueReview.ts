@@ -15,12 +15,16 @@ import { decodeUpload } from "../storage/photos.js";
 const selection = { id: true, canonicalName: true, packSize: true, category: true, controlledCategory: true, temperatureClass: true } as const;
 const eligible: Prisma.StoreWhereInput = { ownerPhoneVerifiedAt: { not: null }, onboardingRail: "film",
   onboardingStatus: { notIn: ["suspended","delisted"] } };
+const reviewable: Prisma.ExtractionJobWhereInput = { OR: [
+  { websiteUrl: null, session: { store: eligible } },
+  { websiteUrl: { not: null }, session: { store: { ...eligible, onboardingRail: "web" } } },
+] };
 const revision = z.number().int().nonnegative();
 const bad = (message: string) => new TRPCError({ code: "BAD_REQUEST", message });
 async function lockedJob(tx: Prisma.TransactionClient, storeId: string, version: number, allowSubmitted = false) {
   await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id"=${storeId} FOR UPDATE`;
-  const job = await tx.extractionJob.findFirst({ where: { session: { storeId, store: eligible } } });
-  if (!job) throw bad("Open a completed shelf capture first.");
+  const job = await tx.extractionJob.findFirst({ where: { ...reviewable, session: { storeId } } });
+  if (!job) throw bad("Open a completed catalogue import or shelf capture first.");
   if (allowSubmitted && job.submittedAt) return job;
   if (job.state !== "ready" || job.submittedAt || job.revision !== version)
     throw new TRPCError({ code: "CONFLICT", message: "Your catalogue has changed. Reload the review before saving." });
@@ -29,9 +33,9 @@ async function lockedJob(tx: Prisma.TransactionClient, storeId: string, version:
 
 export const catalogueReviewRouter = router({
   state: merchantProcedure.query(async ({ ctx }) => {
-    const job = await prisma.extractionJob.findFirst({ where: { session: { storeId: ctx.storeId, store: eligible } },
+    const job = await prisma.extractionJob.findFirst({ where: { ...reviewable, session: { storeId: ctx.storeId } },
       include: { drafts: { orderBy: [{ confidence: "asc" }, { id: "asc" }] } } });
-    if (!job) throw new TRPCError({ code: "NOT_FOUND", message: "Finish filming your shelves first." });
+    if (!job) throw new TRPCError({ code: "NOT_FOUND", message: "Import your website or finish filming your shelves first." });
     const ids = [...new Set(job.drafts.flatMap(d => [...d.candidateIds, ...(d.matchedProductId ? [d.matchedProductId] : [])]))];
     const products = await prisma.canonicalProduct.findMany({ where: { id: { in: ids } }, select: selection });
     const byId = new Map(products.map(p => [p.id,p]));
@@ -45,7 +49,7 @@ export const catalogueReviewRouter = router({
       candidates: [...new Set([...d.candidateIds, ...(d.matchedProductId ? [d.matchedProductId] : [])])].flatMap(id => byId.get(id) ?? []),
     }));
     const captureExpired = ["failed", "queued"].includes(job.state) && !await prisma.shelfFrame.count({ where: { ...availableFrame(), sessionId: job.sessionId } });
-    return { captureExpired, state: job.state, revision: job.revision, submitted: !!job.submittedAt, message: job.message, items,
+    return { websiteUrl: job.websiteUrl, captureExpired, state: job.state, revision: job.revision, submitted: !!job.submittedAt, message: job.message, items,
       paused: process.env.SHELF_EXTRACTION_ENABLED !== "yes" && job.state === "queued" };
   }),
 
@@ -138,7 +142,7 @@ export const catalogueReviewRouter = router({
       const job = await lockedJob(tx, ctx.storeId, input.revision, true);
       if (job.submittedAt) return { submitted: true };
       const drafts = await tx.catalogueDraft.findMany({ where: { jobId: job.sessionId, status: "pending_review" } });
-      if (!drafts.length) throw bad("Film a shelf with at least one product before submitting.");
+      if (!drafts.length) throw bad("Add at least one product before submitting.");
       if (drafts.some(d => !["confirm","staff"].includes(d.decision))) throw bad("Review every item before submitting.");
       for (const d of drafts) {
         if (d.decision === "staff") continue;

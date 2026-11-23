@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { appRouter } from "./router.js";
+import type { PageReader } from "./catalogue/storefrontHttp.js";
 import { createContext } from "./trpc.js";
 import { registerPhotoRoute } from "./storage/route.js";
 import { corsOrigins } from "./auth/origins.js";
@@ -10,7 +11,7 @@ import { corsOrigins } from "./auth/origins.js";
  * The HTTP application, built apart from listening so that tests can drive the
  * real thing (cookies, CORS, the picture route) with `inject` and no port.
  */
-export async function buildServer(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
+export async function buildServer(opts: { logger?: boolean; readStorefrontPage?: PageReader } = {}): Promise<FastifyInstance> {
   // Photos arrive as base64 inside a tRPC mutation; 8MB of image is about 11MB encoded.
   const server = Fastify({ logger: opts.logger ?? true, bodyLimit: 12 * 1024 * 1024 });
 
@@ -21,7 +22,7 @@ export async function buildServer(opts: { logger?: boolean } = {}): Promise<Fast
 
   await server.register(fastifyTRPCPlugin, {
     prefix: "/trpc",
-    trpcOptions: { router: appRouter, createContext },
+    trpcOptions: { router: appRouter, createContext: (options: Parameters<typeof createContext>[0]) => createContext(options, opts.readStorefrontPage) },
   });
 
   registerPhotoRoute(server);

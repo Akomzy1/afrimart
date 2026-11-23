@@ -18,6 +18,7 @@ export default function ReviewPage() {
     refetchInterval: q => ["queued","running"].includes(q.state.data?.state ?? "") && !q.state.data?.paused ? 3000 : q.state.data?.submitted ? 10000 : false });
   const [active, setActive] = useState("");
   const refresh = async () => { await review.refetch(); };
+  const reimport = trpc.onboarding.importWebsite.useMutation({ onSuccess: refresh });
   const retry = trpc.catalogueReview.retry.useMutation({ onSuccess: refresh });
   const publish = trpc.catalogueReview.publish.useMutation({ onSuccess: async () => { await refresh(); await utils.merchant.me.invalidate(); }, onError: refresh });
   const refilm = trpc.catalogueReview.refilm.useMutation({ onSuccess: async () => {
@@ -29,7 +30,7 @@ export default function ReviewPage() {
   const ready = data?.state === "ready";
   const done = Boolean(data?.submitted);
   const left = data?.items.filter(i => i.decision === "open").length ?? 0;
-  const failure = review.error ?? publish.error ?? retry.error ?? refilm.error;
+  const failure = review.error ?? publish.error ?? retry.error ?? refilm.error ?? reimport.error;
   return <div className="mr-shell mr-onb">
     <div className="mr-header"><Link className="back" href="/onboarding" aria-label="Back to store setup"><ChevronLeftIcon /></Link><h2 className="serif">Catalogue review</h2></div>
     <div className="mr-scroll"><div className="mr-onb-content">
@@ -38,11 +39,11 @@ export default function ReviewPage() {
       {data && !ready && <div className="mr-onb-head"><h1 className="serif">{data.state === "failed" ? "Shelf reading stopped." : data.paused ? "Your shelves are in the queue." : "Reading your shelves…"}</h1>
         <p>{data.message ?? (data.paused ? "Shelf reading is paused. You can return here when it resumes." : "You can leave and return to this screen.")}</p>
         {data.captureExpired ? <button className="mr-linkbtn" disabled={refilm.isPending} onClick={() => refilm.mutate({ revision: data.revision })}>Expired photos · film again</button> : data.state === "failed" && <button className="mr-linkbtn" disabled={retry.isPending} onClick={() => retry.mutate()}>Try reading again</button>}</div>}
-      {data && ready && (item && !done ? <Editor key={item.id + "-" + data.revision} item={item} items={data.items} revision={data.revision}
+      {data && ready && (item && !done ? <Editor website={!!data.websiteUrl} key={item.id + "-" + data.revision} item={item} items={data.items} revision={data.revision}
         close={() => setActive("")} refresh={refresh} /> : <>
         <div className="mr-onb-head"><h1 className="serif">{done ? "Catalogue submitted." : data.items.length ? "Check your products." : "No products to review."}</h1>
           <p>{done ? "Staff will review any items you sent for help. Buyers can shop once your store is approved and live." : data.items.length ?
-            (left ? `${left} of ${data.items.length} still need your review. Check each product and its shelf price.` : "Every item has been reviewed. Submit the catalogue when you’re ready.") : "Film the shelves again with the product labels and price tags in view."}</p></div>
+            (left ? `${left} of ${data.items.length} still need your review. Check each product and its price.` : "Every item has been reviewed. Submit the catalogue when you’re ready.") : data.websiteUrl ? "Check your website for new products." : "Film the shelves again with the product labels and price tags in view."}</p></div>
         <div className="mr-rtiles">{data.items.map(i => <div className="mr-rtile" key={i.id}>
           {i.preview && <img className="mr-review-photo" src={photoUrl(i.preview)} alt={`Shelf showing ${i.name}`} />}
           <div className="b"><strong className="nm">{i.name}</strong><div className="meta">{[i.brand,i.packSize].filter(Boolean).join(" · ")}</div>
@@ -52,7 +53,9 @@ export default function ReviewPage() {
             {i.photoRequestId && <FreshShelfPhoto id={i.id} requestId={i.photoRequestId} refresh={refresh} />}
             {!done && <button className="mr-linkbtn" onClick={() => { publish.reset(); setActive(i.id); }}>Review item</button>}</div>
         </div>)}</div>
-        {!done && !data.items.length && <button className="mr-bigbtn green" disabled={refilm.isPending} onClick={() => refilm.mutate({ revision: data.revision })}>Re-film shelves</button>}
+        {!done && data.websiteUrl && <button className="mr-linkbtn" disabled={reimport.isPending} onClick={() => reimport.mutate()}>{reimport.isPending ? "Checking website…" : "Check website for new products"}</button>}
+        {reimport.isSuccess && <p role="status">{reimport.data.added ? `Added ${reimport.data.added} new products.` : "No new products found."}</p>}
+        {!done && !data.websiteUrl && !data.items.length && <button className="mr-bigbtn green" disabled={refilm.isPending} onClick={() => refilm.mutate({ revision: data.revision })}>Re-film shelves</button>}
       </>)}
     </div></div>
     {data && !item && ready && !done && data.items.length > 0 && <div className="mr-actionbar"><button className="mr-bigbtn green" disabled={left > 0 || publish.isPending}
@@ -85,7 +88,7 @@ function FreshShelfPhoto({ id, requestId, refresh }: { id: string; requestId: st
   </label>{(error || upload.error) && <p role="alert">{error || upload.error?.message}</p>}</div>;
 }
 
-function Editor({ item, items, revision, close, refresh }: { item: Item; items: Item[]; revision: number; close: () => void; refresh: () => Promise<void> }) {
+function Editor({ item, items, revision, close, refresh, website }: { website: boolean; item: Item; items: Item[]; revision: number; close: () => void; refresh: () => Promise<void> }) {
   const [name,setName] = useState(item.name), [price,setPrice] = useState(priceText(item.priceCents));
   const [product,setProduct] = useState(item.selected ?? ""), [search,setSearch] = useState(""), [target,setTarget] = useState("");
   const found = trpc.catalogueReview.search.useQuery({ text: search.trim() }, { enabled: search.trim().length >= 2 });
@@ -102,9 +105,9 @@ function Editor({ item, items, revision, close, refresh }: { item: Item; items: 
   return <div className="mr-review-editor mr-profile-form">
     <button className="mr-linkbtn" onClick={close}>Back to products</button>
     {item.preview && <img className="mr-review-source" src={photoUrl(item.preview)} alt="Your original shelf photo" />}
-    <p>Read from the shelf · {item.rawText}</p>
+    <p>{website ? "Imported from your website" : "Read from the shelf"} · {item.rawText}</p>
     <label>Product name<input value={name} maxLength={300} onChange={e => setName(e.target.value)} /></label>
-    <label>Shelf price in dollars<input inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} /></label>
+    <label>{website ? "Price in dollars" : "Shelf price in dollars"}<input inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} /></label>
     <div className="mr-review-actions"><button aria-label="Reduce price by 25 cents" onClick={() => setPrice(priceText(Math.max(1,(cents ?? 0)-25)))}>− $0.25</button>
       <button aria-label="Increase price by 25 cents" onClick={() => setPrice(priceText((cents ?? 0)+25))}>+ $0.25</button></div>
     <label>Find another catalogue product<input value={search} maxLength={120} onChange={e => setSearch(e.target.value)} /></label>

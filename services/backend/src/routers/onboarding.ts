@@ -4,13 +4,16 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
 import { merchantProcedure, router } from "../trpc.js";
 
+import { importWebsite } from "../catalogue/websiteImport.js";
+
 export const onboardingRouter = router({
+  importWebsite: merchantProcedure.mutation(({ ctx }) => importWebsite(ctx.storeId, ctx.readStorefrontPage)),
   state: merchantProcedure.query(({ ctx }) => prisma.store.findUniqueOrThrow({
     where: { id: ctx.storeId },
     select: {
       id: true, name: true, ownerName: true, sellerType: true, onboardingStatus: true,
       verificationStatus: true, ownerPhoneVerifiedAt: true, onboardingProfileAt: true,
-      filmSession: { select: { finishedAt: true } },
+      filmSession: { select: { finishedAt: true, extraction: { select: { websiteUrl: true } } } },
       onboardingRail: true, onboardingWebsite: true, foodSafetyAttestedAt: true,
       hubMetro: { select: { name: true, state: true } },
       onboardingKits: { orderBy: { issuedAt: "desc" }, select: { id: true, packaging: true, labelPrinterSerial: true, issuedAt: true } },
@@ -45,10 +48,16 @@ export const onboardingRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Enter your full website address, starting with https://." });
       }
     }
-    const changed = await prisma.store.updateMany({
-      where: { id: ctx.storeId, ownerPhoneVerifiedAt: { not: null }, onboardingProfileAt: { not: null },
-        onboardingStatus: { in: ["pending", "filming"] } },
-      data: { onboardingRail: input.rail, onboardingWebsite: website, onboardingStatus: "filming" },
+    const changed = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "Store" WHERE "id"=${ctx.storeId} FOR UPDATE`;
+      const capture = await tx.filmSession.findUnique({ where: { storeId: ctx.storeId }, include: { extraction: true, _count: { select: { frames: true } } } });
+      if ((capture?.extraction || capture?._count.frames) && (capture?.extraction?.websiteUrl ?? null) !== website)
+        throw new TRPCError({ code: "CONFLICT", message: "Your catalogue already has work in progress. Continue with its saved source." });
+      return tx.store.updateMany({
+        where: { id: ctx.storeId, ownerPhoneVerifiedAt: { not: null }, onboardingProfileAt: { not: null },
+          onboardingStatus: { in: ["pending", "filming"] } },
+        data: { onboardingRail: input.rail, onboardingWebsite: website, onboardingStatus: "filming" },
+      });
     });
     if (!changed.count) throw new TRPCError({ code: "FORBIDDEN", message: "Complete your store details before choosing how to add products." });
     return { saved: true };

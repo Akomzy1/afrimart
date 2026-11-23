@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { trpc, type RouterOutputs } from "@afrimart/api-client";
 import { CheckIcon, ChevronLeftIcon, CookPotIcon, ShipCheckIcon } from "@afrimart/ui";
 import { SignIn } from "../SignIn";
@@ -40,6 +41,8 @@ export default function OnboardingPage() {
 type StoreState = RouterOutputs["onboarding"]["state"];
 
 function StoreSetup({ store, refresh, inviteError }: { store: StoreState; refresh: () => Promise<unknown>; inviteError?: string }) {
+  const router = useRouter();
+  const startImport = trpc.onboarding.importWebsite.useMutation({ onSuccess: async () => { await refresh(); router.push("/onboarding/review"); } });
   const [editRail, setEditRail] = useState(false);
   const [name, setName] = useState(store.name === "New seller" ? "" : store.name);
   const [ownerName, setOwnerName] = useState(store.ownerName);
@@ -53,8 +56,8 @@ function StoreSetup({ store, refresh, inviteError }: { store: StoreState; refres
   const choosing = !needsProfile && (!store.onboardingRail || editRail) && !["live", "suspended", "delisted"].includes(store.onboardingStatus);
   const live = store.onboardingStatus === "live" && store.verificationStatus === "verified";
   const paused = ["suspended", "delisted"].includes(store.onboardingStatus);
-  const canEdit = ["pending", "filming"].includes(store.onboardingStatus);
-  const error = save.error?.message ?? choose.error?.message;
+  const canEdit = ["pending", "filming"].includes(store.onboardingStatus) && !store.filmSession?.extraction;
+  const error = save.error?.message ?? choose.error?.message ?? startImport.error?.message;
 
   return (
     <div className="mr-shell mr-onb">
@@ -89,6 +92,7 @@ function StoreSetup({ store, refresh, inviteError }: { store: StoreState; refres
             {store.onboardingKits.map((kit) => <div className="mr-kitrow" key={kit.id}><span className="m"><span className="t">{kit.packaging}</span><span className="s">Printer {kit.labelPrinterSerial} · issued {new Date(kit.issuedAt).toLocaleDateString()}</span></span></div>)}
           </div>
           {canEdit && <button type="button" className="mr-linkbtn" onClick={() => setEditRail(true)}>Change catalogue preference</button>}
+          {store.onboardingRail === "web" && store.onboardingStatus === "filming" && <Link href="/" className="mr-linkbtn">Go to my store</Link>}
           <InstallPrompt />
         </>}
         {error && <div className="mr-signin-err" role="alert">{error}</div>}
@@ -96,7 +100,8 @@ function StoreSetup({ store, refresh, inviteError }: { store: StoreState; refres
       <div className="mr-actionbar">
         {needsProfile && !paused ? <button form="store-profile" type="submit" className="mr-bigbtn accent" disabled={save.isPending || !attested || name.trim().length < 2 || ownerName.trim().length < 2}>{save.isPending ? "Saving…" : "Save my details"}</button>
           : choosing ? <button type="button" className="mr-bigbtn accent" disabled={choose.isPending || (rail === "web" && !website.trim())} onClick={() => choose.mutate({ rail, website: rail === "web" ? website : undefined })}>{choose.isPending ? "Saving…" : "Save and continue"}</button>
-          : store.onboardingRail === "film" && store.filmSession?.finishedAt && !paused ? <Link className="mr-bigbtn accent" href="/onboarding/review">Review catalogue</Link>
+          : ((store.onboardingRail === "film" && store.filmSession?.finishedAt) || (store.onboardingRail === "web" && store.filmSession?.extraction?.websiteUrl)) && !paused ? <Link className="mr-bigbtn accent" href="/onboarding/review">Review catalogue</Link>
+          : store.onboardingRail === "web" && store.onboardingStatus === "filming" ? <button className="mr-bigbtn accent" disabled={startImport.isPending} onClick={() => startImport.mutate()}>{startImport.isPending ? "Importing products…" : "Import website products"}</button>
           : store.onboardingRail === "film" && store.onboardingStatus === "filming" ? <Link className="mr-bigbtn accent" href="/onboarding/shelves">Open shelf filming</Link>
           : <Link className="mr-bigbtn accent" href="/">Go to my store</Link>}
       </div>

@@ -56,16 +56,24 @@ export class Browser {
       ],
       { stdio: "ignore" },
     );
-    let targets: { type: string; webSocketDebuggerUrl: string }[] = [];
-    for (let i = 0; i < 80 && !targets.length; i++) {
+    type Target = { type: string; webSocketDebuggerUrl: string };
+    let page: Target | undefined;
+    const deadline = Date.now() + 120_000;
+    while (!page && b.chrome.exitCode === null && Date.now() < deadline) {
       try {
-        targets = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as typeof targets;
+        const response = await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(2000) });
+        const targets = await response.json() as Target[];
+        page = targets.find(t => t.type === "page" && t.webSocketDebuggerUrl);
       } catch {
-        await sleep(500);
+        // Chrome can accept connections before the target list is ready.
       }
+      if (!page) await sleep(500);
     }
-    const page = targets.find((t) => t.type === "page");
-    if (!page) throw new Error("Chrome started but offered no page to drive.");
+    if (!page) {
+      const exit = b.chrome.exitCode;
+      await b.close();
+      throw new Error(exit === null ? "Chrome did not expose a page before the startup deadline." : `Chrome exited during startup (code ${exit}).`);
+    }
     b.ws = new WebSocket(page.webSocketDebuggerUrl);
     await new Promise<void>((r) => (b.ws.onopen = () => r()));
     b.ws.onmessage = (m) => {

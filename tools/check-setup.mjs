@@ -107,7 +107,7 @@ if (process.argv.includes("--database") && databaseUrl && PrismaClient) {
 console.log("\nImplementation gaps at takeover:");
 console.log("- Stripe: checkout, verified webhooks, Connect account onboarding, transfers and refunds remain to be wired.");
 console.log("- EasyPost and Stripe Tax: checkout still uses local carrier quotes and estimated tax.");
-console.log("- Seller onboarding: registration, shelf capture and catalogue review are implemented; live provider evaluation and website import remain.");
+console.log("- Seller onboarding includes registration, shelf capture, website import and catalogue review. A public WooCommerce pilot passed. Live shelf-extraction provider evaluation remains.");
 console.log("- Cook: scripted recipes; Anthropic/Voyage are not connected.");
 console.log("- Email and web push: local/in-memory senders; real delivery remains to be implemented.");
 console.log(`\n${failures ? `${failures} setup problem(s) found.` : "Basic configuration checks passed."} Provider integration and end-to-end flows are not checked.`);

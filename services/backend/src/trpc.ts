@@ -13,7 +13,9 @@ function bearerToken(req: CreateFastifyContextOptions["req"]): string | null {
   return scheme?.toLowerCase() === "bearer" && value ? value : null;
 }
 
-export async function createContext({ req, res }: CreateFastifyContextOptions) {
+import { readPublicPage, type PageReader } from "./catalogue/storefrontHttp.js";
+
+export async function createContext({ req, res }: CreateFastifyContextOptions, readStorefrontPage: PageReader = readPublicPage) {
   // Who is asking, resolved once per request from the session token and from
   // nothing else the client sends.
   //
@@ -44,6 +46,7 @@ export async function createContext({ req, res }: CreateFastifyContextOptions) {
     res,
     staff,
     sessions,
+    readStorefrontPage,
     ip: req.ip,
     userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
   };

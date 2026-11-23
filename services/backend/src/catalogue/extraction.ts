@@ -49,7 +49,7 @@ function cosine(a: number[], b: number[]) {
   return na && nb ? Math.max(0, Math.min(1, dot / Math.sqrt(na*nb))) : 0;
 }
 
-export async function resolveProducts(rows: Seen[], products: Product[], reader: Reader, threshold = CATALOGUE_AUTO_APPROVE_CONFIDENCE) {
+export async function resolveProducts(rows: Seen[], products: Product[], reader: Reader | null, threshold = CATALOGUE_AUTO_APPROVE_CONFIDENCE) {
   let docs: number[][] | undefined;
   const drafts = [];
   for (const row of rows) {
@@ -59,7 +59,7 @@ export async function resolveProducts(rows: Seen[], products: Product[], reader:
       id: p.id, index, score: Math.max(...[p.canonicalName, ...p.aliases.map(a => a.alias)].map(alias =>
         Math.max(similarity(normalize(row.name), normalize(alias)), similarity(normalize(row.rawText), normalize(alias))))),
     }));
-    if (scores.length && !scores.some(x => x.score >= 0.9)) {
+    if (reader && scores.length && !scores.some(x => x.score >= 0.9)) {
       docs ??= await reader.embed(products.map(p => [p.canonicalName, ...p.aliases.map(a => a.alias), p.packSize].join(" · ")), "document");
       const [query] = await reader.embed([[row.name, row.rawText, row.brand, row.packSize].filter(Boolean).join(" · ")], "query");
       if (!query || docs.length !== products.length) throw new Error("Incomplete embedding response.");
