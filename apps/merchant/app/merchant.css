@@ -84,6 +84,7 @@
 .mr-summary .r .val { font-family: var(--serif); font-weight: 700; font-size: 38px; line-height: 1; }
 
 .mr-acceptnote { padding: 0 20px; }
+.mr-pickup { margin: 0 20px 18px; padding: 12px 16px; border-radius: var(--r-md); background: var(--green-50); color: var(--ink); line-height: 1.5; }
 .mr-acceptnote h3 { font-size: 27px; margin: 12px 0 8px; }
 .mr-acceptnote p { font-size: 15px; color: var(--ink-2); font-family: var(--serif); font-style: italic; margin: 0; }
 

@@ -141,6 +141,7 @@ try {
   check("an empty reason is refused", (await outcome(store.merchant.decline({ shipmentId, reason: "   " }))).code === "BAD_REQUEST");
   check("an overlong reason is refused", (await outcome(store.merchant.decline({ shipmentId, reason: "a".repeat(501) }))).code === "BAD_REQUEST");
   const decisions = await Promise.all([reason, `  ${reason}  `].map(r => store.merchant.decline({ shipmentId, reason: r })));
+  check("declining does not request a carrier pickup", await prisma.shipmentPickup.count({ where: { shipmentId } }) === 0);
   check("repeating the decline returns the saved reason", decisions.every(d => d.status === "declined" && d.declineReason === reason));
   check("a retry cannot overwrite the reason", (await outcome(store.merchant.decline({ shipmentId, reason: "Changed" }))).code === "CONFLICT");
   check("a declined parcel cannot be accepted or shipped", (await outcome(store.merchant.accept({ shipmentId }))).code === "CONFLICT" && (await outcome(store.merchant.markShipped({ shipmentId }))).code === "CONFLICT");
@@ -186,6 +187,23 @@ try {
   check("a pending parcel has no printable label", (await outcome(store.merchant.shippingLabel(labelInput))).code === "PRECONDITION_FAILED");
   check("a declined parcel has no printable label", (await outcome(store.merchant.shippingLabel({ ...labelInput, shipmentId: refusal.shipmentId }))).code === "PRECONDITION_FAILED");
   const accepted = await Promise.all([acceptPacking(), acceptPacking()]);
+  const pickupWhere = { shipmentId: packing.shipmentId };
+  const pickup = await prisma.shipmentPickup.findUniqueOrThrow({ where: pickupWhere });
+  check("simultaneous accepts reserve one test pickup window", pickup.state === "test_scheduled" &&
+    !!pickup.windowStart && !!pickup.windowEnd && pickup.windowStart > pickup.requestedAt &&
+    pickup.windowEnd.getTime() - pickup.windowStart.getTime() === 2 * 3600_000);
+  await acceptPacking();
+  const repeatedPickup = await prisma.shipmentPickup.findUniqueOrThrow({ where: pickupWhere });
+  check("a later accept preserves the original request and window", repeatedPickup.requestedAt.getTime() === pickup.requestedAt.getTime() &&
+    repeatedPickup.windowStart?.getTime() === pickup.windowStart?.getTime() && repeatedPickup.windowEnd?.getTime() === pickup.windowEnd?.getTime());
+  check("the shop can reopen its test pickup", (await store.merchant.inbox()).find(s => s.shipmentId === packing.shipmentId)?.pickup?.state === "test_scheduled");
+  check("another shop cannot see this pickup", !(await otherStore.merchant.inbox()).some(s => s.shipmentId === packing.shipmentId));
+  const cancel = await makeOrder("cancelPickup", buyerA, { status: "pending", items: [] });
+  await Promise.all([outcome(store.merchant.accept({ shipmentId: cancel.shipmentId })),
+    ops.admin.interveneShipment({ shipmentId: cancel.shipmentId, action: "cancel_order" })]);
+  check("cancellation racing acceptance leaves no active pickup", await prisma.shipmentPickup.count({
+    where: { shipmentId: cancel.shipmentId, state: { not: "cancelled" } },
+  }) === 0 && (await outcome(store.merchant.accept({ shipmentId: cancel.shipmentId }))).code === "CONFLICT");
   const expectedTracking = `TRK${packing.shipmentId.slice(-8).toUpperCase()}`;
   const thermal = await store.merchant.shippingLabel(labelInput);
   const repeat = await store.merchant.shippingLabel(labelInput);
@@ -204,10 +222,11 @@ try {
   const tracked = await makeOrder("tracked", buyerA, { status: "pending", items: [] });
   const trackedWhere = { id: tracked.shipmentId };
   const carrierTracking = "carrier-issued-tracking";
-  await prisma.shipment.update({ where: trackedWhere, data: { trackingNumber: carrierTracking } });
-  const acceptedTracked = await store.merchant.accept({ shipmentId: tracked.shipmentId });
   const issuedUrl = "https://carrier.example/issued.pdf";
-  await prisma.shipment.update({ where: trackedWhere, data: { labelUrl: issuedUrl } });
+  await prisma.shipment.update({ where: trackedWhere, data: { trackingNumber: carrierTracking, labelUrl: issuedUrl } });
+  const acceptedTracked = await store.merchant.accept({ shipmentId: tracked.shipmentId });
+  const pendingPickup = await prisma.shipmentPickup.findUniqueOrThrow({ where: { shipmentId: tracked.shipmentId } });
+  check("a carrier-labelled parcel awaits a real booking", pendingPickup.state === "awaiting_carrier" && pendingPickup.windowStart === null);
   const issued = await store.merchant.shippingLabel({ shipmentId: tracked.shipmentId, paper: "4x6" });
   check("an issued carrier label takes precedence over a test PDF", issued.kind === "issued" && issued.url === issuedUrl);
   check("accepting preserves a preassigned tracking number", acceptedTracked.status === "label_created" && acceptedTracked.trackingNumber === carrierTracking);
@@ -218,6 +237,11 @@ try {
     check(`an accept retry leaves a ${status} shipment untouched`, [retry, saved].every(s =>
       s.status === status && s.trackingNumber === carrierTracking && s.updatedAt.getTime() === before.updatedAt.getTime()));
   }
+
+  await ops.admin.interveneShipment({ shipmentId: tracked.shipmentId, action: "cancel_order" });
+  check("cancelling an accepted order cancels its pickup request", (await prisma.shipmentPickup.findUniqueOrThrow({
+    where: { shipmentId: tracked.shipmentId },
+  })).state === "cancelled");
 
   const unseen = await outcome(otherStore.merchant.packingPhoto({ shipmentId: packing.shipmentId, image: withLocation }));
   check("another store cannot photograph this store's parcel", unseen.code === "NOT_FOUND", unseen.code);

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isDevelopment } from "../runtime.js";
 import { testLabelPdf } from "../shipping/testLabel.js";
+import { LocalCarrierGateway } from "../shipping/carrier.js";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
@@ -82,8 +83,9 @@ export const merchantRouter = router({
   /** MCH-2 — this store's inbox: one card per shipment it has to fulfil. */
   inbox: merchantProcedure.query(async ({ ctx }) => {
     const shipments = await prisma.shipment.findMany({
-      where: { storeId: ctx.storeId, status: { not: "delivered" } },
+      where: { storeId: ctx.storeId, status: { not: "delivered" }, order: { status: { not: "cancelled" } } },
       include: {
+        pickup: true,
         items: { orderBy: { id: "asc" }, include: { listing: { select: { storeId: true, productPhotoUrl: true, updatedAt: true } } } },
         order: { include: { buyer: true } },
       },
@@ -98,6 +100,7 @@ export const merchantRouter = router({
       buyer: s.order.buyer.email.split("@")[0],
       ago: minutesAgo(s.createdAt),
       status: merchantStatus(s.status),
+      pickup: s.pickup && { state: s.pickup.state, windowStart: s.pickup.windowStart, windowEnd: s.pickup.windowEnd },
       declineReason: s.declineReason,
       temperatureClass: s.temperatureClass,
       /** QC-2 — null until the box has been photographed. A short-lived signed link: this store packed it. */
@@ -144,8 +147,15 @@ export const merchantRouter = router({
       const where = { id: input.shipmentId, storeId: ctx.storeId };
       const fallbackTracking = `TRK${input.shipmentId.slice(-8).toUpperCase()}`;
       return prisma.$transaction(async (tx) => {
+        // Cancellation takes a write lock on this order before cancelling its pickups.
+        const [order] = await tx.$queryRaw<{ status: string }[]>`
+          SELECT o."status" FROM "Order" o JOIN "Shipment" s ON s."orderId" = o."id"
+          WHERE s."id" = ${where.id} AND s."storeId" = ${where.storeId} FOR SHARE OF o
+        `;
+        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
+        if (order.status === "cancelled") throw new TRPCError({ code: "CONFLICT", message: "This order has been cancelled." });
         // Check the status and preserve any carrier tracking number in the same write.
-        await tx.$executeRaw`
+        const accepted = await tx.$executeRaw`
           UPDATE "Shipment"
           SET "status" = 'label_created', "trackingNumber" = COALESCE("trackingNumber", ${fallbackTracking}),
               "updatedAt" = CURRENT_TIMESTAMP
@@ -154,6 +164,15 @@ export const merchantRouter = router({
         const shipment = await tx.shipment.findFirst({ where });
         if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
         if (shipment.status === "declined") throw new TRPCError({ code: "CONFLICT", message: "This order has already been declined." });
+        if (accepted) {
+          const requestedAt = shipment.updatedAt;
+          const testWindow = isDevelopment() && !shipment.labelUrl
+            ? new LocalCarrierGateway().testPickupWindow(requestedAt) : null;
+          await tx.shipmentPickup.create({ data: {
+            shipmentId: shipment.id, requestedAt,
+            ...(testWindow && { state: "test_scheduled", ...testWindow }),
+          } });
+        }
         return shipment;
       });
     }),

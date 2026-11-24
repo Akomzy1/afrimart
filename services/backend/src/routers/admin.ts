@@ -402,7 +402,11 @@ export const adminRouter = router({
       if (input.action === "cancel_order") {
         const shipment = await prisma.shipment.findUnique({ where: { id: input.shipmentId } });
         if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "No such shipment." });
-        return prisma.order.update({ where: { id: shipment.orderId }, data: { status: "cancelled" } });
+        return prisma.$transaction(async (tx) => {
+          const order = await tx.order.update({ where: { id: shipment.orderId }, data: { status: "cancelled" } });
+          await tx.shipmentPickup.updateMany({ where: { shipment: { orderId: order.id } }, data: { state: "cancelled" } });
+          return order;
+        });
       }
       const status =
         input.action === "mark_shipped" ? "picked_up" : input.action === "mark_delivered" ? "delivered" : "exception";

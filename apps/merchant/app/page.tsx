@@ -101,6 +101,7 @@ function MerchantAppInner() {
     ago: s.ago,
     status: s.status,
     declineReason: s.declineReason,
+    pickup: s.pickup,
     step: stepBy[s.shipmentId] ?? 0,
     packed: packedBy[s.shipmentId] ?? [],
     valueCents: s.valueCents,
@@ -164,6 +165,7 @@ function MerchantAppInner() {
             </div>
           </div>
 
+          {open.pickup && <PickupNotice pickup={open.pickup} />}
           {open.status === "new" || open.status === "ready" ? (
             <>
               {open.status === "new" && <div className="mr-acceptnote">
@@ -404,6 +406,16 @@ function BoxPhotoSlot({
       </span>
     </button>
   );
+}
+
+function PickupNotice({ pickup }: { pickup: NonNullable<MerchantOrder["pickup"]> }) {
+  if (pickup.state === "cancelled") return <p className="mr-pickup">Pickup cancelled</p>;
+  if (!pickup.windowStart || !pickup.windowEnd) return <p className="mr-pickup">Pickup pending · No carrier booking yet</p>;
+  const format = new Intl.DateTimeFormat(undefined, {
+    weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  });
+  return <p className="mr-pickup"><strong>Test pickup window</strong><br />
+    {format.formatRange(new Date(pickup.windowStart), new Date(pickup.windowEnd))}</p>;
 }
 
 function NewOrderActions({ order, accepting, onAccept }: { order: MerchantOrder; accepting: boolean; onAccept: () => void }) {

@@ -1,4 +1,5 @@
 import type { ProductGlyphKind } from "@afrimart/ui";
+import type { RouterOutputs } from "@afrimart/api-client";
 
 export type OrderStatus = "new" | "packing" | "ready" | "declined";
 
@@ -21,6 +22,7 @@ export interface MerchantOrder {
   ago: string;
   status: OrderStatus;
   declineReason: string | null;
+  pickup: RouterOutputs["merchant"]["inbox"][number]["pickup"];
   /** 0 = print the label, 1 = pack every item. */
   step: number;
   packed: string[];

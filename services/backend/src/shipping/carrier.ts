@@ -16,6 +16,7 @@
 
 import type { TemperatureClass } from "@prisma/client";
 import { DIM_DIVISOR } from "../config.js";
+import { assertDevOnlyAllowed } from "../runtime.js";
 
 /** CAT-5 — physical dimensions in inches, needed for dimensional weight. */
 export interface Dimensions {
@@ -132,6 +133,17 @@ function regionForZip(zip: string): string {
  * packaging costs before charging anyone.
  */
 export class LocalCarrierGateway implements CarrierGateway {
+  /** Repeatable printer-and-pickup walkthrough. All test windows use UTC. */
+  testPickupWindow(requestedAt: Date) {
+    assertDevOnlyAllowed();
+    const start = new Date(requestedAt);
+    start.setUTCHours(18, 0, 0, 0);
+    do {
+      start.setUTCDate(start.getUTCDate() + 1);
+    } while (start.getUTCDay() === 0 || start.getUTCDay() === 6);
+    return { windowStart: start, windowEnd: new Date(start.getTime() + 2 * 3600_000) };
+  }
+
   async rates(spec: ParcelSpec): Promise<RateQuote[]> {
     const from = METRO_REGION[spec.fromMetro] ?? "midwest";
     const to = regionForZip(spec.toZip);

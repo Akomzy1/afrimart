@@ -266,9 +266,25 @@ model Shipment {
   /// stripped on upload. A shipment cannot be marked shipped without one.
   packingPhotoUrl   String?
   packingPhotoAt    DateTime?
+  pickup            ShipmentPickup?
   items             ShipmentItem[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
+}
+
+enum PickupState {
+  awaiting_carrier
+  test_scheduled
+  cancelled
+}
+
+model ShipmentPickup {
+  shipmentId  String      @id
+  shipment    Shipment    @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  requestedAt DateTime    @default(now())
+  state       PickupState @default(awaiting_carrier)
+  windowStart DateTime?
+  windowEnd   DateTime?
 }
 
 /// What is actually in a parcel. Hangs off Shipment rather than Order so the
