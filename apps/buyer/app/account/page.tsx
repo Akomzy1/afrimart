@@ -106,6 +106,7 @@ export default function AccountPage() {
           {orders.data?.map((order) => {
             const items = order.parcels.flatMap((p) => p.items);
             const delivered = order.parcels.every((p) => p.status === "delivered");
+            const hasDecline = order.parcels.some((p) => p.status === "declined");
             const openReports = order.parcels.flatMap((p) => p.claims).filter((c) => c.stage === "review").length;
             const glyphs = items.slice(0, 4).map((i) => glyphForCategory(i.category));
             const count = items.reduce((n, i) => n + i.quantity, 0);
@@ -116,7 +117,7 @@ export default function AccountPage() {
                     {dayWord(order.placedAt)}
                     <span className="sub">Order № {order.ref}</span>
                   </div>
-                  <div className={`st ${delivered ? "done" : "transit"}`}>{delivered ? "Delivered" : "On the way"}</div>
+                  <div className={`st ${delivered ? "done" : "transit"}`}>{hasDecline ? "Seller declined a parcel" : delivered ? "Delivered" : "On the way"}</div>
                 </div>
                 <div className="thumbs">
                   {glyphs.map((g, i) => (
@@ -136,7 +137,7 @@ export default function AccountPage() {
                     {count} {count === 1 ? "item" : "items"} · <b>{money(order.totalCents)}</b>
                   </div>
                   <div className="ord-actions">
-                    {!delivered && (
+                    {!delivered && !hasDecline && (
                       <Link href="/orders" className="track">
                         Track order
                       </Link>

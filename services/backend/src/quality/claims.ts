@@ -12,6 +12,7 @@ import type { ShipmentStatus } from "@prisma/client";
  * parcel. Returns the sentence to show when they are not yet possible.
  */
 export function itemReportBlock(status: ShipmentStatus): string | null {
+  if (status === "declined") return "The seller declined this parcel before packing.";
   return status === "delivered" ? null : "You can report a problem with an item once the parcel has arrived.";
 }
 
@@ -24,6 +25,7 @@ export function parcelReportBlock(
   parcel: { status: ShipmentStatus; estimatedDelivery: Date | null },
   now: Date = new Date(),
 ): string | null {
+  if (parcel.status === "declined") return "The seller declined this parcel before packing.";
   if (parcel.status === "delivered") return null;
   if (parcel.estimatedDelivery && parcel.estimatedDelivery.getTime() < now.getTime()) return null;
   return "It's not late yet. If it hasn't arrived by its expected date, you can report it then.";
@@ -35,7 +37,7 @@ export function parcelReportBlock(
  * a not-arrived claim onto them rather than the carrier.
  */
 export function hadCarrierScan(status: ShipmentStatus): boolean {
-  return !["pending", "label_created"].includes(status);
+  return !["pending", "declined", "label_created"].includes(status);
 }
 
 export type ClaimStage = "review" | "refunded" | "declined";

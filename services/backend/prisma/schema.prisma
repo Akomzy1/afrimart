@@ -50,6 +50,7 @@ enum OrderStatus {
 
 enum ShipmentStatus {
   pending
+  declined
   label_created
   picked_up
   in_transit
@@ -258,6 +259,7 @@ model Shipment {
   trackingNumber    String?
   labelUrl          String?
   status            ShipmentStatus    @default(pending)
+  declineReason      String?           @db.VarChar(500)
   estimatedDelivery DateTime?
   /// QC-2 — the seller's photo of the open box, taken before sealing. Metadata
   /// stripped on upload. A shipment cannot be marked shipped without one.

@@ -129,6 +129,35 @@ try {
   const b = as(null, `buyer:${buyerB}`);
   const nobody = as(null);
 
+  console.log("=== Merchant declines ===");
+  const refusal = await makeOrder("decline", buyerA, { status: "pending", items: [] });
+  const sibling = await prisma.shipment.create({ data: { id: id("sibling"), orderId: refusal.orderId, storeId: otherStoreId, temperatureClass: "ambient" } });
+  const shipmentId = refusal.shipmentId;
+  const reason = "Out of stock";
+  check("a different store cannot decline the parcel", (await outcome(otherStore.merchant.decline({ shipmentId, reason }))).code === "NOT_FOUND");
+  check("an empty reason is refused", (await outcome(store.merchant.decline({ shipmentId, reason: "   " }))).code === "BAD_REQUEST");
+  check("an overlong reason is refused", (await outcome(store.merchant.decline({ shipmentId, reason: "a".repeat(501) }))).code === "BAD_REQUEST");
+  const decisions = await Promise.all([reason, `  ${reason}  `].map(r => store.merchant.decline({ shipmentId, reason: r })));
+  check("repeating the decline returns the saved reason", decisions.every(d => d.status === "declined" && d.declineReason === reason));
+  check("a retry cannot overwrite the reason", (await outcome(store.merchant.decline({ shipmentId, reason: "Changed" }))).code === "CONFLICT");
+  check("a declined parcel cannot be accepted or shipped", (await outcome(store.merchant.accept({ shipmentId }))).code === "CONFLICT" && (await outcome(store.merchant.markShipped({ shipmentId }))).code === "CONFLICT");
+  const declinedRow = (await store.merchant.inbox()).find(s => s.shipmentId === shipmentId);
+  check("the merchant inbox shows the saved reason", declinedRow?.status === "declined" && declinedRow.declineReason === reason);
+  const staffRow = (await ops.admin.fulfilment()).find(s => s.shipmentId === shipmentId);
+  check("operations can see the reason", staffRow?.declineReason === reason);
+  const orderView = await a.orders.detail({ orderId: refusal.orderId });
+  check("only the declining store's parcel changes", orderView.parcels.find(s => s.shipmentId === shipmentId)?.status === "declined" && orderView.parcels.find(s => s.shipmentId === sibling.id)?.status === "pending");
+
+  const race = await makeOrder("decision", buyerA, { status: "pending", items: [] });
+  const [acceptResult, declineResult] = await Promise.all([
+    outcome(store.merchant.accept({ shipmentId: race.shipmentId })),
+    outcome(store.merchant.decline({ shipmentId: race.shipmentId, reason })),
+  ]);
+  const winner = await prisma.shipment.findUniqueOrThrow({ where: { id: race.shipmentId } });
+  check("competing decisions commit exactly one outcome", winner.status === "declined"
+    ? declineResult.code === "ok" && acceptResult.code === "CONFLICT" && winner.trackingNumber === null && winner.declineReason === reason
+    : winner.status === "label_created" && acceptResult.code === "ok" && declineResult.code === "CONFLICT" && winner.declineReason === null);
+
   console.log("=== QC-2 packing photo ===");
   const packing = await makeOrder("pack", buyerA, { status: "pending", items: [{ name: "Egusi", qty: 2, unitCents: 850 }] });
   const withLocation = await photoWithLocation();

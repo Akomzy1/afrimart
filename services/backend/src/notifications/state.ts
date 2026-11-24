@@ -16,6 +16,7 @@ import type { OrderStatus, ShipmentStatus } from "@prisma/client";
  */
 
 const SHIPMENT_RANK: Record<ShipmentStatus, number> = {
+  declined: -1,
   pending: 0,
   label_created: 1,
   picked_up: 2,
@@ -30,6 +31,7 @@ export function shipmentRank(status: ShipmentStatus): number {
 
 /** True when `next` is a forward move from `current`. */
 export function canAdvanceShipment(current: ShipmentStatus, next: ShipmentStatus): boolean {
+  if (current === "declined" || next === "declined") return false;
   if (current === next) return false;
   if (current === "delivered") return false; // terminal: nothing follows arrival
   if (next === "exception") return true; // a problem is always worth recording

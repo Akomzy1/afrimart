@@ -71,7 +71,7 @@ function MerchantAppInner() {
   const thread = trpc.merchant.thread.useQuery();
   const utils = trpc.useUtils();
   const acceptJob = trpc.merchant.accept.useMutation({
-    onSuccess: () => utils.merchant.inbox.invalidate(),
+    onSettled: () => utils.merchant.inbox.invalidate(),
   });
   const shipJob = trpc.merchant.markShipped.useMutation({
     onSuccess: () => utils.merchant.inbox.invalidate(),
@@ -99,6 +99,7 @@ function MerchantAppInner() {
     buyer: s.buyer,
     ago: s.ago,
     status: s.status,
+    declineReason: s.declineReason,
     step: stepBy[s.shipmentId] ?? 0,
     packed: packedBy[s.shipmentId] ?? [],
     valueCents: s.valueCents,
@@ -107,7 +108,7 @@ function MerchantAppInner() {
     photoUrl: s.packingPhotoUrl,
   }));
 
-  const open = orders.find((o) => o.id === openId) ?? null;
+  const open = orders.find((o) => o.id === openId && o.status !== "declined") ?? null;
   const newCount = orders.filter((o) => o.status === "new").length;
   const unread = thread.data?.unread ?? 0;
 
@@ -239,16 +240,8 @@ function MerchantAppInner() {
 
         <div className="mr-actionbar">
           {open.status === "new" ? (
-            <>
-              <button
-                type="button"
-                className="mr-bigbtn accent"
-                onClick={() => update(open.id, { status: "packing", step: 0 })}
-              >
-                <CheckIcon strokeWidth={2.6} /> Accept order
-              </button>
-              <div className="mr-barhint">{open.ago} · {itemCount} items</div>
-            </>
+            <NewOrderActions key={open.id} order={open} accepting={acceptJob.isPending}
+              onAccept={() => update(open.id, { status: "packing", step: 0 })} />
           ) : open.step === 0 ? (
             <>
               <button type="button" className="mr-bigbtn green" onClick={() => update(open.id, { step: 1 })}>
@@ -415,12 +408,45 @@ function BoxPhotoSlot({
   );
 }
 
+function NewOrderActions({ order, accepting, onAccept }: { order: MerchantOrder; accepting: boolean; onAccept: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [reason, setReason] = useState("");
+  const utils = trpc.useUtils();
+  const decline = trpc.merchant.decline.useMutation({ onSettled: () => utils.merchant.inbox.invalidate() });
+  if (editing) {
+    return (
+      <form className="mr-decline" onSubmit={(e) => {
+        e.preventDefault();
+        if (reason.trim() && !decline.isPending) decline.mutate({ shipmentId: order.id, reason: reason.trim() });
+      }}>
+        <label htmlFor="decline-reason">Why are you declining this order?</label>
+        <textarea id="decline-reason" autoFocus required maxLength={500} rows={2} value={reason}
+          onChange={(e) => setReason(e.target.value)} disabled={decline.isPending} />
+        {decline.isError && <p role="alert">{decline.error.message}</p>}
+        <button className="mr-bigbtn accent" disabled={!reason.trim() || decline.isPending}>
+          {decline.isPending ? "Saving…" : "Confirm decline"}
+        </button>
+        <button type="button" className="mr-secondary" disabled={decline.isPending} onClick={() => {
+          setEditing(false); setReason(""); decline.reset();
+        }}>Keep order</button>
+      </form>
+    );
+  }
+  return <>
+    <button type="button" className="mr-bigbtn accent" disabled={accepting} onClick={onAccept}>
+      <CheckIcon strokeWidth={2.6} /> Accept order
+    </button>
+    <button type="button" className="mr-secondary" disabled={accepting} onClick={() => setEditing(true)}>Decline order</button>
+  </>;
+}
+
 function OrdersInbox({
   orders, onOpen, onAccept,
 }: { orders: MerchantOrder[]; onOpen: (id: string) => void; onAccept: (id: string) => void }) {
   const fresh = orders.filter((o) => o.status === "new");
   const working = orders.filter((o) => o.status === "packing");
   const done = orders.filter((o) => o.status === "ready");
+  const declined = orders.filter((o) => o.status === "declined");
 
   return (
     <>
@@ -504,6 +530,19 @@ function OrdersInbox({
         </>
       )}
 
+      {declined.length > 0 && (
+        <>
+          <div className="mr-sectitle"><span className="eyebrow">Declined</span></div>
+          {declined.map((o) => (
+            <div className="mr-ordcard" key={o.id}>
+              <div className="oc-top"><div className="oc-l">
+                <div className="num">{o.ref}</div>
+                <div className="meta mr-reason">{o.declineReason}</div>
+              </div></div>
+            </div>
+          ))}
+        </>
+      )}
       {orders.length === 0 && (
         <div className="mr-empty">
           <h3 className="serif">No orders yet today</h3>

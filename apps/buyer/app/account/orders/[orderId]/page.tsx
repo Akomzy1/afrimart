@@ -36,7 +36,7 @@ export default function OrderPage({ params }: { params: Promise<{ orderId: strin
   const itemCount = o.parcels.reduce((n, p) => n + p.items.reduce((m, i) => m + i.quantity, 0), 0);
   const itemsCents = o.parcels.reduce((n, p) => n + p.items.reduce((m, i) => m + i.lineTotalCents, 0), 0);
   const parcelWord = o.parcels.length === 1 ? "one parcel" : o.parcels.length === 2 ? "two parcels" : `${o.parcels.length} parcels`;
-  const allDelivered = o.parcels.every((p) => p.status === "delivered");
+  const awaitingDelivery = o.parcels.some((p) => p.status !== "delivered" && p.status !== "declined");
 
   return (
     <>
@@ -84,7 +84,7 @@ export default function OrderPage({ params }: { params: Promise<{ orderId: strin
                 <div className="hd">
                   <span className="eyebrow">From {p.storeName}</span>
                   <span className={`st ${p.status === "delivered" ? "badge-done" : "badge-late"}`}>
-                    {p.status === "delivered" ? "Delivered" : p.estimatedDelivery ? `Expected ${longDate(p.estimatedDelivery)}` : "On its way"}
+                    {p.status === "declined" ? "Declined by seller" : p.status === "delivered" ? "Delivered" : p.estimatedDelivery ? `Expected ${longDate(p.estimatedDelivery)}` : "On its way"}
                   </span>
                 </div>
 
@@ -120,7 +120,7 @@ export default function OrderPage({ params }: { params: Promise<{ orderId: strin
                   </div>
                 ))}
 
-                {p.status !== "delivered" && (
+                {p.status !== "delivered" && p.status !== "declined" && (
                   <div className="od-pfoot">
                     <span className="eta">
                       <TruckIcon />
@@ -162,7 +162,7 @@ export default function OrderPage({ params }: { params: Promise<{ orderId: strin
             </div>
           </div>
         </div>
-        {!allDelivered && <p className="od-fine">You can report a problem with an item once its parcel has arrived.</p>}
+        {awaitingDelivery && <p className="od-fine">You can report a problem with an item once its parcel has arrived.</p>}
         <div className="cart-spacer" />
       </div>
     </>

@@ -513,7 +513,8 @@ function Fulfilment() {
                   </div>
                 </td>
                 <td>
-                  <span className={`op-pill ${r.stuck ? "bad" : "good"}`}>{r.status}</span>
+                  <span className={`op-pill ${r.stuck || r.status === "declined" ? "bad" : "good"}`}>{r.status}</span>
+                  {r.declineReason && <div className="muted">{r.declineReason}</div>}
                 </td>
                 <td className="num">
                   {r.hoursWaiting}h{r.stuck && <div className="muted">stuck</div>}
@@ -526,6 +527,7 @@ function Fulfilment() {
                       type="button"
                       className="op-btn"
                       onClick={() => intervene.mutate({ shipmentId: r.shipmentId, action: "mark_shipped" })}
+                      disabled={r.status === "declined"}
                     >
                       Shipped
                     </button>
@@ -533,6 +535,7 @@ function Fulfilment() {
                       type="button"
                       className="op-btn"
                       onClick={() => intervene.mutate({ shipmentId: r.shipmentId, action: "flag_exception" })}
+                      disabled={r.status === "declined"}
                     >
                       Exception
                     </button>

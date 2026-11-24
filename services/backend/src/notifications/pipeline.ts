@@ -112,9 +112,9 @@ export async function handleTrackingEvent(event: TrackingEvent): Promise<HandleR
   const orderRef = `AM-${shipment.orderId.slice(-7).toUpperCase()}`;
   const queued: string[] = [];
 
-  await prisma.$transaction(async (tx) => {
-    await tx.shipment.update({
-      where: { id: shipment.id },
+  const applied = await prisma.$transaction(async (tx) => {
+    const changed = await tx.shipment.updateMany({
+      where: { id: shipment.id, status: { not: "declined" } },
       data: {
         status: mapped,
         ...(event.carrier ? { carrier: event.carrier } : {}),
@@ -122,6 +122,10 @@ export async function handleTrackingEvent(event: TrackingEvent): Promise<HandleR
       },
     });
 
+    if (!changed.count) {
+      await tx.webhookEvent.update({ where: { providerEventId: event.providerEventId }, data: { processedAt: new Date(), ignoredReason: "Parcel was declined" } });
+      return false;
+    }
     const statuses = parcels.map((p) => (p.id === shipment.id ? mapped : p.status));
     const nextOrder = deriveOrderStatus(statuses, shipment.order.status);
     if (canAdvanceOrder(shipment.order.status, nextOrder)) {
@@ -213,8 +217,10 @@ export async function handleTrackingEvent(event: TrackingEvent): Promise<HandleR
       where: { providerEventId: event.providerEventId },
       data: { processedAt: new Date() },
     });
+    return true;
   });
 
+  if (!applied) return { applied: false, reason: "out-of-order", shipmentStatus: "declined", queued: [] };
   const after = await prisma.order.findUnique({ where: { id: shipment.orderId } });
   return { applied: true, shipmentStatus: mapped, orderStatus: after?.status, queued };
 }

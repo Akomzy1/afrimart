@@ -456,6 +456,10 @@
 /* ---------- What is listed, the add sheet, and the AfriMart thread (QC-1) ---------- */
 .mr-bigaction.listed .ic { background: var(--green-50); color: var(--green); }
 .mr-bigbtn.ghost { background: transparent; border: 1.5px solid var(--line); color: var(--ink); }
+.mr-secondary { width: 100%; min-height: 44px; background: none; color: var(--ink-2); font: inherit; font-weight: 600; border: 0; }
+.mr-decline label { display: block; font-weight: 700; margin-bottom: 6px; }
+.mr-decline textarea { box-sizing: border-box; width: 100%; margin-bottom: 8px; padding: 10px; color: var(--ink); border: 1px solid var(--ink-3); border-radius: var(--r-md); font: inherit; }
+.mr-reason { overflow-wrap: anywhere; white-space: pre-wrap; }
 .mr-msgrow.support .av { background: var(--amber); color: var(--ink); }
 
 .mr-catbar { padding: 8px 20px 0; }

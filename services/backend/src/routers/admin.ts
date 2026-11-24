@@ -375,6 +375,7 @@ export const adminRouter = router({
       buyer: s.order.buyer.email,
       storeName: s.store.name,
       status: s.status,
+      declineReason: s.declineReason,
       temperatureClass: s.temperatureClass,
       carrier: s.carrier,
       trackingNumber: s.trackingNumber,
@@ -405,7 +406,14 @@ export const adminRouter = router({
       }
       const status =
         input.action === "mark_shipped" ? "picked_up" : input.action === "mark_delivered" ? "delivered" : "exception";
-      return prisma.shipment.update({ where: { id: input.shipmentId }, data: { status } });
+      return prisma.$transaction(async (tx) => {
+        const where = { id: input.shipmentId };
+        await tx.shipment.updateMany({ where: { ...where, status: { not: "declined" } }, data: { status } });
+        const shipment = await tx.shipment.findUnique({ where });
+        if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "No such shipment." });
+        if (shipment.status === "declined") throw new TRPCError({ code: "CONFLICT", message: "The seller declined this parcel before packing." });
+        return shipment;
+      });
     }),
 
   /* ---------------------------------------------------------------- ADM-4 */

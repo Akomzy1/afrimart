@@ -2,6 +2,7 @@ import type { ID, TemperatureClass, Timestamps } from "./common";
 
 export type ShipmentStatus =
   | "pending"
+  | "declined"
   | "label-created"
   | "picked-up"
   | "in-transit"
@@ -22,6 +23,7 @@ export interface Shipment extends Timestamps {
   trackingNumber?: string;
   labelUrl?: string;
   status: ShipmentStatus;
+  declineReason?: string | null;
   estimatedDelivery?: string;
   /** PRD QC-2 — packing photo confirmation, the evidence trail for every shipment. */
   packingPhotoUrl?: string;

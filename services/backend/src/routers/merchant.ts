@@ -37,8 +37,8 @@ function minutesAgo(from: Date): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
-/** The merchant's three states, derived from the shipment's carrier status. */
-function merchantStatus(status: string): "new" | "packing" | "ready" {
+function merchantStatus(status: string): "new" | "packing" | "ready" | "declined" {
+  if (status === "declined") return "declined";
   if (status === "pending") return "new";
   if (status === "label_created") return "packing";
   return "ready";
@@ -87,6 +87,7 @@ export const merchantRouter = router({
       buyer: s.order.buyer.email.split("@")[0],
       ago: minutesAgo(s.createdAt),
       status: merchantStatus(s.status),
+      declineReason: s.declineReason,
       temperatureClass: s.temperatureClass,
       /** QC-2 — null until the box has been photographed. A short-lived signed link: this store packed it. */
       packingPhotoUrl: signedPhotoUrl(s.packingPhotoUrl),
@@ -119,7 +120,25 @@ export const merchantRouter = router({
         `;
         const shipment = await tx.shipment.findFirst({ where });
         if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
+        if (shipment.status === "declined") throw new TRPCError({ code: "CONFLICT", message: "This order has already been declined." });
         return shipment;
+      });
+    }),
+
+  decline: merchantProcedure
+    .input(z.object({ shipmentId: z.string(), reason: z.string().trim().min(1, "Enter a reason.").max(500) }))
+    .mutation(async ({ input, ctx }) => {
+      const where = { id: input.shipmentId, storeId: ctx.storeId };
+      return prisma.$transaction(async (tx) => {
+        await tx.shipment.updateMany({
+          where: { ...where, status: "pending" },
+          data: { status: "declined", declineReason: input.reason },
+        });
+        const parcel = await tx.shipment.findFirst({ where, select: { status: true, declineReason: true } });
+        if (!parcel) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
+        if (parcel.status !== "declined") throw new TRPCError({ code: "CONFLICT", message: "Only a new order can be declined." });
+        if (parcel.declineReason !== input.reason) throw new TRPCError({ code: "CONFLICT", message: "A different reason has already been recorded." });
+        return parcel;
       });
     }),
 
@@ -141,6 +160,7 @@ export const merchantRouter = router({
       if (shipment.status === "pending") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Accept the order before photographing the box." });
       }
+      if (shipment.status === "declined") throw new TRPCError({ code: "CONFLICT", message: "This order has already been declined." });
       if (shipment.status !== "label_created") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "This order has already been handed over." });
       }
@@ -167,9 +187,11 @@ export const merchantRouter = router({
       if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
       // QC-2 — enforced here, not only by a disabled button: every shipment has
       // a packing photo on record before it leaves the seller's hands.
+      if (shipment.status === "declined") throw new TRPCError({ code: "CONFLICT", message: "This order has already been declined." });
       if (!shipment.packingPhotoUrl) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Photograph the open box before you hand it over." });
       }
+      if (shipment.status === "pending") throw new TRPCError({ code: "CONFLICT", message: "Accept the order before handing it over." });
       return prisma.shipment.update({ where: { id: shipment.id }, data: { status: "picked_up" } });
     }),
 
