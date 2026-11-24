@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { isDevelopment } from "../runtime.js";
+import { testLabelPdf } from "../shipping/testLabel.js";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
@@ -115,7 +117,27 @@ export const merchantRouter = router({
     }));
   }),
 
-  /** MCH-2 — accept the job; the label is generated at this point (FUL-1). */
+  shippingLabel: merchantProcedure
+    .input(z.object({ shipmentId: z.string(), paper: z.enum(["4x6", "letter"]) }))
+    .query(async ({ ctx, input }) => {
+      const parcel = await prisma.shipment.findFirst({
+        where: { id: input.shipmentId, storeId: ctx.storeId },
+        select: { id: true, orderId: true, status: true, labelUrl: true, order: { select: { status: true } } },
+      });
+      if (!parcel) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
+      if (parcel.status === "pending" || parcel.status === "declined" || parcel.order.status === "cancelled") {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No label is available for this parcel." });
+      }
+      if (parcel.labelUrl) {
+        const url = URL.canParse(parcel.labelUrl) ? new URL(parcel.labelUrl) : null;
+        if (url?.protocol === "https:" && !url.username && !url.password) return { kind: "issued" as const, url: url.href };
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The saved carrier label could not be opened." });
+      }
+      if (!isDevelopment()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The carrier label is not available yet." });
+      return { kind: "test" as const, pdf: (await testLabelPdf(parcel, input.paper)).toString("base64") };
+    }),
+
+  /** Accept a parcel once and preserve any carrier tracking number. */
   accept: merchantProcedure
     .input(z.object({ shipmentId: z.string() }))
     .mutation(async ({ input, ctx }) => {

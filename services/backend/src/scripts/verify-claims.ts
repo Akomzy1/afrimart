@@ -10,6 +10,7 @@
  */
 import { TRPCError } from "@trpc/server";
 import sharp from "sharp";
+import { PDFDocument } from "pdf-lib";
 import { prisma } from "../db.js";
 import { callerFor } from "./callers.js";
 import { parsePhotoPath } from "../storage/access.js";
@@ -181,8 +182,23 @@ try {
   const early = await outcome(store.merchant.packingPhoto({ shipmentId: packing.shipmentId, image: withLocation }));
   check("a photo before the order is accepted is refused", early.code === "BAD_REQUEST", early.message);
   const acceptPacking = () => store.merchant.accept({ shipmentId: packing.shipmentId });
+  const labelInput = { shipmentId: packing.shipmentId, paper: "4x6" as const };
+  check("a pending parcel has no printable label", (await outcome(store.merchant.shippingLabel(labelInput))).code === "PRECONDITION_FAILED");
+  check("a declined parcel has no printable label", (await outcome(store.merchant.shippingLabel({ ...labelInput, shipmentId: refusal.shipmentId }))).code === "PRECONDITION_FAILED");
   const accepted = await Promise.all([acceptPacking(), acceptPacking()]);
   const expectedTracking = `TRK${packing.shipmentId.slice(-8).toUpperCase()}`;
+  const thermal = await store.merchant.shippingLabel(labelInput);
+  const repeat = await store.merchant.shippingLabel(labelInput);
+  const letter = await store.merchant.shippingLabel({ ...labelInput, paper: "letter" });
+  check("reprinting returns the same test PDF", thermal.kind === "test" && repeat.kind === "test" && thermal.pdf === repeat.pdf);
+  for (const [label, width, height] of [[thermal, 288, 432], [letter, 612, 792]] as const) {
+    const doc = label.kind === "test" ? await PDFDocument.load(Buffer.from(label.pdf, "base64")) : null;
+    check(`label renders one ${width} by ${height} point page`, doc?.getPageCount() === 1 && doc.getPage(0).getWidth() === width && doc.getPage(0).getHeight() === height);
+  }
+  check("another seller cannot retrieve the label", (await outcome(otherStore.merchant.shippingLabel(labelInput))).code === "NOT_FOUND");
+  check("a buyer cannot retrieve the merchant label", (await outcome(a.merchant.shippingLabel(labelInput))).code === "UNAUTHORIZED");
+  const afterPrint = await prisma.shipment.findUniqueOrThrow({ where: { id: packing.shipmentId } });
+  check("printing preserves the accepted shipment", afterPrint.updatedAt.getTime() === accepted[0]!.updatedAt.getTime() && afterPrint.trackingNumber === expectedTracking);
   check("simultaneous accepts return the same label", accepted.every(s => s.status === "label_created" && s.trackingNumber === expectedTracking));
 
   const tracked = await makeOrder("tracked", buyerA, { status: "pending", items: [] });
@@ -190,6 +206,10 @@ try {
   const carrierTracking = "carrier-issued-tracking";
   await prisma.shipment.update({ where: trackedWhere, data: { trackingNumber: carrierTracking } });
   const acceptedTracked = await store.merchant.accept({ shipmentId: tracked.shipmentId });
+  const issuedUrl = "https://carrier.example/issued.pdf";
+  await prisma.shipment.update({ where: trackedWhere, data: { labelUrl: issuedUrl } });
+  const issued = await store.merchant.shippingLabel({ shipmentId: tracked.shipmentId, paper: "4x6" });
+  check("an issued carrier label takes precedence over a test PDF", issued.kind === "issued" && issued.url === issuedUrl);
   check("accepting preserves a preassigned tracking number", acceptedTracked.status === "label_created" && acceptedTracked.trackingNumber === carrierTracking);
   for (const status of ["label_created", "picked_up", "in_transit", "delivered", "exception"] as const) {
     const before = await prisma.shipment.update({ where: trackedWhere, data: { status, updatedAt: new Date("2024-01-01T00:00:00Z") } });

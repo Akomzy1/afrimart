@@ -18,6 +18,7 @@ import {
 import { trpc } from "@afrimart/api-client";
 import { glyphForCategory, type MerchantOrder } from "./orders";
 import { ListingPhoto } from "./ListingPhoto";
+import { ReprintLabel, ShippingLabel } from "./ShippingLabel";
 import { photoUrl } from "./providers";
 import { SignIn } from "./SignIn";
 import { BOX_PHOTO, PhotoCamera } from "./PhotoCamera";
@@ -152,7 +153,7 @@ function MerchantAppInner() {
         <div className="mr-scroll">
           <div className="mr-summary">
             <div className="l">
-              <div className="k">{open.status === "new" ? "New order" : "Packing"}</div>
+              <div className="k">{open.status === "new" ? "New order" : open.status === "ready" ? "Ready for pickup" : "Packing"}</div>
               <div className="buyer">{open.buyer}</div>
               <div className="items">
                 {itemCount} items · {open.ref}
@@ -163,13 +164,13 @@ function MerchantAppInner() {
             </div>
           </div>
 
-          {open.status === "new" ? (
+          {open.status === "new" || open.status === "ready" ? (
             <>
-              <div className="mr-acceptnote">
+              {open.status === "new" && <div className="mr-acceptnote">
                 <p className="eyebrow">One order</p>
                 <h3 className="serif">{itemCount} items to pack</h3>
                 <p>Accept to start — we&apos;ll prepare the label.</p>
-              </div>
+              </div>}
               <div className="mr-itemlist">
                 {open.items.map((item) => (
                   <div className="il" key={item.id}>
@@ -242,13 +243,9 @@ function MerchantAppInner() {
           {open.status === "new" ? (
             <NewOrderActions key={open.id} order={open} accepting={acceptJob.isPending}
               onAccept={() => update(open.id, { status: "packing", step: 0 })} />
-          ) : open.step === 0 ? (
-            <>
-              <button type="button" className="mr-bigbtn green" onClick={() => update(open.id, { step: 1 })}>
-                <ShipCheckIcon /> Print the label
-              </button>
-              <div className="mr-barhint">We&apos;ve already filled in the address</div>
-            </>
+          ) : open.status === "ready" || open.step === 0 ? (
+            <ShippingLabel key={open.id} shipmentId={open.id}
+              onPrinted={open.status === "packing" ? () => update(open.id, { step: 1 }) : undefined} />
           ) : (
             <>
               <button
@@ -272,6 +269,7 @@ function MerchantAppInner() {
                     ? "Photograph the open box first"
                     : "Ready to hand over"}
               </div>
+              <ReprintLabel key={open.id} shipmentId={open.id} />
             </>
           )}
         </div>
