@@ -88,9 +88,9 @@ try {
   const hub = await prisma.hubMetro.findFirstOrThrow();
   const storeId = id("store");
   const otherStoreId = id("store2");
-  for (const sid of [storeId, otherStoreId]) {
+  for (const [sid, ownerPhone] of [[storeId, "+12025550171"], [otherStoreId, "+12025550172"]] as const) {
     await prisma.store.create({
-      data: { id: sid, name: `QC3 ${sid.slice(-6)}`, ownerName: "x", sellerType: "store", hubMetroId: hub.id, onboardingStatus: "live", verificationStatus: "verified" },
+      data: { id: sid, name: `QC3 ${sid.slice(-6)}`, ownerName: "x", ownerPhone, ownerPhoneVerifiedAt: new Date(), sellerType: "store", hubMetroId: hub.id, onboardingStatus: "live", verificationStatus: "verified" },
     });
   }
   const buyerA = id("buyerA");
@@ -135,7 +135,24 @@ try {
 
   const early = await outcome(store.merchant.packingPhoto({ shipmentId: packing.shipmentId, image: withLocation }));
   check("a photo before the order is accepted is refused", early.code === "BAD_REQUEST", early.message);
-  await store.merchant.accept({ shipmentId: packing.shipmentId });
+  const acceptPacking = () => store.merchant.accept({ shipmentId: packing.shipmentId });
+  const accepted = await Promise.all([acceptPacking(), acceptPacking()]);
+  const expectedTracking = `TRK${packing.shipmentId.slice(-8).toUpperCase()}`;
+  check("simultaneous accepts return the same label", accepted.every(s => s.status === "label_created" && s.trackingNumber === expectedTracking));
+
+  const tracked = await makeOrder("tracked", buyerA, { status: "pending", items: [] });
+  const trackedWhere = { id: tracked.shipmentId };
+  const carrierTracking = "carrier-issued-tracking";
+  await prisma.shipment.update({ where: trackedWhere, data: { trackingNumber: carrierTracking } });
+  const acceptedTracked = await store.merchant.accept({ shipmentId: tracked.shipmentId });
+  check("accepting preserves a preassigned tracking number", acceptedTracked.status === "label_created" && acceptedTracked.trackingNumber === carrierTracking);
+  for (const status of ["label_created", "picked_up", "in_transit", "delivered", "exception"] as const) {
+    const before = await prisma.shipment.update({ where: trackedWhere, data: { status, updatedAt: new Date("2024-01-01T00:00:00Z") } });
+    const retry = await store.merchant.accept({ shipmentId: tracked.shipmentId });
+    const saved = await prisma.shipment.findUniqueOrThrow({ where: trackedWhere });
+    check(`an accept retry leaves a ${status} shipment untouched`, [retry, saved].every(s =>
+      s.status === status && s.trackingNumber === carrierTracking && s.updatedAt.getTime() === before.updatedAt.getTime()));
+  }
 
   const unseen = await outcome(otherStore.merchant.packingPhoto({ shipmentId: packing.shipmentId, image: withLocation }));
   check("another store cannot photograph this store's parcel", unseen.code === "NOT_FOUND", unseen.code);

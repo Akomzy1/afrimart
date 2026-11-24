@@ -107,17 +107,19 @@ export const merchantRouter = router({
   accept: merchantProcedure
     .input(z.object({ shipmentId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      // Scoped to the caller's own store: another store's shipment is "no longer
-      // available", not "forbidden", so its existence is not confirmed either.
-      const shipment = await prisma.shipment.findFirst({ where: { id: input.shipmentId, storeId: ctx.storeId } });
-      if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
-      return prisma.shipment.update({
-        where: { id: shipment.id },
-        data: {
-          status: "label_created",
-          // A real EasyPost label replaces this once credentials exist.
-          trackingNumber: shipment.trackingNumber ?? `TRK${shipment.id.slice(-8).toUpperCase()}`,
-        },
+      const where = { id: input.shipmentId, storeId: ctx.storeId };
+      const fallbackTracking = `TRK${input.shipmentId.slice(-8).toUpperCase()}`;
+      return prisma.$transaction(async (tx) => {
+        // Check the status and preserve any carrier tracking number in the same write.
+        await tx.$executeRaw`
+          UPDATE "Shipment"
+          SET "status" = 'label_created', "trackingNumber" = COALESCE("trackingNumber", ${fallbackTracking}),
+              "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "id" = ${where.id} AND "storeId" = ${where.storeId} AND "status" = 'pending'
+        `;
+        const shipment = await tx.shipment.findFirst({ where });
+        if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
+        return shipment;
       });
     }),
 
