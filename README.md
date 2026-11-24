@@ -66,6 +66,8 @@ Website import reads up to 500 Shopify variants, WooCommerce products, or Produc
 
 On November 23, 2026, a read-only pilot against TransAfrican Food Store’s public WooCommerce feed imported 108 distinct drafts from two pages into a temporary local PostgreSQL schema. A second import added zero drafts. Three sampled prices matched the merchant’s product pages. The pilot created zero listings and the temporary schema was removed. [TransAfrican Food Store](https://transafricanfoodstore.com/)
 
+The Shopify connector passed the local two-variant browser test and a query against Shopify’s public demo API. Two public merchant storefronts returned HTTP 403 during the live check. Live variant prices and repeat imports still need verification with a participating Shopify merchant.
+
 Adding environment variables alone does not complete the missing integrations. Parts 1, 2a and 2b of the onboarding plan are implemented. Part 2c covers real-store evaluation and launch calibration. Keep Phase 2/3 work out of this pass.
 
 Seller registration starts at `http://localhost:3001/onboarding`. Staff use the operations console's Onboarding tab to create a store, issue an invitation, record a kit and approve a seller. Set `NEXT_PUBLIC_MERCHANT_URL` in the ops app for invitation links when deploying. Self-service stores get a provisional active hub; staff confirm or change it before launch. Phone verification does not grant seller approval. The migration requires existing store sessions to sign in again so verification can be recorded; buyer and staff sessions are unchanged.

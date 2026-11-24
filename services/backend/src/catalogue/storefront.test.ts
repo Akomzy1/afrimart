@@ -57,6 +57,17 @@ test("the public reader rejects local network destinations before connecting", a
   await assert.rejects(readPublicPage(new URL("http://127.0.0.1/"), AbortSignal.timeout(500)), /publicly accessible/);
 });
 
+test("an access refusal on the storefront stops the import before reading its feed", async () => {
+  for (const status of [401, 403]) {
+    const requests: string[] = [];
+    await assert.rejects(readStorefront(site, async url => {
+      requests.push(url.href);
+      return { url, status, body: shopPage };
+    }), /storefront denied access to AfriMart/);
+    assert.deepEqual(requests, [site]);
+  }
+});
+
 test("Shopify follows both cursors and preserves variant identity, pack size and currency", async () => {
   const last = { hasNextPage: false, endCursor: null };
   const variant = (id: number, value: string, currencyCode = "USD") => ({

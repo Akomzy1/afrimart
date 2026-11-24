@@ -70,6 +70,9 @@ export async function readStorefront(website: string, read: PageReader = readPub
   const signal = AbortSignal.timeout(30_000);
   const saved = new URL(website);
   const home = await read(saved, signal);
+  if (home.status === 401 || home.status === 403) {
+    throw Error("Your storefront denied access to AfriMart. Check that your saved URL opens a public shop and that your store allows catalogue imports.");
+  }
   if (home.status !== 200) throw Error("The saved storefront page could not be opened.");
   const scripts: string[] = [];
   const useShopify = existingSourceKey ? existingSourceKey.startsWith(shopifyVariantPrefix) : undefined;

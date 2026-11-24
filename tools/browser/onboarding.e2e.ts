@@ -37,6 +37,13 @@ async function register(b: Browser, phone: string, storeName: string, inviteUrl?
   await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await b.goto(inviteUrl ?? `${MERCHANT}/onboarding`);
   await b.waitFor(`document.querySelector('#si-phone')`, "seller phone form");
+  // Offer installation before the registration-complete card is mounted.
+  assert.equal(await b.eval(`(() => {
+    const offer = new Event('beforeinstallprompt', { cancelable: true });
+    window.installCalls = 0;
+    offer.prompt = async () => { window.installCalls++; };
+    return !window.dispatchEvent(offer);
+  })()`), true);
   await b.screenshot(path.join(shotDir, "01-welcome.png"));
   await b.type("#si-phone", phone);
   await b.click("Send my code");
@@ -66,6 +73,12 @@ async function register(b: Browser, phone: string, storeName: string, inviteUrl?
   await b.send("Emulation.setDeviceMetricsOverride", { width: 320, height: 740, deviceScaleFactor: 2, mobile: true });
   assert.equal(await b.overflow(), 0);
   await b.screenshot(path.join(shotDir, "05-registered-320.png"));
+  await b.click("Add to home screen", "button");
+  assert.equal(await b.eval("window.installCalls"), 1);
+  await b.waitFor("!!document.querySelector('.mr-installnote')", "manual install steps after a consumed offer");
+  await b.eval("window.dispatchEvent(new Event('appinstalled'))");
+  await b.waitFor("document.body.innerText.includes('AfriMart is installed')", "installation acknowledged");
+  assert.ok(!(await b.text()).includes("Alerts are on"));
   await b.goto(`${MERCHANT}/onboarding`);
   await b.waitFor(`document.body.innerText.includes('Your store is registered.')`, "registration after reload");
   assert.equal(await b.eval(`document.querySelector('.mr-kit .kh')?.textContent`), storeName);
