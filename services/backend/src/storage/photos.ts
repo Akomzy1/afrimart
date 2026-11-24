@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -33,8 +33,8 @@ import sharp from "sharp";
  *    `assertCanKeepDocuments` in store.ts).
  */
 
-export type PhotoKind = "packing" | "claim" | "document" | "shelf";
-export const PHOTO_KINDS: readonly PhotoKind[] = ["packing", "claim", "document", "shelf"];
+export const PHOTO_KINDS = ["packing", "claim", "document", "shelf", "product"] as const;
+export type PhotoKind = typeof PHOTO_KINDS[number];
 
 /** Decoded size ceiling. Clients downscale before upload, so this is generous. */
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -132,10 +132,18 @@ export class LocalPhotoStore implements PhotoStore {
 
   async put(kind: PhotoKind, upload: Buffer, name = `${randomBytes(16).toString("hex")}.jpg`): Promise<string> {
     if (!PHOTO_NAME.test(name)) throw new Error("Invalid photo name");
-    const clean = await sanitizePhoto(upload, kind === "shelf" ? 1600 : MAX_EDGE_PX);
+    const clean = await sanitizePhoto(upload, kind === "product" ? 640 : kind === "shelf" ? 1600 : MAX_EDGE_PX);
     const dir = path.join(this.root, kind);
     await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, name), clean);
+    const target = path.join(dir, name);
+    // Retakes replace a product photo at the same path. Publish the complete JPEG atomically.
+    const staged = kind === "product" ? path.join(dir, randomBytes(16).toString("hex") + ".tmp") : null;
+    try {
+      await writeFile(staged ?? target, clean);
+      if (staged) await rename(staged, target);
+    } finally {
+      if (staged) await rm(staged, { force: true });
+    }
     return `/photos/${kind}/${name}`;
   }
 

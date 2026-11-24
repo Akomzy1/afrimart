@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
@@ -44,6 +45,11 @@ function merchantStatus(status: string): "new" | "packing" | "ready" | "declined
   return "ready";
 }
 
+function listingPhoto(listing: { productPhotoUrl: string | null; updatedAt: Date }) {
+  const url = listing.productPhotoUrl?.startsWith("/photos/product/") && signedPhotoUrl(listing.productPhotoUrl);
+  return url ? `${url}&v=${listing.updatedAt.getTime()}` : null;
+}
+
 /**
  * A document photo the seller sent in support of an application (a kitchen
  * licence, a business registration). It is what the reviewer reads, so it is
@@ -75,7 +81,10 @@ export const merchantRouter = router({
   inbox: merchantProcedure.query(async ({ ctx }) => {
     const shipments = await prisma.shipment.findMany({
       where: { storeId: ctx.storeId, status: { not: "delivered" } },
-      include: { items: true, order: { include: { buyer: true } } },
+      include: {
+        items: { orderBy: { id: "asc" }, include: { listing: { select: { storeId: true, productPhotoUrl: true, updatedAt: true } } } },
+        order: { include: { buyer: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -96,6 +105,8 @@ export const merchantRouter = router({
       /** This parcel's value only — not the buyer's order total. */
       valueCents: s.items.reduce((sum, i) => sum + i.lineTotalCents, 0),
       items: s.items.map((i) => ({
+        id: i.id,
+        productPhoto: i.listing.storeId === ctx.storeId ? listingPhoto(i.listing) : null,
         name: i.nameSnapshot,
         packSize: i.packSizeSnapshot,
         category: i.categorySnapshot,
@@ -407,6 +418,7 @@ export const merchantRouter = router({
       return {
         id: l.id,
         name: l.canonicalProduct.canonicalName,
+        productPhoto: listingPhoto(l),
         category: l.canonicalProduct.category,
         controlledCategory: l.canonicalProduct.controlledCategory,
         priceCents: l.priceCents,
@@ -424,6 +436,24 @@ export const merchantRouter = router({
       };
     });
   }),
+
+  saveProductPhoto: merchantProcedure
+    .input(z.object({ listingId: z.string(), image: z.string().min(1).max(12_000_000) }))
+    .mutation(async ({ input, ctx }) => {
+      const where = { id: input.listingId, storeId: ctx.storeId };
+      const listing = await prisma.listing.findFirst({ where, select: { id: true } });
+      if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "That product is no longer listed." });
+      const name = createHash("sha256").update(JSON.stringify([ctx.storeId, listing.id])).digest("hex").slice(0, 32) + ".jpg";
+      let path: string;
+      try {
+        path = await photoStore.put("product", decodeUpload(input.image), name);
+      } catch (error) {
+        if (error instanceof PhotoRejected) throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        throw error;
+      }
+      await prisma.listing.update({ where, data: { productPhotoUrl: path } });
+      return { saved: true };
+    }),
 
   /** Fix a price or mark a product in or out of stock. Scoped to this store. */
   updateListing: merchantProcedure

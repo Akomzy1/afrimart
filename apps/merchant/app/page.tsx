@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ProductGlyph,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -18,6 +17,7 @@ import {
 } from "@afrimart/ui";
 import { trpc } from "@afrimart/api-client";
 import { glyphForCategory, type MerchantOrder } from "./orders";
+import { ListingPhoto } from "./ListingPhoto";
 import { photoUrl } from "./providers";
 import { SignIn } from "./SignIn";
 import { BOX_PHOTO, PhotoCamera } from "./PhotoCamera";
@@ -90,7 +90,7 @@ function MerchantAppInner() {
    * are. Deliberately client-side: the backend models a shipment's status, not
    * a half-finished packing session, and a tick is not worth a round trip.
    */
-  const [packedBy, setPackedBy] = useState<Record<string, number[]>>({});
+  const [packedBy, setPackedBy] = useState<Record<string, string[]>>({});
   const [stepBy, setStepBy] = useState<Record<string, number>>({});
 
   const orders: MerchantOrder[] = (inbox.data ?? []).map((s) => ({
@@ -104,7 +104,7 @@ function MerchantAppInner() {
     packed: packedBy[s.shipmentId] ?? [],
     valueCents: s.valueCents,
     temperatureClass: s.temperatureClass,
-    items: s.items.map((i) => ({ name: i.name, qty: i.qty, glyph: glyphForCategory(i.category) })),
+    items: s.items.map((i) => ({ ...i, glyph: glyphForCategory(i.category) })),
     photoUrl: s.packingPhotoUrl,
   }));
 
@@ -123,12 +123,12 @@ function MerchantAppInner() {
    * items quickly fires several of these in one tick, and reading `packed`
    * from the closure would make each tap overwrite the last.
    */
-  function togglePacked(id: string, index: number) {
+  function togglePacked(id: string, itemId: string) {
     setPackedBy((prev) => {
       const current = prev[id] ?? [];
       return {
         ...prev,
-        [id]: current.includes(index) ? current.filter((i) => i !== index) : [...current, index],
+        [id]: current.includes(itemId) ? current.filter((i) => i !== itemId) : [...current, itemId],
       };
     });
   }
@@ -172,11 +172,11 @@ function MerchantAppInner() {
               </div>
               <div className="mr-itemlist">
                 {open.items.map((item) => (
-                  <div className="il" key={item.name}>
+                  <div className="il" key={item.id}>
                     <div className="th">
-                      <ProductGlyph kind={item.glyph} />
+                      <ListingPhoto src={item.productPhoto} glyph={item.glyph} />
                     </div>
-                    <div className="nm">{item.name}</div>
+                    <div className="nm">{item.name} <small>{item.packSize}</small></div>
                     <div className="qty tnum">×{item.qty}</div>
                   </div>
                 ))}
@@ -201,20 +201,20 @@ function MerchantAppInner() {
                 <p>Tap each item as it goes in the box.</p>
               </div>
               <div className="mr-tiles">
-                {open.items.map((item, i) => (
+                {open.items.map((item) => (
                   <button
-                    key={item.name}
+                    key={item.id}
                     type="button"
-                    className={`mr-tile${open.packed.includes(i) ? " on" : ""}`}
-                    onClick={() => togglePacked(open.id, i)}
-                    aria-pressed={open.packed.includes(i)}
+                    className={`mr-tile${open.packed.includes(item.id) ? " on" : ""}`}
+                    onClick={() => togglePacked(open.id, item.id)}
+                    aria-pressed={open.packed.includes(item.id)}
                   >
                     <div className="pic">
-                      <ProductGlyph kind={item.glyph} />
+                      <ListingPhoto src={item.productPhoto} glyph={item.glyph} />
                     </div>
                     <div className="b">
                       <div className="nm">{item.name}</div>
-                      <div className="qty tnum">Pack ×{item.qty}</div>
+                      <div className="qty tnum">{item.packSize} · Pack ×{item.qty}</div>
                     </div>
                     <span className="chk">
                       <CheckIcon strokeWidth={2.6} />

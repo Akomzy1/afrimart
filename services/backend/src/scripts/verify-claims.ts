@@ -12,6 +12,7 @@ import { TRPCError } from "@trpc/server";
 import sharp from "sharp";
 import { prisma } from "../db.js";
 import { callerFor } from "./callers.js";
+import { parsePhotoPath } from "../storage/access.js";
 import type { ResolvedSession } from "../auth/session.js";
 
 const P = "qc3v-";
@@ -60,8 +61,9 @@ function stripLink<T extends string | null | undefined>(link: T): T extends stri
 /** Fetch a stored photo back over the same path the server serves it from. */
 async function storedBytes(url: string): Promise<Buffer> {
   const { photoStore } = await import("../storage/store.js");
-  const [, , kind, name] = stripLink(url).split("/");
-  const bytes = await photoStore.read(kind as "packing" | "claim", name!);
+  const photo = parsePhotoPath(stripLink(url));
+  if (!photo) throw new Error("Unexpected stored photo path");
+  const bytes = await photoStore.read(photo.kind, photo.name);
   if (!bytes) throw new Error(`photo not found: ${url}`);
   return bytes;
 }
@@ -161,6 +163,20 @@ try {
   console.log("=== QC-2 packing photo ===");
   const packing = await makeOrder("pack", buyerA, { status: "pending", items: [{ name: "Egusi", qty: 2, unitCents: 850 }] });
   const withLocation = await photoWithLocation();
+
+  const packingItem = async () => (await store.merchant.inbox()).find(s => s.shipmentId === packing.shipmentId)?.items[0];
+  check("a listing starts without a packing-list photo", (await packingItem())?.productPhoto === null);
+  const foreignListing = await prisma.listing.create({ data: { storeId: otherStoreId, canonicalProductId: product.id, priceCents: 900, temperatureClass: "ambient", shippingWeightOz: 8 } });
+  await otherStore.merchant.saveProductPhoto({ listingId: foreignListing.id, image: withLocation });
+  check("another shop's photo of the same product stays out of the packing list", (await packingItem())?.productPhoto === null);
+  check("another shop cannot replace the seller's listing photo", (await outcome(otherStore.merchant.saveProductPhoto({ listingId: listing.id, image: withLocation }))).code === "NOT_FOUND");
+  await store.merchant.saveProductPhoto({ listingId: listing.id, image: withLocation });
+  const productPath = stripLink((await packingItem())?.productPhoto);
+  check("the existing order shows its own listing photo", !!productPath?.startsWith("/photos/product/") && productPath === stripLink((await store.merchant.listings()).find(l => l.id === listing.id)?.productPhoto));
+  const replacement = await sharp({ create: { width: 900, height: 600, channels: 3, background: "blue" } }).jpeg().toBuffer();
+  await store.merchant.saveProductPhoto({ listingId: listing.id, image: replacement.toString("base64") });
+  const replaced = await storedBytes((await packingItem())!.productPhoto!);
+  check("a retake replaces the listing thumbnail", stripLink((await packingItem())?.productPhoto) === productPath && (await sharp(replaced).metadata()).width === 640);
 
   const early = await outcome(store.merchant.packingPhoto({ shipmentId: packing.shipmentId, image: withLocation }));
   check("a photo before the order is accepted is refused", early.code === "BAD_REQUEST", early.message);

@@ -3,7 +3,10 @@ import type { ProductGlyphKind } from "@afrimart/ui";
 export type OrderStatus = "new" | "packing" | "ready" | "declined";
 
 export interface MerchantOrderItem {
+  id: string;
   name: string;
+  packSize: string;
+  productPhoto: string | null;
   qty: number;
   glyph: ProductGlyphKind;
 }
@@ -20,7 +23,7 @@ export interface MerchantOrder {
   declineReason: string | null;
   /** 0 = print the label, 1 = pack every item. */
   step: number;
-  packed: number[];
+  packed: string[];
   items: MerchantOrderItem[];
   valueCents: number;
   /** QC-2 — where the box photo is served from, or null until one is saved. */

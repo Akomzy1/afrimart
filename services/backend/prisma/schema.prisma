@@ -153,6 +153,7 @@ model NameAlias {
 
 model Listing {
   id                 String           @id @default(cuid())
+  productPhotoUrl    String?
   store              Store            @relation(fields: [storeId], references: [id])
   storeId            String
   canonicalProduct   CanonicalProduct @relation(fields: [canonicalProductId], references: [id])

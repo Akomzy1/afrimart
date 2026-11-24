@@ -4,6 +4,8 @@ import { useState, type ReactNode } from "react";
 import { trpc, type RouterOutputs } from "@afrimart/api-client";
 import { CameraIcon, CheckIcon, ChevronLeftIcon, CloseIcon, PlusIcon, ProductGlyph, type ProductGlyphKind } from "@afrimart/ui";
 import { glyphForCategory } from "./orders";
+import { ListingPhoto } from "./ListingPhoto";
+import { PhotoCamera } from "./PhotoCamera";
 
 /**
  * "What's listed" — AfriMart Merchant.html, reached from the Camera tab.
@@ -204,7 +206,7 @@ export function WhatsListed({ onBack, onMessage }: { onBack: () => void; onMessa
                     <span className={`st ${l.hidden ? "hid" : l.inStock ? "in" : "out"}`}>
                       {l.hidden ? "Hidden" : l.inStock ? "In stock" : "Out"}
                     </span>
-                    <ProductGlyph kind={glyphFor(l)} />
+                    <ListingPhoto src={l.productPhoto} glyph={glyphFor(l)} />
                   </div>
                   <div className="b">
                     <div className="nm">{l.name}</div>
@@ -265,12 +267,26 @@ function EditSheet({ listing, onClose, onSaved }: { listing: Listing; onClose: (
   const utils = trpc.useUtils();
   const [price, setPrice] = useState(listing.priceCents);
   const [inStock, setInStock] = useState(listing.inStock);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const photo = trpc.merchant.saveProductPhoto.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.merchant.listings.invalidate(), utils.merchant.inbox.invalidate()]);
+      setCameraOpen(false);
+    },
+  });
   const save = trpc.merchant.updateListing.useMutation({
     onSuccess: () => {
       utils.merchant.listings.invalidate();
       onSaved();
     },
   });
+
+  if (cameraOpen) return (
+    <PhotoCamera copy={{ label: listing.name, ask: "Photograph one product with its label facing the camera",
+      check: "Can you see the product and pack size?", alt: `Product photo of ${listing.name}` }}
+      saving={photo.isPending} error={photo.error?.message ?? null} onClose={() => setCameraOpen(false)}
+      onUse={(image) => photo.mutate({ listingId: listing.id, image })} />
+  );
 
   return (
     <Sheet
@@ -311,6 +327,9 @@ function EditSheet({ listing, onClose, onSaved }: { listing: Listing; onClose: (
             Out of stock
           </button>
         </div>
+        <button type="button" className="mr-product-camera mr-bigbtn ghost" onClick={() => { photo.reset(); setCameraOpen(true); }}>
+          <CameraIcon /> {listing.productPhoto ? "Retake product photo" : "Add product photo"}
+        </button>
       </div>
     </Sheet>
   );

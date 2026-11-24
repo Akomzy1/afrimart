@@ -312,7 +312,7 @@ export class S3PhotoStore implements PhotoStore {
 
   async put(kind: PhotoKind, upload: Buffer, name = `${randomBytes(16).toString("hex")}.jpg`): Promise<string> {
     if (!PHOTO_NAME.test(name)) throw new Error("Invalid photo name");
-    const clean = await sanitizePhoto(upload, kind === "shelf" ? 1600 : undefined);
+    const clean = await sanitizePhoto(upload, kind === "product" ? 640 : kind === "shelf" ? 1600 : undefined);
     await this.client.putObject(this.key(kind, name), clean, "image/jpeg");
     return `/photos/${kind}/${name}`;
   }
