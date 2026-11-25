@@ -21,6 +21,7 @@
     "verify:lockout": "tsx src/scripts/verify-lockout.ts",
     "build:emails": "tsx src/scripts/build-email-templates.ts",
     "verify:notifications": "tsx src/scripts/verify-notifications.ts",
+    "verify:merchant-alerts": "tsx src/scripts/verify-merchant-alerts.ts",
     "verify:quality-controls": "tsx src/scripts/verify-quality-controls.ts",
     "verify:claims": "tsx src/scripts/verify-claims.ts",
     "verify:sign-in": "tsx src/scripts/verify-sign-in.ts",

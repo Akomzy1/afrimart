@@ -766,6 +766,7 @@ model Notification {
   dedupeKey  String              @unique
   status     NotificationStatus  @default(pending)
   attempts   Int                 @default(0)
+  nextAttemptAt DateTime?
   lastError  String?
   orderId    String?
   shipmentId String?

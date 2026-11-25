@@ -65,7 +65,8 @@ export interface PushMessage {
 
 export interface PushSender {
   readonly name: string;
-  send(message: PushMessage): Promise<void>;
+  /** True when a push service accepts the alert for at least one device. */
+  send(message: PushMessage): Promise<boolean>;
 }
 
 /**
@@ -81,8 +82,9 @@ export interface PushSender {
 export class MemoryPushSender implements PushSender {
   readonly name = "memory";
   readonly captured: PushMessage[] = [];
-  async send(message: PushMessage): Promise<void> {
+  async send(message: PushMessage): Promise<boolean> {
     this.captured.push(message);
+    return true;
   }
 }
 
@@ -161,6 +163,7 @@ export class TwilioSmsSender implements SmsSender {
     else body.set("From", this.from.number);
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`, {
       method: "POST",
+      signal: AbortSignal.timeout(10000),
       headers: {
         authorization: `Basic ${Buffer.from(`${this.accountSid}:${this.authToken}`).toString("base64")}`,
         "content-type": "application/x-www-form-urlencoded",
@@ -188,7 +191,7 @@ export interface Senders {
 
 let senders: Senders = {
   email: new FileEmailSender(),
-  push: new MemoryPushSender(),
+  push: { name: "unconfigured", async send() { return false; } },
   sms: defaultSmsSender(),
 };
 

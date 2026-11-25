@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getSenders } from "./senders.js";
+import { deliverMerchantAlert, merchantAlertTemplates } from "./merchantAlerts.js";
 
 /**
  * The transactional outbox.
@@ -39,25 +40,8 @@ export interface OutboxEntry {
  * replayed webhook and not an error.
  */
 export async function enqueue(tx: Tx, entry: OutboxEntry): Promise<boolean> {
-  try {
-    await tx.notification.create({
-      data: {
-        channel: entry.channel,
-        template: entry.template,
-        recipient: entry.recipient,
-        subject: entry.subject,
-        body: entry.body,
-        dedupeKey: entry.dedupeKey,
-        orderId: entry.orderId,
-        shipmentId: entry.shipmentId,
-      },
-    });
-    return true;
-  } catch (e) {
-    // P2002 is the unique violation: this notification already exists.
-    if ((e as { code?: string }).code === "P2002") return false;
-    throw e;
-  }
+  const inserted = await tx.notification.createMany({ data: entry, skipDuplicates: true });
+  return inserted.count === 1;
 }
 
 export interface DrainResult {
@@ -74,7 +58,7 @@ export interface DrainResult {
 export async function drain(limit = 100): Promise<DrainResult> {
   const senders = getSenders();
   const pending = await prisma.notification.findMany({
-    where: { status: "pending" },
+    where: { status: "pending", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] },
     orderBy: { createdAt: "asc" },
     take: limit,
   });
@@ -82,11 +66,20 @@ export async function drain(limit = 100): Promise<DrainResult> {
   const result: DrainResult = { sent: 0, failed: 0, suppressed: 0, byTemplate: {} };
 
   for (const n of pending) {
+    if (merchantAlertTemplates.includes(n.template)) {
+      const outcome = await deliverMerchantAlert(n.id).catch(() => "failed" as const);
+      if (outcome) {
+        result[outcome]++;
+        result.byTemplate[n.template] = (result.byTemplate[n.template] ?? 0) + 1;
+      }
+      continue;
+    }
     try {
       if (n.channel === "email") {
         await senders.email.send({ to: n.recipient, subject: n.subject, html: n.body });
       } else if (n.channel === "push") {
-        await senders.push.send({ storeId: n.recipient, title: n.subject, body: n.body });
+        const accepted = await senders.push.send({ storeId: n.recipient, title: n.subject, body: n.body });
+        if (!accepted) throw new Error("Push service unavailable.");
       } else {
         // NTF-4 — SMS stays off until 10DLC clears. Recorded as suppressed
         // rather than sent, so the counts never overstate what reached anyone.
