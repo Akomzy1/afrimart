@@ -49,6 +49,18 @@ Requires a running PostgreSQL instance matching `DATABASE_URL` in `services/back
 
 For a local demo, provider keys can remain empty. Buyer sign-in emails are saved under `services/backend/.mail/`, and merchant sign-in texts under `services/backend/.sms/`. Real SMS is selected only when the Twilio settings are complete and `SMS_ENABLED=yes`. Keep all service secrets in the backend; app `NEXT_PUBLIC_*` values are public.
 
+## Delivery-photo pilot
+
+Run `npm run eval:deliveries` for six illustrated deliveries with scripted readings. The report shows each suggested listing and count. Its totals distinguish correct counts, incorrect counts, missed listings, and guesses on unreadable cartons.
+
+For a live run, place the delivery photos and a manifest in `tmp/delivery-evaluation/`. Use the participating store's ID and its listing IDs. Label each visible listing once per photo with the total number of sellable packs. Use `null` when the photo does not establish the count.
+
+```json
+{"storeId":"STORE_ID","photos":[{"file":"delivery.jpg","expected":[{"listingId":"LISTING_ID","units":6}]}]}
+```
+
+From the repository root, run `node --env-file=services/backend/.env --import tsx tools/evaluation/deliveries.mts --dataset tmp/delivery-evaluation/manifest.json`. This uses the configured delivery vision model, charges its usage against the store's daily extraction budget, and scores suggestions before seller confirmation. The evaluator never calls the stock update operation.
+
 ## Current continuation point
 
 The last pre-takeover commit, `e68b41b`, records [the seller onboarding and vision cataloguing plan](docs/plans/store-onboarding-and-vision-cataloguing.md), marked planned, not started. Phase 1 has substantial UI and backend logic, but is not ready for real orders.

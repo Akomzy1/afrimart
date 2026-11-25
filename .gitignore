@@ -29,3 +29,4 @@ prisma/dev.db
 tmp/onboarding-qa/
 # Private shelf evaluation photos, annotations and provider recordings
 tmp/shelf-evaluation/
+tmp/delivery-evaluation/
