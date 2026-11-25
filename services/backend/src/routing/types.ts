@@ -15,6 +15,7 @@ export interface CandidateListing {
   canonicalProductId: string;
   priceCents: number;
   stockStatus: StockStatus;
+  unitsAvailable?: number | null;
   batchQuantityCap: number | null;
   temperatureClass: TemperatureClass;
   shippingWeightOz: number;

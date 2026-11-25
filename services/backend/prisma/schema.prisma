@@ -98,6 +98,7 @@ model Store {
   qualityScore          Float?
   payoutAccountId       String?
   listings              Listing[]
+  deliveryReceipts      DeliveryReceipt[]
   shipments             Shipment[]
   payouts               Payout[]
   carrierAdjustments    CarrierAdjustment[]
@@ -151,6 +152,16 @@ model NameAlias {
   @@index([alias])
 }
 
+model DeliveryReceipt {
+  store     Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  storeId   String
+  requestId String
+  lines     Json
+  createdAt DateTime @default(now())
+
+  @@id([storeId, requestId])
+}
+
 model Listing {
   id                 String           @id @default(cuid())
   productPhotoUrl    String?
@@ -160,6 +171,7 @@ model Listing {
   canonicalProductId String
   priceCents         Int
   stockStatus        StockStatus      @default(in_stock)
+  unitsAvailable     Int?
   pausedUntil        DateTime?
   leadTimeDays       Int?
   batchQuantityCap   Int?
@@ -303,6 +315,7 @@ model ShipmentItem {
   packSizeSnapshot   String
   categorySnapshot   String
   quantity           Int
+  reservedUnits      Int @default(0)
   unitPriceCents     Int
   lineTotalCents     Int
   claimItems         RefundClaimItem[]

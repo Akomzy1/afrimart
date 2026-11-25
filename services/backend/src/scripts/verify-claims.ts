@@ -9,6 +9,9 @@
  *   npm run verify:claims --workspace=@afrimart/backend
  */
 import { TRPCError } from "@trpc/server";
+import { randomUUID } from "node:crypto";
+import { matchDelivery } from "../catalogue/delivery.js";
+import { readDelivery } from "../catalogue/providers.js";
 import sharp from "sharp";
 import { PDFDocument } from "pdf-lib";
 import { prisma } from "../db.js";
@@ -73,9 +76,13 @@ async function sweep() {
   const b = { buyerId: { startsWith: P } };
   await prisma.userSession.deleteMany({ where: { OR: [{ buyerId: { startsWith: P } }, { storeId: { startsWith: P } }] } });
   await prisma.refundClaim.deleteMany({ where: b });
-  await prisma.notification.deleteMany({ where: { orderId: { startsWith: P } } });
+  const orders = await prisma.order.findMany({ where: b, select: { id: true } });
+  const orderIds = { in: orders.map(o => o.id) };
+  await prisma.notification.deleteMany({ where: { orderId: orderIds } });
+  await prisma.payout.deleteMany({ where: { orderId: orderIds } });
+  await prisma.payment.deleteMany({ where: { orderId: orderIds } });
   await prisma.shipmentItem.deleteMany({ where: { shipmentId: { startsWith: P } } });
-  await prisma.shipment.deleteMany({ where: { id: { startsWith: P } } });
+  await prisma.shipment.deleteMany({ where: { orderId: orderIds } });
   await prisma.order.deleteMany({ where: b });
   await prisma.listing.deleteMany({ where: { storeId: { startsWith: P } } });
   await prisma.canonicalProduct.deleteMany({ where: { id: { startsWith: P } } });
@@ -151,6 +158,68 @@ try {
   await prisma.listing.update({ where: { id: listing.id }, data: { stockStatus: "made_to_order", pausedUntil: new Date(Date.now() - 1000) } });
   check("an elapsed deadline restores the original listing on browse and checkout", (await a.catalogue.detail(listingRef)).madeToOrder && (await a.checkout.quote(basket)).unfulfillable.length === 0);
 
+  console.log("=== Delivery stock counts ===");
+  const envKeys = ["DELIVERY_EXTRACTION_ENABLED", "SHELF_VISION_MODEL", "ANTHROPIC_API_KEY", "SHELF_DAILY_BUDGET_CENTS", "SHELF_VISION_INPUT_RATE", "SHELF_VISION_OUTPUT_RATE"];
+  const previous = envKeys.map(key => process.env[key]);
+  try {
+    process.env.DELIVERY_EXTRACTION_ENABLED = "no";
+    const preview = await store.merchant.previewDelivery({ image: await photoWithLocation() });
+    check("an unavailable reader leaves the delivery for manual review", !preview.available && !preview.rows.length);
+    Object.assign(process.env, { DELIVERY_EXTRACTION_ENABLED: "yes", SHELF_VISION_MODEL: "fixture", ANTHROPIC_API_KEY: "fixture",
+      SHELF_DAILY_BUDGET_CENTS: "10", SHELF_VISION_INPUT_RATE: "1", SHELF_VISION_OUTPUT_RATE: "1" });
+    const sample = { name: "Melon seeds", packSize: "0.5 kg", units: 3 };
+    const reading = await readDelivery(storeId, Buffer.from("fixture"), async (url, options) => {
+      const request = JSON.parse(String(options?.body));
+      if (request.tool_choice.name !== "record_delivery") throw Error("Unexpected vision tool");
+      return Response.json(String(url).endsWith("/count_tokens") ? { input_tokens: 20 } :
+        { stop_reason: "tool_use", usage: { input_tokens: 20, output_tokens: 12 }, content: [{ type: "tool_use", name: "record_delivery", input: { products: [sample] } }] });
+    });
+    const item = { id: listing.id, canonicalProduct: { ...product, aliases: [{ alias: "Melon seeds" }] } };
+    check("photo counts match an alias and equivalent pack size, leaving ambiguous packs for the seller",
+      matchDelivery(reading.products, [item])[0]?.listingId === listing.id &&
+      matchDelivery(reading.products, [item, { ...item, id: "second" }])[0]?.listingId === null);
+  } finally {
+    envKeys.forEach((key, i) => { if (previous[i] == null) delete process.env[key]; else process.env[key] = previous[i]; });
+    await prisma.extractionUsage.deleteMany({ where: { storeId, model: "fixture" } });
+  }
+  const balance = async () => (await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } })).unitsAvailable;
+  check("preview leaves the listing unchanged", await balance() === null);
+  const delivery = { requestId: randomUUID(), lines: [{ ...listingRef, opening: 1, units: 3 }] };
+  check("other stores cannot receive this listing", (await outcome(otherStore.merchant.receiveDelivery(delivery))).code === "CONFLICT");
+  await Promise.all([store.merchant.receiveDelivery(delivery), store.merchant.receiveDelivery(delivery)]);
+  check("a concurrent retry records four available units once", await balance() === 4);
+  check("a changed replay is refused", (await outcome(store.merchant.receiveDelivery({ ...delivery, lines: [{ ...listingRef, opening: 1, units: 8 }] }))).code === "CONFLICT");
+  const addition = { requestId: randomUUID(), lines: [{ ...listingRef, opening: null, units: 1 }] };
+  check("an invalid line rolls the entire delivery back",
+    (await outcome(store.merchant.receiveDelivery({ ...addition, lines: [...addition.lines, { listingId: "zz-missing", opening: 0, units: 2 }] }))).code === "CONFLICT" && await balance() === 4);
+  await store.merchant.receiveDelivery(addition);
+  const fullBasket = { ...basket, items: [{ ...listingRef, quantity: 5 }] };
+  check("checkout respects the recorded balance", (await a.checkout.quote({ ...basket, items: [{ ...listingRef, quantity: 6 }] })).unfulfillable.length === 1);
+  const orders = await Promise.all([outcome(a.checkout.place(fullBasket)), outcome(a.checkout.place(fullBasket))]);
+  const placed = orders.find(o => o.value)?.value;
+  check("concurrent orders cannot sell the same units twice", orders.filter(o => o.code === "ok").length === 1 && await balance() === 0);
+  if (placed) {
+    const parcel = await prisma.shipment.findFirstOrThrow({ where: { orderId: placed.orderId } });
+    await ops.admin.interveneShipment({ shipmentId: parcel.id, action: "cancel_order" });
+    await ops.admin.interveneShipment({ shipmentId: parcel.id, action: "cancel_order" });
+    check("cancelling an unshipped order releases its units once", await balance() === 5);
+  }
+  const nextOrder = await a.checkout.place(fullBasket);
+  const nextParcel = await prisma.shipment.findFirstOrThrow({ where: { orderId: nextOrder.orderId } });
+  const decline = { shipmentId: nextParcel.id, reason: "Cannot fulfil" };
+  await Promise.all([store.merchant.decline(decline), store.merchant.decline(decline)]);
+  await ops.admin.interveneShipment({ shipmentId: nextParcel.id, action: "cancel_order" });
+  check("a repeated decline followed by cancellation credits a reservation once", await balance() === 5);
+
+  const shippedOrder = await a.checkout.place(fullBasket);
+  const shippedParcel = await prisma.shipment.findFirstOrThrow({ where: { orderId: shippedOrder.orderId } });
+  await ops.admin.interveneShipment({ shipmentId: shippedParcel.id, action: "mark_shipped" });
+  await ops.admin.interveneShipment({ shipmentId: shippedParcel.id, action: "cancel_order" });
+  check("cancelling after dispatch does not return shipped units", await balance() === 0);
+  const current = await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } });
+  await store.merchant.pauseListing({ ...pause, expectedUpdatedAt: current.updatedAt.toISOString() });
+  await store.merchant.receiveDelivery({ ...addition, requestId: randomUUID() });
+  check("restocking preserves the seller's pause", await balance() === 1 && (await a.checkout.quote(basket)).unfulfillable.length === 1);
   console.log("=== Merchant declines ===");
   const refusal = await makeOrder("decline", buyerA, { status: "pending", items: [] });
   const sibling = await prisma.shipment.create({ data: { id: id("sibling"), orderId: refusal.orderId, storeId: otherStoreId, temperatureClass: "ambient" } });

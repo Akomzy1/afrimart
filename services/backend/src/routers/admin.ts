@@ -1,3 +1,4 @@
+import { releaseReservations } from "../catalogue/delivery.js";
 import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
@@ -404,6 +405,7 @@ export const adminRouter = router({
         if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "No such shipment." });
         return prisma.$transaction(async (tx) => {
           const order = await tx.order.update({ where: { id: shipment.orderId }, data: { status: "cancelled" } });
+          await releaseReservations(tx, { orderId: order.id, status: { in: ["pending", "label_created", "declined"] } });
           await tx.shipmentPickup.updateMany({ where: { shipment: { orderId: order.id } }, data: { state: "cancelled" } });
           return order;
         });
@@ -411,6 +413,10 @@ export const adminRouter = router({
       const status =
         input.action === "mark_shipped" ? "picked_up" : input.action === "mark_delivered" ? "delivered" : "exception";
       return prisma.$transaction(async (tx) => {
+        const [order] = await tx.$queryRaw<{ status: string }[]>`
+          SELECT o."status" FROM "Order" o JOIN "Shipment" s ON s."orderId" = o."id"
+          WHERE s."id" = ${input.shipmentId} FOR SHARE OF o`;
+        if (order?.status === "cancelled") throw new TRPCError({ code: "CONFLICT", message: "This order has been cancelled." });
         const where = { id: input.shipmentId };
         await tx.shipment.updateMany({ where: { ...where, status: { not: "declined" } }, data: { status } });
         const shipment = await tx.shipment.findUnique({ where });

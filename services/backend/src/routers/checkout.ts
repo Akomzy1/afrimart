@@ -88,6 +88,7 @@ async function resolveBasket(input: BasketInput) {
       priceCents: r.priceCents,
       stockStatus: r.stockStatus,
       batchQuantityCap: r.batchQuantityCap,
+      unitsAvailable: r.unitsAvailable,
       temperatureClass: r.temperatureClass,
       shippingWeightOz: r.shippingWeightOz,
       lengthIn: r.lengthIn,
@@ -174,6 +175,7 @@ export const checkoutRouter = router({
   place: buyerProcedure
     .input(basketInput)
     .mutation(async ({ input, ctx }) => {
+      const buyerId = ctx.buyerId;
       const { lines, pool } = await resolveBasket(input);
       const plan = await route(lines, pool, carrier, { toZip: input.destination.zip });
 
@@ -199,15 +201,23 @@ export const checkoutRouter = router({
         // A seller can change availability after routing. Serialize that change
         // with the final order write so an active pause also covers stale carts.
         const ids = [...new Set(plan.assignment.map(a => a.listing.listingId))];
-        const available = await tx.$queryRaw<{ id: string }[]>`
-          SELECT "id" FROM "Listing" WHERE "id" IN (${Prisma.join(ids)})
+        const available = await tx.$queryRaw<{ id: string; unitsAvailable: number | null }[]>`
+          SELECT "id", "unitsAvailable" FROM "Listing" WHERE "id" IN (${Prisma.join(ids)})
           AND "stockStatus" <> 'out_of_stock' AND ("pausedUntil" IS NULL OR "pausedUntil" <= CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
-          ORDER BY "id" FOR SHARE
+          ORDER BY "id" FOR UPDATE
         `;
         if (available.length !== ids.length) throw new TRPCError({ code: "CONFLICT", message: "Availability changed. Refresh your basket and try again." });
+        const balances = new Map(available.map(row => [row.id, row.unitsAvailable]));
+        for (const line of plan.assignment) {
+          const listingId = line.listing.listingId;
+          const balance = balances.get(listingId);
+          if (balance == null) continue;
+          if (balance < line.quantity) throw new TRPCError({ code: "CONFLICT", message: "There are fewer units available. Refresh your basket." });
+          await tx.listing.update({ where: { id: listingId }, data: { unitsAvailable: { decrement: line.quantity } } });
+        }
         const order = await tx.order.create({
           data: {
-            buyerId: ctx.buyerId,
+            buyerId,
             totalCents: pricing.totalCents,
             shippingCents: pricing.shippingCents,
             taxCents: pricing.taxCents,
@@ -234,6 +244,7 @@ export const checkoutRouter = router({
                     packSizeSnapshot: snap?.packSize ?? "",
                     categorySnapshot: snap?.category ?? "",
                     quantity: l.quantity,
+                    reservedUnits: balances.get(l.listing.listingId) == null ? 0 : l.quantity,
                     unitPriceCents: l.listing.priceCents,
                     lineTotalCents: l.lineTotalCents,
                   };

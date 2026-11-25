@@ -211,6 +211,7 @@ export function WhatsListed({ onBack, onMessage }: { onBack: () => void; onMessa
                   <div className="b">
                     <div className="nm">{l.name}</div>
                     <div className="pr tnum">{money(l.priceCents)}</div>
+                    {l.unitsAvailable !== null && <div>{l.unitsAvailable} available</div>}
                     <div className="edit">
                       <PencilIcon />
                       {l.hidden ? "Paused" : "Tap to edit"}
@@ -321,8 +322,9 @@ function EditSheet({ listing, onClose, onSaved }: { listing: Listing; onClose: (
         </div>
         <div className="k">Availability</div>
         {listing.pausedUntil && !availabilityChanged && <p>Paused until {new Date(listing.pausedUntil).toLocaleString()}.</p>}
+        {listing.unitsAvailable === 0 && <p>Record a delivery in Camera to make more units available.</p>}
         <div className="mr-stockseg">
-          <button type="button" className={`instk${inStock ? " on" : ""}`} onClick={() => { setInStock(true); setAvailabilityChanged(true); }}>
+          <button type="button" disabled={listing.unitsAvailable === 0} className={`instk${inStock ? " on" : ""}`} onClick={() => { setInStock(true); setAvailabilityChanged(true); }}>
             <CheckIcon strokeWidth={2.2} /> In stock
           </button>
           <button type="button" className={`outstk${!inStock ? " on" : ""}`} onClick={() => { setInStock(false); setAvailabilityChanged(true); }}>

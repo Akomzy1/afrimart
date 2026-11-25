@@ -32,6 +32,7 @@ export function isEligibleSeller(listing: CandidateListing): boolean {
 /** A store can supply a line if it stocks it and any batch cap covers the quantity. */
 export function canSupply(listing: CandidateListing, quantity: number): boolean {
   if (listing.stockStatus === "out_of_stock") return false;
+  if (listing.unitsAvailable != null && quantity > listing.unitsAvailable) return false;
   if (listing.batchQuantityCap !== null && quantity > listing.batchQuantityCap) return false;
   return true;
 }

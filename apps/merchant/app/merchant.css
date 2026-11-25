@@ -618,3 +618,8 @@
 .mr-review-actions { display: flex; gap: 12px; }
 .mr-review-actions button { min-height: 44px; border: 1px solid var(--line); background: var(--panel); border-radius: var(--r-sm); padding: 0 14px; font: inherit; }
 .mr-rtile .mr-linkbtn, .mr-review-editor .mr-linkbtn { min-height: 44px; }
+
+.mr-delivery img { width: 100%; max-height: 200px; object-fit: contain; border-radius: var(--r-sm); }
+.mr-delivery fieldset { display: grid; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--ink-3); border-radius: var(--r-sm); }
+.mr-delivery input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid var(--ink-3); border-radius: var(--r-sm); font: inherit; }
+.mr-delivery small { font-weight: 400; }

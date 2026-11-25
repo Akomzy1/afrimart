@@ -160,6 +160,7 @@ export async function visibleListings(db: Db, where: Prisma.ListingWhereInput = 
   const store = { onboardingStatus: "live" as const, ...(mode === "routing" ? {} : { verificationStatus: "verified" }) };
   const conditions: Prisma.ListingWhereInput[] = [where, { store: { is: store } }, { NOT: hidden }];
   if (mode !== "merchant") conditions.push({ OR: [{ pausedUntil: null }, { pausedUntil: { lte: new Date() } }] });
+  if (mode !== "merchant") conditions.push({ OR: [{ unitsAvailable: null }, { unitsAvailable: { gt: 0 } }] });
   return { AND: conditions };
 }
 

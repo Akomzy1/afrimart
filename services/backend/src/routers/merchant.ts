@@ -8,12 +8,15 @@ import { prisma } from "../db.js";
 import { merchantProcedure, router } from "../trpc.js";
 import { PERMIT_STATEMENT_VERSION } from "../config.js";
 import { sellerCategoryNotices, visibleListings } from "../quality/categoryAccess.js";
-import { PhotoRejected, decodeUpload } from "../storage/photos.js";
+import { PhotoRejected, decodeUpload, sanitizePhoto } from "../storage/photos.js";
 import { assertCanKeepDocuments, photoStore } from "../storage/store.js";
 import { signedPhotoUrl } from "../storage/access.js";
 import { ensureLicenceExpiryNotice, licenceCounts, licenceState } from "../quality/licence.js";
 import { DashboardUnavailable, payoutDashboard } from "../payments/dashboard.js";
 import { CONTROLLED_CATEGORY_LABEL, isHomeTier, permitStatement } from "../quality/listingStandards.js";
+
+import { deliveryInput, matchDelivery, receiveDelivery, releaseReservations } from "../catalogue/delivery.js";
+import { readDelivery } from "../catalogue/providers.js";
 
 const CONTROLLED = ["meat", "poultry", "fish", "dairy"] as const;
 
@@ -190,6 +193,7 @@ export const merchantRouter = router({
         if (!parcel) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
         if (parcel.status !== "declined") throw new TRPCError({ code: "CONFLICT", message: "Only a new order can be declined." });
         if (parcel.declineReason !== input.reason) throw new TRPCError({ code: "CONFLICT", message: "A different reason has already been recorded." });
+        await releaseReservations(tx, where);
         return parcel;
       });
     }),
@@ -234,8 +238,12 @@ export const merchantRouter = router({
   /** MCH-4 — everything is packed, photographed and handed to the carrier. */
   markShipped: merchantProcedure
     .input(z.object({ shipmentId: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      const shipment = await prisma.shipment.findFirst({ where: { id: input.shipmentId, storeId: ctx.storeId } });
+    .mutation(({ input, ctx }) => prisma.$transaction(async tx => {
+      const [order] = await tx.$queryRaw<{ status: string }[]>`
+        SELECT o."status" FROM "Order" o JOIN "Shipment" s ON s."orderId" = o."id"
+        WHERE s."id" = ${input.shipmentId} AND s."storeId" = ${ctx.storeId} FOR SHARE OF o`;
+      if (order?.status === "cancelled") throw new TRPCError({ code: "CONFLICT", message: "This order has been cancelled." });
+      const shipment = await tx.shipment.findFirst({ where: { id: input.shipmentId, storeId: ctx.storeId } });
       if (!shipment) throw new TRPCError({ code: "NOT_FOUND", message: "That order is no longer available." });
       // QC-2 — enforced here, not only by a disabled button: every shipment has
       // a packing photo on record before it leaves the seller's hands.
@@ -244,8 +252,8 @@ export const merchantRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Photograph the open box before you hand it over." });
       }
       if (shipment.status === "pending") throw new TRPCError({ code: "CONFLICT", message: "Accept the order before handing it over." });
-      return prisma.shipment.update({ where: { id: shipment.id }, data: { status: "picked_up" } });
-    }),
+      return tx.shipment.update({ where: { id: shipment.id }, data: { status: "picked_up" } });
+    })),
 
   /* ------------------------------------------------------------ QC-1 */
 
@@ -469,7 +477,8 @@ export const merchantRouter = router({
         category: l.canonicalProduct.category,
         controlledCategory: l.canonicalProduct.controlledCategory,
         priceCents: l.priceCents,
-        inStock: !pausedUntil && l.stockStatus !== "out_of_stock",
+        unitsAvailable: l.unitsAvailable,
+        inStock: l.unitsAvailable !== 0 && !pausedUntil && l.stockStatus !== "out_of_stock",
         hidden,
         // Cold food without a licensed kitchen is hidden for a different reason
         // than a category being switched off, and the way out is different too.
@@ -483,6 +492,26 @@ export const merchantRouter = router({
       };
     });
   }),
+
+  previewDelivery: merchantProcedure.input(z.object({ image: z.string().min(1).max(12000000) }))
+    .mutation(async ({ ctx, input }) => {
+      let photo: Buffer;
+      try { photo = await sanitizePhoto(decodeUpload(input.image)); }
+      catch (error) {
+        if (error instanceof PhotoRejected) throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        throw error;
+      }
+      const listings = await prisma.listing.findMany({ where: { storeId: ctx.storeId },
+        select: { id: true, canonicalProduct: { select: { canonicalName: true, packSize: true, aliases: { select: { alias: true } } } } } });
+      try {
+        const reading = await readDelivery(ctx.storeId, photo);
+        return { available: true, rows: matchDelivery(reading.products, listings) };
+      } catch {
+        return { available: false, rows: [] };
+      }
+    }),
+
+  receiveDelivery: merchantProcedure.input(deliveryInput).mutation(({ ctx, input }) => receiveDelivery(ctx.storeId, input)),
 
   saveProductPhoto: merchantProcedure
     .input(z.object({ listingId: z.string(), image: z.string().min(1).max(12_000_000) }))

@@ -24,6 +24,7 @@ import { SignIn } from "./SignIn";
 import { BOX_PHOTO, PhotoCamera } from "./PhotoCamera";
 import { SupportThread } from "./SupportThread";
 import { WhatsListed } from "./WhatsListed";
+import { DeliveryUpdate } from "./DeliveryUpdate";
 import { AvailabilityUpdate } from "./AvailabilityUpdate";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -65,7 +66,7 @@ function MerchantAppInner() {
   const [tab, setTab] = useState<Tab>("orders");
   const [openId, setOpenId] = useState<string | null>(null);
   // Screens reached from Camera or Messages share the existing three-tab navigation.
-  const [sub, setSub] = useState<"listed" | "support" | "availability" | null>(null);
+  const [sub, setSub] = useState<"listed" | "support" | "availability" | "delivery" | null>(null);
 
   // Which shop this is comes from the session the server holds, not from the page.
   const store = trpc.merchant.me.useQuery().data;
@@ -291,6 +292,7 @@ function MerchantAppInner() {
   }
 
   // ---- screens reached from a tab ----
+  if (sub === "delivery") return <DeliveryUpdate onBack={() => setSub(null)} />;
   if (sub === "availability") return <AvailabilityUpdate onBack={() => setSub(null)} />;
   if (sub === "listed") {
     return (
@@ -327,7 +329,7 @@ function MerchantAppInner() {
 
       <div className="mr-scroll">
         {tab === "orders" && <OrdersInbox orders={orders} onOpen={setOpenId} onAccept={(id) => update(id, { status: "packing", step: 0 })} />}
-        {tab === "camera" && <CameraSurface hasReview={Boolean(store?.hasShelfReview)} canFilm={Boolean(store?.canFilmShelves)} onListed={() => setSub("listed")} onAvailability={() => setSub("availability")} />}
+        {tab === "camera" && <CameraSurface hasReview={Boolean(store?.hasShelfReview)} canFilm={Boolean(store?.canFilmShelves)} onListed={() => setSub("listed")} onDelivery={() => setSub("delivery")} onAvailability={() => setSub("availability")} />}
         {tab === "messages" && (
           <MessagesSurface
             onSupport={() => setSub("support")}
@@ -566,13 +568,13 @@ function OrdersInbox({
 }
 
 /** MCH-1/ONB-2 — photo and voice first, words second. */
-function CameraSurface({ hasReview, canFilm, onListed, onAvailability }: { hasReview: boolean; canFilm: boolean; onListed: () => void; onAvailability: () => void }) {
+function CameraSurface({ hasReview, canFilm, onListed, onAvailability, onDelivery }: { onDelivery: () => void; hasReview: boolean; canFilm: boolean; onListed: () => void; onAvailability: () => void }) {
   return (
     <div className="mr-cam">
       <div className="mr-cam-prompt">What changed today?</div>
       {hasReview && <Link className="mr-bigaction stock" href="/onboarding/review"><span className="ic"><CameraIcon /></span><span className="m"><span className="t">Review catalogue</span><span className="s">Check the products from your shelves.</span></span><span className="arr"><ArrowRightIcon /></span></Link>}
       {canFilm && !hasReview && <Link className="mr-bigaction stock" href="/onboarding/shelves"><span className="ic"><CameraIcon /></span><span className="m"><span className="t">Film your shelves</span><span className="s">Capture or revisit your shelf photos.</span></span><span className="arr"><ArrowRightIcon /></span></Link>}
-      <button type="button" className="mr-bigaction stock">
+      <button type="button" className="mr-bigaction stock" onClick={onDelivery}>
         <span className="ic">
           <CookPotIcon />
         </span>
