@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../db.js";
 import { buyerProcedure, publicProcedure, router } from "../trpc.js";
@@ -195,6 +196,15 @@ export const checkoutRouter = router({
       const snapshotById = new Map(snapshots.map((s) => [s.id, s]));
 
       const result = await prisma.$transaction(async (tx) => {
+        // A seller can change availability after routing. Serialize that change
+        // with the final order write so an active pause also covers stale carts.
+        const ids = [...new Set(plan.assignment.map(a => a.listing.listingId))];
+        const available = await tx.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "Listing" WHERE "id" IN (${Prisma.join(ids)})
+          AND "stockStatus" <> 'out_of_stock' AND ("pausedUntil" IS NULL OR "pausedUntil" <= CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          ORDER BY "id" FOR SHARE
+        `;
+        if (available.length !== ids.length) throw new TRPCError({ code: "CONFLICT", message: "Availability changed. Refresh your basket and try again." });
         const order = await tx.order.create({
           data: {
             buyerId: ctx.buyerId,

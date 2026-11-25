@@ -132,6 +132,25 @@ try {
   const b = as(null, `buyer:${buyerB}`);
   const nobody = as(null);
 
+  console.log("=== Timed listing availability ===");
+  const listingRef = { listingId: listing.id };
+  const future = new Date(Date.now() + 86400_000).toISOString();
+  const pause = { ...listingRef, expectedUpdatedAt: listing.updatedAt.toISOString(), until: future };
+  const basket = { items: [{ ...listingRef, quantity: 1 }], destination: { street: "123 Main St", city: "Dallas", state: "TX", zip: "75201" } };
+  check("another seller cannot pause a listing", (await outcome(otherStore.merchant.pauseListing(pause))).code === "NOT_FOUND");
+  await Promise.all([store.merchant.pauseListing(pause), store.merchant.pauseListing(pause)]);
+  await store.merchant.updateListing({ ...listingRef, priceCents: listing.priceCents });
+  const during = (await store.merchant.listings()).find(l => l.id === listing.id);
+  check("a price edit preserves the confirmed pause and the seller can still edit it", during?.pausedUntil?.toISOString() === future && !during.inStock && !during.hidden);
+  check("a paused listing is absent from buyer detail and routing", (await outcome(a.catalogue.detail(listingRef))).code === "NOT_FOUND" && (await a.checkout.quote(basket)).unfulfillable.length === 1);
+  check("a stale basket cannot buy a paused listing", (await outcome(a.checkout.place(basket))).code === "BAD_REQUEST");
+  await store.merchant.updateListing({ ...listingRef, priceCents: listing.priceCents, inStock: false });
+  check("a manual out-of-stock decision supersedes the timer", (await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } })).pausedUntil === null &&
+    (await a.checkout.quote(basket)).unfulfillable.length === 1 && (await outcome(store.merchant.pauseListing(pause))).code === "CONFLICT");
+  // Move the stored deadline behind the clock to exercise the production reads without waiting a day.
+  await prisma.listing.update({ where: { id: listing.id }, data: { stockStatus: "made_to_order", pausedUntil: new Date(Date.now() - 1000) } });
+  check("an elapsed deadline restores the original listing on browse and checkout", (await a.catalogue.detail(listingRef)).madeToOrder && (await a.checkout.quote(basket)).unfulfillable.length === 0);
+
   console.log("=== Merchant declines ===");
   const refusal = await makeOrder("decline", buyerA, { status: "pending", items: [] });
   const sibling = await prisma.shipment.create({ data: { id: id("sibling"), orderId: refusal.orderId, storeId: otherStoreId, temperatureClass: "ambient" } });

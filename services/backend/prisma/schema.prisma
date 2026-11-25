@@ -160,6 +160,7 @@ model Listing {
   canonicalProductId String
   priceCents         Int
   stockStatus        StockStatus      @default(in_stock)
+  pausedUntil        DateTime?
   leadTimeDays       Int?
   batchQuantityCap   Int?
   temperatureClass   TemperatureClass

@@ -442,11 +442,11 @@ export const merchantRouter = router({
     const [all, visible, store] = await Promise.all([
       prisma.listing.findMany({
         where: { storeId: ctx.storeId },
-        include: { canonicalProduct: true },
+        include: { canonicalProduct: { include: { aliases: { select: { alias: true } } } } },
         orderBy: { createdAt: "asc" },
       }),
       prisma.listing.findMany({
-        where: await visibleListings(prisma, { storeId: ctx.storeId }),
+        where: await visibleListings(prisma, { storeId: ctx.storeId }, "merchant"),
         select: { id: true },
       }),
       prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, include: { kitchenLicence: true } }),
@@ -454,16 +454,22 @@ export const merchantRouter = router({
     const visibleIds = new Set(visible.map((l) => l.id));
     const licensed = licenceCounts(store.kitchenLicence);
     const lapsed = licenceState(store.kitchenLicence) === "expired";
+    const now = new Date();
     return all.map((l) => {
       const hidden = !visibleIds.has(l.id);
+      const pausedUntil = l.pausedUntil && l.pausedUntil > now ? l.pausedUntil : null;
       return {
         id: l.id,
         name: l.canonicalProduct.canonicalName,
+        aliases: l.canonicalProduct.aliases.map(a => a.alias),
+        packSize: l.canonicalProduct.packSize,
+        updatedAt: l.updatedAt,
+        pausedUntil,
         productPhoto: listingPhoto(l),
         category: l.canonicalProduct.category,
         controlledCategory: l.canonicalProduct.controlledCategory,
         priceCents: l.priceCents,
-        inStock: l.stockStatus !== "out_of_stock",
+        inStock: !pausedUntil && l.stockStatus !== "out_of_stock",
         hidden,
         // Cold food without a licensed kitchen is hidden for a different reason
         // than a category being switched off, and the way out is different too.
@@ -496,27 +502,46 @@ export const merchantRouter = router({
       return { saved: true };
     }),
 
+  pauseListing: merchantProcedure
+    .input(z.object({ listingId: z.string(), until: z.string().datetime(), expectedUpdatedAt: z.string().datetime() }))
+    .mutation(async ({ input, ctx }) => {
+      const where = { id: input.listingId, storeId: ctx.storeId };
+      const until = new Date(input.until);
+      if (until <= new Date()) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a future return date." });
+      return prisma.$transaction(async tx => {
+        const listing = await tx.listing.findFirst({ where });
+        if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "That product is no longer listed." });
+        if (listing.pausedUntil?.getTime() === until.getTime()) return { until };
+        const result = await tx.listing.updateMany({ where: { ...where, updatedAt: new Date(input.expectedUpdatedAt) },
+          data: { pausedUntil: until, stockStatus: listing.stockStatus === "out_of_stock" ? "in_stock" : listing.stockStatus } });
+        if (!result.count && !await tx.listing.count({ where: { ...where, pausedUntil: until } })) {
+          throw new TRPCError({ code: "CONFLICT", message: "This listing changed. Review the update again." });
+        }
+        return { until };
+      });
+    }),
+
   /** Fix a price or mark a product in or out of stock. Scoped to this store. */
   updateListing: merchantProcedure
     .input(
       z.object({
         listingId: z.string(),
         priceCents: z.number().int().min(50).max(1_000_000),
-        inStock: z.boolean(),
+        inStock: z.boolean().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
       const listing = await prisma.listing.findFirst({ where: { id: input.listingId, storeId: ctx.storeId } });
       if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "That product is no longer listed." });
       // A made-to-order product stays so unless it is being marked out.
-      const stockStatus = !input.inStock
+      const stockStatus = input.inStock === false
         ? "out_of_stock"
         : listing.stockStatus === "out_of_stock"
           ? "in_stock"
           : listing.stockStatus;
       await prisma.listing.update({
         where: { id: listing.id },
-        data: { priceCents: input.priceCents, stockStatus },
+        data: { priceCents: input.priceCents, ...(input.inStock !== undefined && { stockStatus, pausedUntil: null }) },
       });
       return { id: listing.id };
     }),

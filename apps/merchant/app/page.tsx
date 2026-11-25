@@ -24,6 +24,7 @@ import { SignIn } from "./SignIn";
 import { BOX_PHOTO, PhotoCamera } from "./PhotoCamera";
 import { SupportThread } from "./SupportThread";
 import { WhatsListed } from "./WhatsListed";
+import { AvailabilityUpdate } from "./AvailabilityUpdate";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -63,8 +64,8 @@ export default function MerchantApp() {
 function MerchantAppInner() {
   const [tab, setTab] = useState<Tab>("orders");
   const [openId, setOpenId] = useState<string | null>(null);
-  // Two screens reached from inside the tabs: What's listed (Camera) and the AfriMart thread (Messages).
-  const [sub, setSub] = useState<"listed" | "support" | null>(null);
+  // Screens reached from Camera or Messages share the existing three-tab navigation.
+  const [sub, setSub] = useState<"listed" | "support" | "availability" | null>(null);
 
   // Which shop this is comes from the session the server holds, not from the page.
   const store = trpc.merchant.me.useQuery().data;
@@ -290,6 +291,7 @@ function MerchantAppInner() {
   }
 
   // ---- screens reached from a tab ----
+  if (sub === "availability") return <AvailabilityUpdate onBack={() => setSub(null)} />;
   if (sub === "listed") {
     return (
       <WhatsListed
@@ -325,7 +327,7 @@ function MerchantAppInner() {
 
       <div className="mr-scroll">
         {tab === "orders" && <OrdersInbox orders={orders} onOpen={setOpenId} onAccept={(id) => update(id, { status: "packing", step: 0 })} />}
-        {tab === "camera" && <CameraSurface hasReview={Boolean(store?.hasShelfReview)} canFilm={Boolean(store?.canFilmShelves)} onListed={() => setSub("listed")} />}
+        {tab === "camera" && <CameraSurface hasReview={Boolean(store?.hasShelfReview)} canFilm={Boolean(store?.canFilmShelves)} onListed={() => setSub("listed")} onAvailability={() => setSub("availability")} />}
         {tab === "messages" && (
           <MessagesSurface
             onSupport={() => setSub("support")}
@@ -564,7 +566,7 @@ function OrdersInbox({
 }
 
 /** MCH-1/ONB-2 — photo and voice first, words second. */
-function CameraSurface({ hasReview, canFilm, onListed }: { hasReview: boolean; canFilm: boolean; onListed: () => void }) {
+function CameraSurface({ hasReview, canFilm, onListed, onAvailability }: { hasReview: boolean; canFilm: boolean; onListed: () => void; onAvailability: () => void }) {
   return (
     <div className="mr-cam">
       <div className="mr-cam-prompt">What changed today?</div>
@@ -582,13 +584,13 @@ function CameraSurface({ hasReview, canFilm, onListed }: { hasReview: boolean; c
           <ArrowRightIcon />
         </span>
       </button>
-      <button type="button" className="mr-bigaction avail">
+      <button type="button" className="mr-bigaction avail" onClick={onAvailability}>
         <span className="ic">
           <MicIcon />
         </span>
         <span className="m">
           <span className="t">Update availability</span>
-          <span className="s">Hold to talk — &ldquo;ogbono finished till Friday&rdquo;.</span>
+          <span className="s">Say or type “ogbono finished till Friday”.</span>
         </span>
         <span className="arr">
           <ArrowRightIcon />

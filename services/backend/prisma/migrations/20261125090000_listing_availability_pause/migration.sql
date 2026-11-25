@@ -1,0 +1,1 @@
+ALTER TABLE "Listing" ADD COLUMN "pausedUntil" TIMESTAMP(3);

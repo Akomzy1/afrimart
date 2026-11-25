@@ -204,7 +204,7 @@ export function WhatsListed({ onBack, onMessage }: { onBack: () => void; onMessa
                 >
                   <div className="pic">
                     <span className={`st ${l.hidden ? "hid" : l.inStock ? "in" : "out"}`}>
-                      {l.hidden ? "Hidden" : l.inStock ? "In stock" : "Out"}
+                      {l.hidden ? "Hidden" : l.pausedUntil ? "Paused" : l.inStock ? "In stock" : "Out"}
                     </span>
                     <ListingPhoto src={l.productPhoto} glyph={glyphFor(l)} />
                   </div>
@@ -267,6 +267,7 @@ function EditSheet({ listing, onClose, onSaved }: { listing: Listing; onClose: (
   const utils = trpc.useUtils();
   const [price, setPrice] = useState(listing.priceCents);
   const [inStock, setInStock] = useState(listing.inStock);
+  const [availabilityChanged, setAvailabilityChanged] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const photo = trpc.merchant.saveProductPhoto.useMutation({
     onSuccess: async () => {
@@ -299,7 +300,7 @@ function EditSheet({ listing, onClose, onSaved }: { listing: Listing; onClose: (
             type="button"
             className="mr-bigbtn green"
             disabled={save.isPending}
-            onClick={() => save.mutate({ listingId: listing.id, priceCents: price, inStock })}
+            onClick={() => save.mutate({ listingId: listing.id, priceCents: price, inStock: availabilityChanged ? inStock : undefined })}
           >
             {save.isPending ? "Saving…" : "Save"}
           </button>
@@ -319,11 +320,12 @@ function EditSheet({ listing, onClose, onSaved }: { listing: Listing; onClose: (
           </button>
         </div>
         <div className="k">Availability</div>
+        {listing.pausedUntil && !availabilityChanged && <p>Paused until {new Date(listing.pausedUntil).toLocaleString()}.</p>}
         <div className="mr-stockseg">
-          <button type="button" className={`instk${inStock ? " on" : ""}`} onClick={() => setInStock(true)}>
+          <button type="button" className={`instk${inStock ? " on" : ""}`} onClick={() => { setInStock(true); setAvailabilityChanged(true); }}>
             <CheckIcon strokeWidth={2.2} /> In stock
           </button>
-          <button type="button" className={`outstk${!inStock ? " on" : ""}`} onClick={() => setInStock(false)}>
+          <button type="button" className={`outstk${!inStock ? " on" : ""}`} onClick={() => { setInStock(false); setAvailabilityChanged(true); }}>
             Out of stock
           </button>
         </div>
