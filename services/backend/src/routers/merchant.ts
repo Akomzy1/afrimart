@@ -607,17 +607,36 @@ export const merchantRouter = router({
    * many are unread. Payouts are posted here when they are made (the amount,
    * the date, the order), which is where a seller sees what they have earned.
    */
-  thread: merchantProcedure.query(async ({ ctx }) => {
+  thread: merchantProcedure.input(z.object({
+    limit: z.number().int().min(1).max(200).default(200),
+    before: z.object({ createdAt: z.string().datetime(), id: z.string() }).optional(),
+  }).optional()).query(async ({ ctx, input }) => {
     // A lapsed licence is announced here the first time the seller looks after
     // it lapses; no job runs, and checking again posts nothing more.
     await ensureLicenceExpiryNotice(prisma, ctx.storeId);
-    const rows = await prisma.sellerMessage.findMany({
-      where: { storeId: ctx.storeId },
-      orderBy: { createdAt: "asc" },
-      take: 200,
-    });
+    const limit = input?.limit ?? 200;
+    const before = input?.before;
+    const [rows, unread] = await prisma.$transaction([
+      prisma.sellerMessage.findMany({
+        where: {
+          storeId: ctx.storeId,
+          ...(before && { OR: [
+            { createdAt: { lt: before.createdAt } },
+            { createdAt: before.createdAt, id: { lt: before.id } },
+          ] }),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+      }),
+      prisma.sellerMessage.count({ where: { storeId: ctx.storeId, readAt: null } }),
+    ], { isolationLevel: "RepeatableRead" });
+    const hasOlder = rows.length > limit;
+    if (hasOlder) rows.pop();
+    rows.reverse();
+    const oldest = rows[0];
     return {
-      unread: rows.filter((m) => m.readAt === null).length,
+      unread,
+      nextBefore: hasOlder && oldest ? { createdAt: oldest.createdAt.toISOString(), id: oldest.id } : null,
       messages: rows.map((m) => ({
         id: m.id,
         kind: m.kind,
@@ -631,10 +650,10 @@ export const merchantRouter = router({
     };
   }),
 
-  /** Mark everything in the thread as read, which is what opening it does. */
-  markThreadRead: merchantProcedure.mutation(async ({ ctx }) => {
+  /** Opening a page acknowledges only the messages delivered on that page. */
+  markThreadRead: merchantProcedure.input(z.object({ ids: z.array(z.string()).min(1).max(200) })).mutation(async ({ ctx, input }) => {
     const result = await prisma.sellerMessage.updateMany({
-      where: { storeId: ctx.storeId, readAt: null },
+      where: { storeId: ctx.storeId, id: { in: input.ids }, readAt: null },
       data: { readAt: new Date() },
     });
     return { marked: result.count };

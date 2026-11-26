@@ -72,7 +72,7 @@ function MerchantAppInner() {
   // Which shop this is comes from the session the server holds, not from the page.
   const store = trpc.merchant.me.useQuery().data;
   const inbox = trpc.merchant.inbox.useQuery();
-  const thread = trpc.merchant.thread.useQuery();
+  const thread = trpc.merchant.thread.useQuery({ limit: 1 });
   const utils = trpc.useUtils();
   const acceptJob = trpc.merchant.accept.useMutation({
     onSettled: () => utils.merchant.inbox.invalidate(),

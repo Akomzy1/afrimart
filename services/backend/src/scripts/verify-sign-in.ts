@@ -424,8 +424,38 @@ try {
   const audit = await prisma.auditLogEntry.findMany({ where: { subjectType: "payout", subjectId: payout.id } });
   check("only the successful hold and release are audited", audit.length === 2 && audit.some((entry) => entry.action === "payout.hold") && audit.some((entry) => entry.action === "payout.release" && (entry.before as { status?: string })?.status === "held"));
   check("and does not post a second message", (await prisma.sellerMessage.count({ where: { payoutId: payout.id } })) === 1);
-  await callerFor({ identity: `store:${storeA.id}` }).merchant.markThreadRead();
+  const merchantThread = callerFor({ identity: `store:${storeA.id}` }).merchant;
+  await merchantThread.markThreadRead({ ids: [msg!.id] });
   check("opening the thread marks it read", (await aThread()).unread === 0);
+
+  const createdAt = new Date(msg!.createdAt.getTime() + 1000);
+  const notices = Array.from({ length: 201 }, (_, index) => ({
+    id: id(`notice-${String(index).padStart(3, "0")}`),
+    storeId: storeA.id, kind: "licence_expired", body: `Notice ${index}`, createdAt, orderRefs: [],
+  }));
+  await prisma.sellerMessage.createMany({ data: notices });
+  const latest = await aThread();
+  check("a long thread opens on the newest notices and counts all unread messages",
+    latest.messages.length === 200 && latest.messages[0]?.id === notices[1]?.id &&
+    latest.messages.at(-1)?.id === notices.at(-1)?.id && latest.unread === 201);
+  const older = await merchantThread.thread({ before: latest.nextBefore!, limit: 200 });
+  check("older messages with the same timestamp are reachable once, in order",
+    older.messages.length === 2 && older.messages[0]?.id === msg?.id &&
+    older.messages[1]?.id === notices[0]?.id && older.nextBefore === null);
+  const other = await prisma.sellerMessage.create({ data: {
+    storeId: storeB.id, kind: "licence_expired", body: "Separate shop", orderRefs: [],
+  } });
+  const arrival = await prisma.sellerMessage.create({ data: {
+    storeId: storeA.id, kind: "licence_expired", body: "Just arrived", orderRefs: [], createdAt: new Date(createdAt.getTime() + 1),
+  } });
+  const pageIds = latest.messages.map((m) => m.id);
+  const read = await merchantThread.markThreadRead({ ids: pageIds });
+  const retry = await merchantThread.markThreadRead({ ids: [pageIds[0]!, other.id] });
+  const preview = await merchantThread.thread({ limit: 1 });
+  check("reading a page preserves older unread history and concurrent arrivals",
+    read.marked === 200 && preview.unread === 2 && preview.messages[0]?.id === arrival.id && preview.messages[0]?.unread === true);
+  check("a repeated acknowledgement cannot read another shop's message",
+    retry.marked === 0 && (await prisma.sellerMessage.findUniqueOrThrow({ where: { id: other.id } })).readAt === null);
 
   console.log("\n=== See all payouts: a fresh link, made on request, never stored ===");
   const asked2: string[] = [];

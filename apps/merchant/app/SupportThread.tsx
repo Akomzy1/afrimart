@@ -64,17 +64,16 @@ function Ic({ children, size = 1.7 }: { children: ReactNode; size?: number }) {
 export function SupportThread({ onBack }: { onBack: () => void }) {
   const utils = trpc.useUtils();
   const standing = trpc.merchant.standing.useQuery();
-  const thread = trpc.merchant.thread.useQuery();
-  // Opening the thread is what reads it.
+  const [history, setHistory] = useState<{ createdAt: string; id: string }[]>([]);
+  const thread = trpc.merchant.thread.useQuery({ limit: 20, before: history.at(-1) });
+  const messages = thread.data?.messages;
+  const nextBefore = thread.data?.nextBefore;
   const markRead = trpc.merchant.markThreadRead.useMutation({ onSuccess: () => utils.merchant.thread.invalidate() });
-  const unreadCount = thread.data?.unread ?? 0;
+  const acknowledge = markRead.mutate;
   useEffect(() => {
-    if (unreadCount > 0 && !markRead.isPending) markRead.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unreadCount]);
-  const payouts = (thread.data?.messages ?? []).filter((m) => m.kind === "payout");
-  // Notices from AfriMart that are just words (a licence that has lapsed).
-  const notices = (thread.data?.messages ?? []).filter((m) => m.kind === "licence_expired");
+    const ids = messages?.filter((m) => m.unread).map((m) => m.id);
+    if (ids?.length) acknowledge({ ids });
+  }, [messages, acknowledge]);
   const dashboard = trpc.merchant.payoutDashboardLink.useMutation();
 
   /**
@@ -199,13 +198,12 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
             </div>
           )}
 
-          {notices.map((n) => (
-            <div className="b-in support" key={n.id}>
-              {n.body}
-            </div>
-          ))}
-
-          {payouts.map((p) => (
+          {nextBefore && (
+            <button type="button" className="mr-bigbtn ghost" onClick={() => setHistory([...history, nextBefore])}>Older messages</button>
+          )}
+          {thread.isLoading && <p role="status">Loading messages…</p>}
+          {thread.isError && <button type="button" className="mr-bigbtn ghost" onClick={() => thread.refetch()}>Couldn’t load messages. Try again</button>}
+          {messages?.map((p) => p.kind === "payout" ? (
             <div className="b-in support payout" key={p.id}>
               <div className="k">Payout sent</div>
               <div className="amt serif tnum">{p.amountCents === null ? "" : `$${(p.amountCents / 100).toFixed(2)}`}</div>
@@ -214,8 +212,11 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
               </div>
               <div className="d">Covers order{p.orderRefs.length > 1 ? "s" : ""} {p.orderRefs.join(", ")}</div>
             </div>
-          ))}
-          {payouts.length > 0 && (
+          ) : <div className="b-in support" key={p.id}>{p.body}</div>)}
+          {history.length > 0 && (
+            <button type="button" className="mr-bigbtn ghost" onClick={() => setHistory(history.slice(0, -1))}>Newer messages</button>
+          )}
+          {messages?.some((m) => m.kind === "payout") && (
             <div className="mr-qrs">
               {dashboard.isError && <div className="mr-sheet-err">{dashboard.error.message}</div>}
               <button type="button" className="mr-bigbtn ghost" onClick={seeAllPayouts} disabled={dashboard.isPending}>
