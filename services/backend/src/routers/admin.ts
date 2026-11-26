@@ -2,6 +2,7 @@ import { releaseReservations } from "../catalogue/delivery.js";
 import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
+import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { router, staffProcedure } from "../trpc.js";
 import { writeAudit, type AuditedAction } from "../auth/audit.js";
@@ -28,6 +29,15 @@ const isPhotoPath = (v: string | null): v is string => v !== null && parsePhotoP
  */
 
 const idInput = z.object({ id: z.string() });
+
+async function lockUnpaidPayout(tx: Prisma.TransactionClient, id: string) {
+  const [payout] = await tx.$queryRaw<Pick<Payout, "status" | "heldUntil" | "netCents" | "paidAt">[]>`
+    SELECT "status", "heldUntil", "netCents", "paidAt" FROM "Payout" WHERE "id" = ${id} FOR UPDATE
+  `;
+  if (!payout) throw new TRPCError({ code: "NOT_FOUND", message: "No such payout." });
+  if (payout.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "That payout has already been paid." });
+  return payout;
+}
 
 const controlledCategoryInput = z.enum(["meat", "poultry", "fish", "dairy"]);
 
@@ -614,10 +624,8 @@ export const adminRouter = router({
   holdPayout: staffProcedure("finance:write")
     .input(z.object({ payoutId: z.string(), until: z.coerce.date(), reason: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
-      const before = await prisma.payout.findUnique({ where: { id: input.payoutId } });
-      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such payout." });
-
       return prisma.$transaction(async (tx) => {
+        const before = await lockUnpaidPayout(tx, input.payoutId);
         const after = await tx.payout.update({
           where: { id: input.payoutId },
           data: { heldUntil: input.until, holdReason: input.reason, status: "held" },
@@ -637,11 +645,8 @@ export const adminRouter = router({
   releasePayout: staffProcedure("finance:write")
     .input(z.object({ payoutId: z.string(), note: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
-      const before = await prisma.payout.findUnique({ where: { id: input.payoutId } });
-      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such payout." });
-      if (before.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "That payout has already been paid." });
-
       return prisma.$transaction(async (tx) => {
+        const before = await lockUnpaidPayout(tx, input.payoutId);
         const after = await tx.payout.update({
           where: { id: input.payoutId },
           data: { heldUntil: null, holdReason: null, status: "released", paidAt: new Date() },

@@ -403,8 +403,13 @@ try {
   const aThread = () => callerFor({ identity: `store:${storeA.id}` }).merchant.thread();
   check("before it is paid there is nothing in the thread", (await aThread()).messages.length === 0);
   check("only finance can release a payout", (await outcome(ops.admin.releasePayout({ payoutId: payout.id }))).code === "FORBIDDEN");
-  const released = await outcome(finance.admin.releasePayout({ payoutId: payout.id, note: "weekly run" }));
-  check("finance releases it", released.code === "ok");
+  const hold = { payoutId: payout.id, until: new Date(Date.now() + 86400000), reason: "Awaiting reconciliation" };
+  const held = await finance.admin.holdPayout(hold);
+  check("finance can hold an unpaid payout", held.status === "held" && held.paidAt === null);
+  const release = () => outcome(finance.admin.releasePayout({ payoutId: payout.id, note: "weekly run" }));
+  const attempts = await Promise.all([release(), release()]);
+  const paidAt = attempts.find((attempt) => attempt.code === "ok")?.value?.paidAt;
+  check("exactly one concurrent release succeeds", Boolean(paidAt) && attempts.some((attempt) => attempt.code === "BAD_REQUEST"));
   const th = await aThread();
   const msg = th.messages[0];
   check("the seller has one new message", th.messages.length === 1 && th.unread === 1);
@@ -413,6 +418,11 @@ try {
   check("another seller's thread has nothing", (await callerFor({ identity: `store:${storeB.id}` }).merchant.thread()).messages.length === 0);
   check("a buyer cannot read a seller's thread", (await outcome(callerFor({ identity: `buyer:${buyerOwner.id}` }).merchant.thread())).code === "UNAUTHORIZED");
   check("paying the same payout again is refused", (await outcome(finance.admin.releasePayout({ payoutId: payout.id }))).code === "BAD_REQUEST");
+  check("a paid payout cannot be held again", (await outcome(finance.admin.holdPayout(hold))).code === "BAD_REQUEST");
+  const settled = await prisma.payout.findUniqueOrThrow({ where: { id: payout.id } });
+  check("the ledger and notice keep the original payment time", Boolean(paidAt) && settled.status === "released" && settled.heldUntil === null && settled.paidAt?.getTime() === paidAt?.getTime() && msg?.paidOn?.getTime() === paidAt?.getTime());
+  const audit = await prisma.auditLogEntry.findMany({ where: { subjectType: "payout", subjectId: payout.id } });
+  check("only the successful hold and release are audited", audit.length === 2 && audit.some((entry) => entry.action === "payout.hold") && audit.some((entry) => entry.action === "payout.release" && (entry.before as { status?: string })?.status === "held"));
   check("and does not post a second message", (await prisma.sellerMessage.count({ where: { payoutId: payout.id } })) === 1);
   await callerFor({ identity: `store:${storeA.id}` }).merchant.markThreadRead();
   check("opening the thread marks it read", (await aThread()).unread === 0);
