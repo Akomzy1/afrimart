@@ -26,6 +26,7 @@ import { SupportThread } from "./SupportThread";
 import { WhatsListed } from "./WhatsListed";
 import { DeliveryUpdate } from "./DeliveryUpdate";
 import { AvailabilityUpdate } from "./AvailabilityUpdate";
+import { OrderAlertButton } from "./OrderAlertButton";
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -464,6 +465,7 @@ function OrdersInbox({
 
   return (
     <>
+      <OrderAlertButton />
       {fresh.length > 0 && (
         <>
           <div className="mr-sectitle">

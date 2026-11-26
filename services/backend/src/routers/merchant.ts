@@ -17,6 +17,7 @@ import { CONTROLLED_CATEGORY_LABEL, isHomeTier, permitStatement } from "../quali
 
 import { deliveryInput, matchDelivery, receiveDelivery, releaseReservations } from "../catalogue/delivery.js";
 import { readDelivery } from "../catalogue/providers.js";
+import { deviceInput, vapidConfig } from "../notifications/webPush.js";
 
 const CONTROLLED = ["meat", "poultry", "fish", "dairy"] as const;
 
@@ -74,6 +75,30 @@ async function storeDocument(photo: string): Promise<string> {
 }
 
 export const merchantRouter = router({
+  pushSettings: merchantProcedure.query(async ({ ctx }) => {
+    const key = vapidConfig()?.publicKey ?? null;
+    const device = await prisma.merchantPushDevice.findUnique({ where: { sessionId: ctx.sessions.store!.sessionId },
+      select: { endpoint: true, applicationKey: true } });
+    return { publicKey: key, deviceHash: device && device.applicationKey === key
+      ? createHash("sha256").update(device.endpoint).digest("hex") : null };
+  }),
+
+  registerPush: merchantProcedure.input(deviceInput).mutation(async ({ ctx, input }) => {
+    if (input.applicationKey !== vapidConfig()?.publicKey) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Refresh to get the current push key." });
+    const sessionId = ctx.sessions.store!.sessionId;
+    try {
+      await prisma.merchantPushDevice.upsert({ where: { sessionId }, create: { sessionId, ...input }, update: input });
+    } catch (error) {
+      if ((error as {code?: string}).code === "P2002") throw new TRPCError({ code: "CONFLICT", message: "Reconnect this device with a fresh subscription." });
+      throw error;
+    }
+    return { registered: true };
+  }),
+
+  disablePush: merchantProcedure.mutation(async ({ ctx }) => {
+    await prisma.merchantPushDevice.deleteMany({ where: { sessionId: ctx.sessions.store!.sessionId } });
+    return { registered: false };
+  }),
   /** The signed-in shop, for the app's header. UNAUTHORIZED is how the app learns it has to ask for a code. */
   me: merchantProcedure.query(async ({ ctx }) => {
     const store = await prisma.store.findUniqueOrThrow({ where: { id: ctx.storeId }, include: { hubMetro: true, filmSession: { select: { finishedAt: true } } } });

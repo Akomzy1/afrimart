@@ -28,7 +28,7 @@ export async function deliverMerchantAlert(id: string) {
     if (alert.channel === "push") {
       let failed = false;
       let accepted = false;
-      try { accepted = await senders.push.send({ storeId, title: alert.subject, body: alert.body }); }
+      try { accepted = await senders.push.send({ storeId, title: alert.subject, body: alert.body }, tx); }
       catch { failed = true; }
       if (accepted) return finish("sent", null);
       await tx.notification.createMany({ skipDuplicates: true, data: {

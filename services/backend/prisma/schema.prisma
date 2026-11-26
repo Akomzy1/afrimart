@@ -412,6 +412,7 @@ model AuthCode {
 /// the same shape as a staff session, with a longer life because the owner of a
 /// shop phone should not be asked for a texted code every morning.
 model UserSession {
+  pushDevice MerchantPushDevice?
   id         String    @id @default(cuid())
   kind       UserKind
   buyer      Buyer?    @relation(fields: [buyerId], references: [id])
@@ -428,6 +429,15 @@ model UserSession {
 
   @@index([buyerId])
   @@index([storeId])
+}
+
+model MerchantPushDevice {
+  sessionId String @id
+  session UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  endpoint String @unique
+  p256dh String
+  auth String
+  applicationKey String
 }
 
 model Subscription {

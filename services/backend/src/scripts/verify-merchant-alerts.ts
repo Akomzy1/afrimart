@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { generateVAPIDKeys } from "web-push";
+import { BrowserPushSender } from "../notifications/webPush.js";
+import { issueUserSession } from "../auth/userSession.js";
+import { callerFor } from "./callers.js";
 import { prisma } from "../db.js";
 import { deliverMerchantAlert } from "../notifications/merchantAlerts.js";
 import { queueMerchantAlerts } from "../notifications/pipeline.js";
@@ -46,6 +50,50 @@ try {
   assert.equal(captured.length, 0);
   await prisma.store.update({ where: { id: store.id }, data: { ownerPhone: number, ownerPhoneVerifiedAt: new Date() } });
 
+  const vapid = generateVAPIDKeys();
+  Object.assign(process.env, { VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey, VAPID_SUBJECT: "mailto:test@fixture.test" });
+  const phone = callerFor({ identity: "store:" + store.id });
+  const tablet = callerFor({ rawToken: (await issueUserSession({ kind: "store", storeId: store.id }, {})).token });
+  const device = { endpoint: "https://fcm.googleapis.com/fcm/send/" + randomUUID(), applicationKey: vapid.publicKey,
+    p256dh: generateVAPIDKeys().publicKey, auth: randomBytes(16).toString("base64url") };
+  const second = { ...device, endpoint: "https://updates.push.services.mozilla.com/wpush/v2/" + randomUUID() };
+  await assert.rejects(callerFor({}).merchant.registerPush(device));
+  await assert.rejects(phone.merchant.registerPush({ ...device, endpoint: "https://example.com" }));
+  await phone.merchant.registerPush(device);
+  await phone.merchant.registerPush(device);
+  await assert.rejects(tablet.merchant.registerPush(device));
+  await tablet.merchant.registerPush(second);
+  const sends: string[] = [];
+  setSenders({ push: new BrowserPushSender(async (url, init) => {
+    const headers = new Headers(init?.headers);
+    assert.match(headers.get("authorization") ?? "", /^vapid /i);
+    assert.equal(headers.get("content-encoding"), "aes128gcm");
+    assert.ok(init?.body instanceof Uint8Array && !Buffer.from(init.body).includes("New order"));
+    sends.push(String(url));
+    return new Response(null, { status: String(url) === second.endpoint ? 410 : 201 });
+  }) });
+  const multi = await pendingOrder();
+  assert.equal(await deliverMerchantAlert(multi.pushId), "sent");
+  assert.deepEqual(new Set(sends), new Set([device.endpoint, second.endpoint]));
+  assert.equal(await prisma.notification.count({ where: { orderId: multi.orderId, channel: "sms" } }), 0);
+  assert.equal((await tablet.merchant.pushSettings()).deviceHash, null);
+  assert.ok((await phone.merchant.pushSettings()).deviceHash);
+  setSenders({ push: new BrowserPushSender(async () => new Response(null, { status: 503 })) });
+  const unavailable = await fallback();
+  assert.equal((await prisma.notification.findUniqueOrThrow({ where: { id: unavailable.pushId } })).status, "failed");
+  assert.ok((await phone.merchant.pushSettings()).deviceHash);
+  await tablet.merchant.disablePush();
+  assert.ok((await phone.merchant.pushSettings()).deviceHash);
+  await phone.merchant.disablePush();
+  assert.equal((await phone.merchant.pushSettings()).deviceHash, null);
+  await phone.merchant.registerPush(device);
+  await phone.userAuth.signOutStore();
+  let signedOutSends = 0;
+  setSenders({ push: new BrowserPushSender(async () => { signedOutSends++; return new Response(null, {status: 201}); }) });
+  await fallback();
+  assert.equal(signedOutSends, 0);
+  console.log("Verified authenticated registration, encrypted fan-out, expired endpoint removal, device opt-out and sign-out fallback.");
+
   setSenders({ push: { name: "refused", async send() { throw Error("unavailable"); } } });
   const retry = await fallback();
   assert.equal((await prisma.notification.findUniqueOrThrow({ where: { id: retry.pushId } })).status, "failed");
@@ -79,6 +127,7 @@ try {
   await prisma.shipment.deleteMany({ where: { orderId: { in: orderIds } } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.buyer.delete({ where: { id: buyer.id } });
+  await prisma.userSession.deleteMany({ where: { storeId: store.id } });
   await prisma.store.delete({ where: { id: store.id } });
   await prisma.$disconnect();
 }

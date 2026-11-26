@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { Prisma } from "@prisma/client";
+import { BrowserPushSender } from "./webPush.js";
 import { assertDevOnlyAllowed, isDevelopment } from "../runtime.js";
 
 /**
@@ -66,7 +68,7 @@ export interface PushMessage {
 export interface PushSender {
   readonly name: string;
   /** True when a push service accepts the alert for at least one device. */
-  send(message: PushMessage): Promise<boolean>;
+  send(message: PushMessage, db?: Prisma.TransactionClient): Promise<boolean>;
 }
 
 /**
@@ -191,7 +193,7 @@ export interface Senders {
 
 let senders: Senders = {
   email: new FileEmailSender(),
-  push: { name: "unconfigured", async send() { return false; } },
+  push: new BrowserPushSender(),
   sms: defaultSmsSender(),
 };
 
