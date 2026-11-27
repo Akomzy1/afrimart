@@ -431,12 +431,17 @@ try {
   }
 
   console.log("\n=== a payout is posted to the seller's thread, once ===");
+  const baseline = await finance.admin.reconciliation();
   const payoutOrderId = id("order-x-AB12");
   const payout = await prisma.payout.create({
     data: { storeId: storeA.id, orderId: payoutOrderId, grossCents: 10000, takeRateBps: 1300, fulfilmentFeeCents: 199, netCents: 8501, status: "scheduled" },
   });
   const release = () => outcome(finance.admin.releasePayout({ payoutId: payout.id, note: "weekly run" }));
   check("a payout without a linked seller shipment cannot release", (await release()).code === "BAD_REQUEST");
+  const missing = await finance.admin.reconciliation();
+  check("a missing shipment is flagged with no release date",
+    missing.payouts.find((p) => p.id === payout.id)?.availability.label === "Missing seller shipment" &&
+    missing.heldCents === baseline.heldCents + payout.netCents && missing.heldCount === baseline.heldCount + 1);
   await prisma.order.create({ data: { id: payoutOrderId, buyerId: buyerOwner.id, totalCents: 10000, shippingCents: 0, taxCents: 0 } });
   const matureDelivery = new Date(Date.now() - (REFUND_WINDOW_DAYS + 1) * 86400000);
   const splitId = id("payout-split");
@@ -454,6 +459,13 @@ try {
   if (!("deliveredAt" in confirmed) || !confirmed.deliveredAt) throw new Error("Delivery confirmation time is missing");
   const deadline = new Date(confirmed.deliveredAt.getTime() + REFUND_WINDOW_DAYS * 86400000);
   check("reconfirming delivery preserves the refund-window deadline", recent.code === "BAD_REQUEST" && recent.message.includes(deadline.toISOString()));
+  const waiting = await finance.admin.reconciliation();
+  const undelivered = waiting.payouts.find((p) => p.id === payout.id)?.availability;
+  const refundWindow = waiting.payouts.find((p) => p.id === recentPayout.id)?.availability;
+  check("reconciliation counts both blocked payouts once, with the enforced refund deadline",
+    undelivered?.label === "Awaiting delivery" && undelivered.eligibleAt === null && refundWindow?.label === "Refund window open" &&
+    refundWindow.eligibleAt?.getTime() === deadline.getTime() && waiting.heldCount === baseline.heldCount + 2 &&
+    waiting.heldCents === baseline.heldCents + payout.netCents + recentPayout.netCents);
   check("a blocked release posts no payout notice or audit entry",
     await prisma.sellerMessage.count({ where: { payoutId: recentPayout.id } }) === 0 &&
     await prisma.auditLogEntry.count({ where: { subjectId: recentPayout.id, action: "payout.release" } }) === 0);
@@ -468,8 +480,23 @@ try {
   const hold = { payoutId: payout.id, until: new Date(Date.now() + 86400000), reason: "Awaiting reconciliation" };
   const held = await finance.admin.holdPayout(hold);
   check("finance can hold an unpaid payout", held.status === "held" && held.paidAt === null);
+  await prisma.order.update({ where: { id: payoutOrderId }, data: { status: "cancelled" } });
+  const cancelled = await finance.admin.reconciliation();
+  check("a cancelled order is blocked in both the report and the release action",
+    cancelled.payouts.find((p) => p.id === payout.id)?.availability.label === "Order cancelled" &&
+    cancelled.heldCount === waiting.heldCount && (await release()).code === "BAD_REQUEST");
+  await prisma.order.update({ where: { id: payoutOrderId }, data: { status: "placed" } });
+  const ready = await finance.admin.reconciliation();
+  const eligible = ready.payouts.find((p) => p.id === payout.id);
+  check("finance can see its manual hold on an eligible payout alongside the remaining blocked total",
+    eligible?.holdReason === hold.reason && eligible.availability.label === "Eligible for release" &&
+    ready.heldCount === baseline.heldCount + 1 && ready.heldCents === baseline.heldCents + recentPayout.netCents);
   const attempts = await Promise.all([release(), release()]);
   const paidAt = attempts.find((attempt) => attempt.code === "ok")?.value?.paidAt;
+  const afterRelease = await finance.admin.reconciliation();
+  check("a paid payout is labelled paid and excluded from blocked funds",
+    afterRelease.payouts.find((p) => p.id === payout.id)?.availability.label === "Paid" &&
+    afterRelease.heldCount === ready.heldCount && afterRelease.heldCents === ready.heldCents);
   check("exactly one concurrent release succeeds", Boolean(paidAt) && attempts.some((attempt) => attempt.code === "BAD_REQUEST"),
     attempts.map(({ code, message }) => `${code} ${message}`).join(" / "));
   const th = await aThread();

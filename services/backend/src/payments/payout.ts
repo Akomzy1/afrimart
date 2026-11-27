@@ -1,4 +1,4 @@
-import type { CarrierAdjustment, Prisma } from "@prisma/client";
+import { Prisma, type CarrierAdjustment } from "@prisma/client";
 import {
   REFUND_WINDOW_DAYS,
   SELLER_ESTABLISHED_AFTER_ORDERS,
@@ -32,10 +32,10 @@ export interface SellerRecord {
   disputedOrders: number;
 }
 
-export async function sellerPayoutRecord(db: Prisma.TransactionClient, storeId: string) {
-  const [record] = await db.$queryRaw<SellerRecord[]>`
+export function sellerPayoutRecords(db: Prisma.TransactionClient, storeId?: string) {
+  return db.$queryRaw<(SellerRecord & { storeId: string })[]>`
     WITH seller_orders AS (
-      SELECT s."orderId", bool_and(s.status = 'delivered') AS delivered,
+      SELECT s."storeId", s."orderId", bool_and(s.status = 'delivered') AS delivered,
              bool_or(c.id IS NOT NULL) AS disputed
       FROM "Shipment" s
       LEFT JOIN "RefundClaim" c ON c."orderId" = s."orderId"
@@ -49,14 +49,51 @@ export async function sellerPayoutRecord(db: Prisma.TransactionClient, storeId: 
           OR NOT EXISTS (SELECT 1 FROM "Shipment" other
                          WHERE other."orderId" = s."orderId" AND other."storeId" <> s."storeId")
         )))
-      WHERE s."storeId" = ${storeId}
-      GROUP BY s."orderId"
+      WHERE ${storeId !== undefined ? Prisma.sql`s."storeId" = ${storeId}` : Prisma.sql`EXISTS (
+        SELECT 1 FROM "Payout" p WHERE p."storeId" = s."storeId" AND p."paidAt" IS NULL
+      )`}
+      GROUP BY s."storeId", s."orderId"
     )
-    SELECT count(*) FILTER (WHERE delivered AND NOT disputed)::int AS "cleanDeliveredOrders",
+    SELECT "storeId", count(*) FILTER (WHERE delivered AND NOT disputed)::int AS "cleanDeliveredOrders",
            count(*) FILTER (WHERE disputed)::int AS "disputedOrders"
-    FROM seller_orders
+    FROM seller_orders GROUP BY "storeId"
   `;
-  return record!;
+}
+
+const emptyRecord: SellerRecord = { cleanDeliveredOrders: 0, disputedOrders: 0 };
+
+export async function sellerPayoutRecord(db: Prisma.TransactionClient, storeId: string) {
+  const [record] = await sellerPayoutRecords(db, storeId);
+  return record ?? emptyRecord;
+}
+
+type PayoutParcel = { payoutId: string; orderStatus: string; deliveredAt: Date | null };
+
+// A release locks its order and parcels until settlement commits. The finance
+// report reads the same rows for all unpaid payouts from a repeatable snapshot.
+export function unpaidPayoutParcels(db: Prisma.TransactionClient, lockPayoutId?: string) {
+  return db.$queryRaw<PayoutParcel[]>`
+    SELECT p.id AS "payoutId", s."deliveredAt", o.status AS "orderStatus"
+    FROM "Payout" p JOIN "Shipment" s ON s."orderId" = p."orderId" AND s."storeId" = p."storeId"
+    JOIN "Order" o ON o.id = s."orderId"
+    WHERE p."paidAt" IS NULL
+    ${lockPayoutId === undefined ? Prisma.empty : Prisma.sql`AND p.id = ${lockPayoutId} ORDER BY s.id FOR SHARE OF o, s`}
+  `;
+}
+
+export function payoutAvailability(paidAt: Date | null, record: SellerRecord | undefined, parcels: PayoutParcel[], now: Date) {
+  if (paidAt) return { blocked: false, label: "Paid", eligibleAt: null };
+  if (!parcels.length) return { blocked: true, label: "Missing seller shipment", eligibleAt: null };
+  if (parcels[0]!.orderStatus === "cancelled") return { blocked: true, label: "Order cancelled", eligibleAt: null };
+  const deliveredAt = parcels.every((p) => p.deliveredAt)
+    ? new Date(Math.max(...parcels.map((p) => p.deliveredAt!.getTime())))
+    : null;
+  const hold = computeHold(record ?? emptyRecord, deliveredAt);
+  if (hold.tier !== "established") {
+    if (!hold.heldUntil) return { blocked: true, label: "Awaiting delivery", eligibleAt: null };
+    if (hold.heldUntil > now) return { blocked: true, label: "Refund window open", eligibleAt: hold.heldUntil };
+  }
+  return { blocked: false, label: "Eligible for release", eligibleAt: null };
 }
 
 export function holdTierFor(record: SellerRecord): HoldTier {

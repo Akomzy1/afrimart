@@ -7,7 +7,7 @@ import { prisma } from "../db.js";
 import { router, staffProcedure } from "../trpc.js";
 import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
-import { computeHold, deductCarrierAdjustments, sellerPayoutRecord } from "../payments/payout.js";
+import { computeHold, deductCarrierAdjustments, payoutAvailability, sellerPayoutRecord, sellerPayoutRecords, unpaidPayoutParcels } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 import { publishDraft, releaseReviewedFrames, staffDraft, staffDrafts } from "../catalogue/publication.js";
 import { availableFrame, cleanShelfUploads, reviewPhotos } from "../catalogue/photoRetention.js";
@@ -545,12 +545,14 @@ export const adminRouter = router({
    * platform's commission and fees, plus tax, plus what the carriers cost.
    */
   reconciliation: staffProcedure("finance:read").query(async () => {
-    const [orders, payouts, adjustments, payments] = await Promise.all([
+    const [orders, payouts, adjustments, payments, records, parcels] = await prisma.$transaction([
       prisma.order.findMany({ select: { totalCents: true, shippingCents: true, taxCents: true, status: true } }),
       prisma.payout.findMany({ include: { store: { select: { name: true } } } }),
       prisma.carrierAdjustment.findMany({ include: { store: { select: { name: true } } } }),
       prisma.payment.findMany({ select: { buyerChargeCents: true, status: true } }),
-    ]);
+      sellerPayoutRecords(prisma),
+      unpaidPayoutParcels(prisma),
+    ], { isolationLevel: "RepeatableRead" });
 
     const buyerChargedCents = payments.reduce((n, p) => n + p.buyerChargeCents, 0);
     const taxCollectedCents = orders.reduce((n, o) => n + o.taxCents, 0);
@@ -563,7 +565,25 @@ export const adminRouter = router({
     const deductedCents = payouts.reduce((n, p) => n + p.adjustmentsCents, 0);
 
     // PAY-8 â€” what is owed but not yet releasable, and why.
-    const heldPayouts = payouts.filter((p) => p.heldUntil && p.heldUntil > new Date());
+    const history = new Map(records.map((record) => [record.storeId, record]));
+    const byPayout = new Map<string, typeof parcels>();
+    for (const parcel of parcels) {
+      const group = byPayout.get(parcel.payoutId);
+      if (group) group.push(parcel);
+      else byPayout.set(parcel.payoutId, [parcel]);
+    }
+    const now = new Date();
+    const payoutRows = payouts.map((p) => ({
+      id: p.id,
+      storeName: p.store.name,
+      grossCents: p.grossCents,
+      netCents: p.netCents,
+      status: p.status,
+      heldUntil: p.heldUntil,
+      holdReason: p.holdReason,
+      availability: payoutAvailability(p.paidAt, history.get(p.storeId), byPayout.get(p.id) ?? [], now),
+    }));
+    const heldPayouts = payoutRows.filter((p) => p.availability.blocked);
 
     return {
       orderCount: orders.length,
@@ -595,15 +615,7 @@ export const adminRouter = router({
         settled: Boolean(a.settledPayoutId),
         appliedCents: a.appliedCents,
       })),
-      payouts: payouts.map((p) => ({
-        id: p.id,
-        storeName: p.store.name,
-        grossCents: p.grossCents,
-        netCents: p.netCents,
-        status: p.status,
-        heldUntil: p.heldUntil,
-        holdReason: p.holdReason,
-      })),
+      payouts: payoutRows,
     };
   }),
 
@@ -644,21 +656,10 @@ export const adminRouter = router({
     .mutation(async ({ input, ctx }) => {
       return prisma.$transaction(async (tx) => {
         const before = await lockUnpaidPayout(tx, input.payoutId);
-        const parcels = await tx.$queryRaw<{ deliveredAt: Date | null; orderStatus: string }[]>`
-          SELECT s."deliveredAt", o.status AS "orderStatus" FROM "Shipment" s
-          JOIN "Order" o ON o.id = s."orderId"
-          WHERE s."orderId" = ${before.orderId} AND s."storeId" = ${before.storeId}
-          ORDER BY s.id FOR SHARE OF o, s
-        `;
-        if (!parcels.length || parcels[0]!.orderStatus === "cancelled") {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "This payout needs a valid seller shipment on an active order." });
-        }
-        const deliveredAt = parcels.every((p) => p.deliveredAt)
-          ? new Date(Math.max(...parcels.map((p) => p.deliveredAt!.getTime())))
-          : null;
-        const hold = computeHold(await sellerPayoutRecord(tx, before.storeId), deliveredAt);
-        if (hold.tier !== "established" && (!hold.heldUntil || hold.heldUntil.getTime() > Date.now())) {
-          const message = hold.heldUntil ? `This payout is held until ${hold.heldUntil.toISOString()}.` : "Awaiting delivery of all of this seller's parcels.";
+        const parcels = await unpaidPayoutParcels(tx, input.payoutId);
+        const availability = payoutAvailability(before.paidAt, await sellerPayoutRecord(tx, before.storeId), parcels, new Date());
+        if (availability.blocked) {
+          const message = availability.eligibleAt ? `This payout is held until ${availability.eligibleAt.toISOString()}.` : availability.label;
           throw new TRPCError({ code: "BAD_REQUEST", message });
         }
         const settlement = await deductCarrierAdjustments(tx, before.storeId, input.payoutId, before.netCents);

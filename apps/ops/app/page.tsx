@@ -744,7 +744,7 @@ function KnowledgeGraph() {
 /* ------------------------------------------------------------------ ADM-5 */
 
 function Reconciliation() {
-  const r = trpc.admin.reconciliation.useQuery();
+  const r = trpc.admin.reconciliation.useQuery(undefined, { refetchInterval: 60_000 });
 
   if (r.isLoading) return <p className="op-note">Loading…</p>;
   if (r.isError) return <p className="op-note">Couldn&apos;t reach the backend.</p>;
@@ -792,9 +792,9 @@ function Reconciliation() {
           <div className="s">remitted separately</div>
         </div>
         <div className={`op-card${d.heldCount ? " alert" : ""}`}>
-          <div className="k">Held (PAY-8)</div>
+          <div className="k">Blocked from release</div>
           <div className="v">{money(d.heldCents)}</div>
-          <div className="s">{d.heldCount} payouts awaiting release</div>
+          <div className="s">{d.heldCount} {d.heldCount === 1 ? "payout" : "payouts"}</div>
         </div>
         <div className={`op-card${d.reconciliationDriftCents !== 0 ? " alert" : ""}`}>
           <div className="k">Drift</div>
@@ -849,7 +849,7 @@ function Reconciliation() {
               <th className="num">Gross</th>
               <th className="num">Net</th>
               <th>Status</th>
-              <th>Hold</th>
+              <th>Release eligibility</th>
             </tr>
           </thead>
           <tbody>
@@ -862,8 +862,9 @@ function Reconciliation() {
                   <span className="op-pill">{p.status}</span>
                 </td>
                 <td className="muted">
-                  {p.heldUntil ? `until ${new Date(p.heldUntil).toLocaleDateString()}` : "—"}
-                  {p.holdReason ? <div>{p.holdReason}</div> : null}
+                  <div>{p.availability.label}</div>
+                  {p.availability.eligibleAt && <div>Eligible {new Date(p.availability.eligibleAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })}</div>}
+                  {(p.heldUntil || p.holdReason) && <div>Finance hold{p.heldUntil && ` until ${new Date(p.heldUntil).toLocaleString()}`}{p.holdReason && ` · ${p.holdReason}`}</div>}
                 </td>
               </tr>
             ))}
