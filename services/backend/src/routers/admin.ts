@@ -7,7 +7,7 @@ import { prisma } from "../db.js";
 import { router, staffProcedure } from "../trpc.js";
 import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
-import { computeHold } from "../payments/payout.js";
+import { computeHold, type SellerRecord } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 import { publishDraft, releaseReviewedFrames, staffDraft, staffDrafts } from "../catalogue/publication.js";
 import { availableFrame, cleanShelfUploads, reviewPhotos } from "../catalogue/photoRetention.js";
@@ -607,11 +607,30 @@ export const adminRouter = router({
 
   /** PAY-8 â€” what hold a seller would get today, for the console to explain. */
   payoutHoldFor: staffProcedure("finance:read").input(idInput).query(async ({ input }) => {
-    const [clean, disputed] = await Promise.all([
-      prisma.shipment.count({ where: { storeId: input.id, status: "delivered" } }),
-      prisma.refundClaim.count({ where: { status: { in: ["approved", "manual_review"] } } }),
-    ]);
-    return computeHold({ cleanDeliveredOrders: clean, disputedOrders: disputed }, new Date());
+    const [record] = await prisma.$queryRaw<SellerRecord[]>`
+      WITH seller_orders AS (
+        SELECT s."orderId", bool_and(s.status = 'delivered') AS delivered,
+               bool_or(c.id IS NOT NULL) AS disputed
+        FROM "Shipment" s
+        LEFT JOIN "RefundClaim" c ON c."orderId" = s."orderId"
+          AND c.status IN ('manual_review', 'approved', 'auto_approved')
+          AND (c."shipmentId" = s.id OR (c."shipmentId" IS NULL AND (
+            -- Older claims can identify a parcel by an item, or just an order
+            -- when that order has a single seller.
+            EXISTS (SELECT 1 FROM "RefundClaimItem" ci
+                    JOIN "ShipmentItem" si ON si.id = ci."shipmentItemId"
+                    WHERE ci."claimId" = c.id AND si."shipmentId" = s.id)
+            OR NOT EXISTS (SELECT 1 FROM "Shipment" other
+                           WHERE other."orderId" = s."orderId" AND other."storeId" <> s."storeId")
+          )))
+        WHERE s."storeId" = ${input.id}
+        GROUP BY s."orderId"
+      )
+      SELECT count(*) FILTER (WHERE delivered AND NOT disputed)::int AS "cleanDeliveredOrders",
+             count(*) FILTER (WHERE disputed)::int AS "disputedOrders"
+      FROM seller_orders
+    `;
+    return computeHold(record!, new Date());
   }),
 
   /* ------------------------------------------- ADM-5 money, all audited */

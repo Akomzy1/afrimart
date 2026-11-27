@@ -22,6 +22,7 @@ import { photoStore } from "../storage/store.js";
 import { photoLinkIsValid, signedPhotoUrl } from "../storage/access.js";
 import { registerPhotoRoute } from "../storage/route.js";
 import { setPayoutDashboard } from "../payments/dashboard.js";
+import { SELLER_TRUSTED_AFTER_ORDERS } from "../config.js";
 import type { ResolvedSession } from "../auth/session.js";
 
 const P = "sgn-";
@@ -396,6 +397,35 @@ try {
   check("an application with no photo has nothing to open", (await outcome(ops.admin.evidencePhotoLink({ subject: "kitchen_licence", id: "no-such" }))).code === "NOT_FOUND");
 
   /* ------------------------------------------------------------- payouts */
+  console.log("\n=== the payout hold preview uses the seller's own fulfilled orders ===");
+  const cleanOrderIds = Array.from({ length: SELLER_TRUSTED_AFTER_ORDERS - 1 }, (_, i) => id(`hold-order-${i}`));
+  await prisma.order.createMany({ data: cleanOrderIds.map((id) => ({
+    id, buyerId: buyerOwner.id, totalCents: 1000, shippingCents: 0, taxCents: 0,
+  })) });
+  await prisma.shipment.createMany({ data: cleanOrderIds.map((orderId, i) => ({
+    id: id(`hold-ship-${i}`), orderId, storeId: storeB.id, temperatureClass: "ambient", status: "delivered",
+  } as const)) });
+  const sharedParcel = { orderId, storeId: storeB.id, temperatureClass: "ambient" } as const;
+  const pendingParcelId = id("hold-pending");
+  await prisma.shipment.createMany({ data: [
+    { ...sharedParcel, id: id("hold-delivered"), status: "delivered" },
+    { ...sharedParcel, id: pendingParcelId, status: "in_transit" },
+  ] });
+  const previewHold = () => finance.admin.payoutHoldFor({ id: storeB.id });
+  check("a partly delivered split order earns no clean-order credit", (await previewHold()).tier === "new");
+  await prisma.shipment.update({ where: { id: pendingParcelId }, data: { status: "delivered" } });
+  const claimData = { buyerId: buyerOwner.id, orderId, amountCents: 100, reason: "missing_items" };
+  await prisma.refundClaim.create({ data: { ...claimData, status: "manual_review" } });
+  check("another seller's dispute and an unattributed shared-order claim leave this seller's tier intact", (await previewHold()).tier === "trusted");
+  const sellerClaim = await prisma.refundClaim.create({ data: { ...claimData, shipmentId: pendingParcelId, status: "auto_approved" } });
+  check("an automatically approved claim on the seller's own parcel counts", (await previewHold()).tier === "new");
+  await prisma.refundClaim.update({ where: { id: sellerClaim.id }, data: { status: "rejected" } });
+  check("a rejected claim no longer affects the preview", (await previewHold()).tier === "trusted");
+  if (cleanOrderIds[0]) {
+    await prisma.refundClaim.create({ data: { ...claimData, orderId: cleanOrderIds[0], status: "approved" } });
+    check("an older order-only claim counts when one seller fulfilled the order", (await previewHold()).tier === "new");
+  }
+
   console.log("\n=== a payout is posted to the seller's thread, once ===");
   const payout = await prisma.payout.create({
     data: { storeId: storeA.id, orderId: id("order-x-AB12"), grossCents: 10000, takeRateBps: 1300, fulfilmentFeeCents: 199, netCents: 8501, status: "scheduled" },
