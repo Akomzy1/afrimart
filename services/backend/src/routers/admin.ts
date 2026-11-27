@@ -7,7 +7,7 @@ import { prisma } from "../db.js";
 import { router, staffProcedure } from "../trpc.js";
 import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
-import { computeHold, type SellerRecord } from "../payments/payout.js";
+import { computeHold, deductCarrierAdjustments, type SellerRecord } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 import { publishDraft, releaseReviewedFrames, staffDraft, staffDrafts } from "../catalogue/publication.js";
 import { availableFrame, cleanShelfUploads, reviewPhotos } from "../catalogue/photoRetention.js";
@@ -31,8 +31,8 @@ const isPhotoPath = (v: string | null): v is string => v !== null && parsePhotoP
 const idInput = z.object({ id: z.string() });
 
 async function lockUnpaidPayout(tx: Prisma.TransactionClient, id: string) {
-  const [payout] = await tx.$queryRaw<Pick<Payout, "status" | "heldUntil" | "netCents" | "paidAt">[]>`
-    SELECT "status", "heldUntil", "netCents", "paidAt" FROM "Payout" WHERE "id" = ${id} FOR UPDATE
+  const [payout] = await tx.$queryRaw<Pick<Payout, "storeId" | "status" | "heldUntil" | "netCents" | "paidAt">[]>`
+    SELECT "storeId", "status", "heldUntil", "netCents", "paidAt" FROM "Payout" WHERE "id" = ${id} FOR UPDATE
   `;
   if (!payout) throw new TRPCError({ code: "NOT_FOUND", message: "No such payout." });
   if (payout.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "That payout has already been paid." });
@@ -560,6 +560,7 @@ export const adminRouter = router({
     const commissionCents = payouts.reduce((n, p) => n + Math.round((p.grossCents * p.takeRateBps) / 10000), 0);
     const fulfilmentFeeCents = payouts.reduce((n, p) => n + p.fulfilmentFeeCents, 0);
     const adjustmentsCents = adjustments.reduce((n, a) => n + a.amountCents, 0);
+    const deductedCents = payouts.reduce((n, p) => n + p.adjustmentsCents, 0);
 
     // PAY-8 â€” what is owed but not yet releasable, and why.
     const heldPayouts = payouts.filter((p) => p.heldUntil && p.heldUntil > new Date());
@@ -583,7 +584,7 @@ export const adminRouter = router({
        * sellers sold. A non-zero figure here means a payout and its order have
        * drifted apart, which is the one thing this screen must never hide.
        */
-      reconciliationDriftCents: sellerGrossCents - (sellerNetCents + commissionCents + fulfilmentFeeCents),
+      reconciliationDriftCents: sellerGrossCents - (sellerNetCents + commissionCents + fulfilmentFeeCents + deductedCents),
       adjustments: adjustments.map((a) => ({
         id: a.id,
         storeName: a.store.name,
@@ -592,6 +593,7 @@ export const adminRouter = router({
         declaredWeightOz: a.declaredWeightOz,
         actualWeightOz: a.actualWeightOz,
         settled: Boolean(a.settledPayoutId),
+        appliedCents: a.appliedCents,
       })),
       payouts: payouts.map((p) => ({
         id: p.id,
@@ -666,9 +668,13 @@ export const adminRouter = router({
     .mutation(async ({ input, ctx }) => {
       return prisma.$transaction(async (tx) => {
         const before = await lockUnpaidPayout(tx, input.payoutId);
+        const settlement = await deductCarrierAdjustments(tx, before.storeId, input.payoutId, before.netCents);
         const after = await tx.payout.update({
           where: { id: input.payoutId },
-          data: { heldUntil: null, holdReason: null, status: "released", paidAt: new Date() },
+          data: {
+            heldUntil: null, holdReason: null, status: "released", paidAt: new Date(),
+            netCents: settlement.payableCents, adjustmentsCents: { increment: settlement.deductedCents },
+          },
         });
         // The seller learns of it in their AfriMart thread, in the same
         // transaction: a payout cannot be marked paid without the note.
@@ -677,8 +683,8 @@ export const adminRouter = router({
           action: "payout.release",
           subjectType: "payout",
           subjectId: input.payoutId,
-          before: { status: before.status, heldUntil: before.heldUntil, paidAt: before.paidAt },
-          after: { status: after.status, heldUntil: null, paidAt: after.paidAt },
+          before: { status: before.status, heldUntil: before.heldUntil, paidAt: before.paidAt, netCents: before.netCents },
+          after: { status: after.status, heldUntil: null, paidAt: after.paidAt, netCents: after.netCents, deductions: settlement.deductions },
           note: input.note,
         });
         return after;
@@ -704,6 +710,10 @@ export const adminRouter = router({
     )
     .mutation(async ({ input, ctx }) =>
       prisma.$transaction(async (tx) => {
+        if (input.shipmentId !== undefined) {
+          const shipment = await tx.shipment.findFirst({ where: { id: input.shipmentId, storeId: input.storeId }, select: { id: true } });
+          if (!shipment) throw new TRPCError({ code: "BAD_REQUEST", message: "That shipment does not belong to this seller." });
+        }
         const adjustment = await tx.carrierAdjustment.create({ data: input });
         await writeAudit(tx, ctx.staff, {
           action: "chargeback.record",

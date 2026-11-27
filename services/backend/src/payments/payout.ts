@@ -1,3 +1,4 @@
+import type { CarrierAdjustment, Prisma } from "@prisma/client";
 import {
   REFUND_WINDOW_DAYS,
   SELLER_ESTABLISHED_AFTER_ORDERS,
@@ -86,4 +87,32 @@ export function applyAdjustments(
     appliedCents,
     carriedCents: adjustmentCents - appliedCents,
   };
+}
+
+export async function deductCarrierAdjustments(tx: Prisma.TransactionClient, storeId: string, payoutId: string, netCents: number) {
+  const deductions: { adjustmentId: string; cents: number }[] = [];
+  let payableCents = netCents;
+  if (payableCents > 0) {
+    // Concurrent payouts acquire the same seller's outstanding corrections in
+    // the same order. A waiting release sees the balance left by the first.
+    const rows = await tx.$queryRaw<Pick<CarrierAdjustment, "id" | "amountCents" | "appliedCents">[]>`
+      SELECT a.id, a."amountCents", a."appliedCents" FROM "CarrierAdjustment" a
+      WHERE a."storeId" = ${storeId} AND a."settledPayoutId" IS NULL
+        AND (a."shipmentId" IS NULL OR EXISTS (
+          SELECT 1 FROM "Shipment" s WHERE s.id = a."shipmentId" AND s."storeId" = a."storeId"
+        ))
+      ORDER BY a."createdAt", a.id FOR UPDATE OF a
+    `;
+    for (const row of rows) {
+      const part = applyAdjustments(payableCents, row.amountCents - row.appliedCents);
+      await tx.carrierAdjustment.update({
+        where: { id: row.id },
+        data: { appliedCents: { increment: part.appliedCents }, settledPayoutId: part.carriedCents === 0 ? payoutId : null },
+      });
+      deductions.push({ adjustmentId: row.id, cents: part.appliedCents });
+      payableCents = part.payableCents;
+      if (payableCents === 0) break;
+    }
+  }
+  return { payableCents, deductedCents: netCents - payableCents, deductions };
 }

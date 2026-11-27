@@ -462,6 +462,7 @@ model CarrierAdjustment {
   shipmentId         String?
   carrierReference   String    @unique
   amountCents        Int
+  appliedCents       Int       @default(0)
   reason             String
   declaredWeightOz   Float
   actualWeightOz     Float

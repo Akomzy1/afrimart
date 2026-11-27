@@ -80,6 +80,7 @@ const reviewer = callerFor({ staff: await sessionFor("reviewer@afrimart.test") }
 async function sweep() {
   const stores = { storeId: { startsWith: P } };
   await prisma.sellerMessage.deleteMany({ where: stores });
+  await prisma.carrierAdjustment.deleteMany({ where: stores });
   await prisma.payout.deleteMany({ where: stores });
   await prisma.userSession.deleteMany({ where: { OR: [stores, { buyerId: { startsWith: P } }, { buyer: { email: { endsWith: "@sgn.test" } } }] } });
   await prisma.authCode.deleteMany({ where: { OR: [{ identifier: { endsWith: "@sgn.test" } }, { identifier: { in: Object.values(PHONE) } }] } });
@@ -439,7 +440,8 @@ try {
   const release = () => outcome(finance.admin.releasePayout({ payoutId: payout.id, note: "weekly run" }));
   const attempts = await Promise.all([release(), release()]);
   const paidAt = attempts.find((attempt) => attempt.code === "ok")?.value?.paidAt;
-  check("exactly one concurrent release succeeds", Boolean(paidAt) && attempts.some((attempt) => attempt.code === "BAD_REQUEST"));
+  check("exactly one concurrent release succeeds", Boolean(paidAt) && attempts.some((attempt) => attempt.code === "BAD_REQUEST"),
+    attempts.map(({ code, message }) => `${code} ${message}`).join(" / "));
   const th = await aThread();
   const msg = th.messages[0];
   check("the seller has one new message", th.messages.length === 1 && th.unread === 1);
@@ -486,6 +488,43 @@ try {
     read.marked === 200 && preview.unread === 2 && preview.messages[0]?.id === arrival.id && preview.messages[0]?.unread === true);
   check("a repeated acknowledgement cannot read another shop's message",
     retry.marked === 0 && (await prisma.sellerMessage.findUniqueOrThrow({ where: { id: other.id } })).readAt === null);
+
+  console.log("\n=== carrier corrections follow the seller's payouts ===");
+  const correction = { storeId: storeB.id, shipmentId: pendingParcelId, carrierReference: id("carrier-b"),
+    amountCents: 1300, declaredWeightOz: 16, actualWeightOz: 32, reason: "Carrier reweighed the parcel" };
+  check("finance cannot assign a parcel correction to another seller",
+    (await outcome(finance.admin.recordChargeback({ ...correction, storeId: storeA.id }))).code === "BAD_REQUEST");
+  const charge = await finance.admin.recordChargeback(correction);
+  const newPayout = (storeId: string, netCents: number) => prisma.payout.create({
+    data: { storeId, orderId, grossCents: netCents, takeRateBps: 0, fulfilmentFeeCents: 0, netCents },
+  });
+  const pay = (p: { id: string }) => finance.admin.releasePayout({ payoutId: p.id });
+  const unaffected = await pay(await newPayout(storeA.id, 500));
+  check("another seller receives their full payout", unaffected.netCents === 500 && unaffected.adjustmentsCents === 0);
+  const first = await newPayout(storeB.id, 500);
+  const later = await Promise.all([newPayout(storeB.id, 700), newPayout(storeB.id, 700)]);
+  const driftBefore = (await finance.admin.reconciliation()).reconciliationDriftCents;
+  const reduced = await pay(first);
+  const chargeRow = () => prisma.carrierAdjustment.findUniqueOrThrow({ where: { id: charge.id } });
+  const partial = await chargeRow();
+  const note = await prisma.sellerMessage.findUniqueOrThrow({ where: { payoutId: first.id } });
+  check("a small payout covers part of the correction and carries the remainder",
+    reduced.netCents === 0 && reduced.adjustmentsCents === 500 && partial.appliedCents === 500 && partial.settledPayoutId === null);
+  check("the seller sees the deduction and zero balance", note.amountCents === 0 && note.body.includes("$5.00") && !note.body.includes("was sent"));
+  const shopMessages = await callerFor({ identity: `store:${storeB.id}` }).merchant.thread();
+  check("the payout card includes the deducted amount", shopMessages.messages.find((m) => m.id === note.id)?.adjustmentsCents === 500);
+  check("a release retry cannot deduct twice", (await outcome(pay(first))).code === "BAD_REQUEST" && (await chargeRow()).appliedCents === 500);
+  const paid = await Promise.all(later.map(pay));
+  const closed = await chargeRow();
+  check("concurrent payouts deduct the outstanding 800 cents exactly once",
+    paid.reduce((sum, p) => sum + p.adjustmentsCents, 0) === 800 && paid.reduce((sum, p) => sum + p.netCents, 0) === 600 &&
+    closed.appliedCents === 1300 && paid.some((p) => p.id === closed.settledPayoutId && p.netCents === 600));
+  const releases = await prisma.auditLogEntry.findMany({ where: { action: "payout.release", subjectId: { in: [first.id, ...paid.map((p) => p.id)] } } });
+  check("each release audits its share of the correction", releases.length === 3 && releases.every((entry) => {
+    const [part] = (entry.after as { deductions: { adjustmentId: string; cents: number }[] }).deductions;
+    return part?.adjustmentId === charge.id && part.cents === [reduced, ...paid].find((p) => p.id === entry.subjectId)?.adjustmentsCents;
+  }));
+  check("deductions reconcile with gross sales", (await finance.admin.reconciliation()).reconciliationDriftCents === driftBefore);
 
   console.log("\n=== See all payouts: a fresh link, made on request, never stored ===");
   const asked2: string[] = [];

@@ -618,6 +618,7 @@ export const merchantRouter = router({
     const before = input?.before;
     const [rows, unread] = await prisma.$transaction([
       prisma.sellerMessage.findMany({
+        include: { payout: { select: { adjustmentsCents: true } } },
         where: {
           storeId: ctx.storeId,
           ...(before && { OR: [
@@ -642,6 +643,7 @@ export const merchantRouter = router({
         kind: m.kind,
         body: m.body,
         amountCents: m.amountCents,
+        adjustmentsCents: m.payout?.adjustmentsCents ?? 0,
         paidOn: m.paidOn,
         orderRefs: m.orderRefs,
         createdAt: m.createdAt,

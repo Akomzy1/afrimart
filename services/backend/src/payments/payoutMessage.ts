@@ -15,9 +15,13 @@ const day = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "nu
  * come apart, and written once per payout (the payout id is unique on the
  * message), so releasing the same payout again cannot post a second note.
  */
-export async function postPayoutMessage(tx: Tx, payout: Pick<Payout, "id" | "storeId" | "orderId" | "netCents">, paidAt: Date) {
+export async function postPayoutMessage(tx: Tx, payout: Pick<Payout, "id" | "storeId" | "orderId" | "netCents" | "adjustmentsCents">, paidAt: Date) {
   // The reference a seller sees on their orders (see merchant.inbox), not the buyer-facing one.
   const orderRef = `#${payout.orderId.slice(-4).toUpperCase()}`;
+  const payment = payout.netCents === 0
+    ? `Your payout balance was ${money(0)} on ${day(paidAt)}.`
+    : `Your payout of ${money(payout.netCents)} was sent on ${day(paidAt)}.`;
+  const adjustment = payout.adjustmentsCents > 0 ? ` We deducted ${money(payout.adjustmentsCents)} for carrier billing corrections.` : "";
   return tx.sellerMessage.upsert({
     where: { payoutId: payout.id },
     update: {},
@@ -28,7 +32,7 @@ export async function postPayoutMessage(tx: Tx, payout: Pick<Payout, "id" | "sto
       amountCents: payout.netCents,
       paidOn: paidAt,
       orderRefs: [orderRef],
-      body: `Your payout of ${money(payout.netCents)} was sent on ${day(paidAt)}. It covers order ${orderRef}.`,
+      body: `${payment} It covers order ${orderRef}.${adjustment}`,
     },
   });
 }

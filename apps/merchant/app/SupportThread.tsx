@@ -205,12 +205,13 @@ export function SupportThread({ onBack }: { onBack: () => void }) {
           {thread.isError && <button type="button" className="mr-bigbtn ghost" onClick={() => thread.refetch()}>Couldn’t load messages. Try again</button>}
           {messages?.map((p) => p.kind === "payout" ? (
             <div className="b-in support payout" key={p.id}>
-              <div className="k">Payout sent</div>
+              <div className="k">{p.amountCents === 0 ? "Payout settled" : "Payout sent"}</div>
               <div className="amt serif tnum">{p.amountCents === null ? "" : `$${(p.amountCents / 100).toFixed(2)}`}</div>
               <div className="d">
                 {p.paidOn ? new Date(p.paidOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) : ""}
               </div>
               <div className="d">Covers order{p.orderRefs.length > 1 ? "s" : ""} {p.orderRefs.join(", ")}</div>
+              {p.adjustmentsCents > 0 && <div className="d">${(p.adjustmentsCents / 100).toFixed(2)} deducted for carrier corrections</div>}
             </div>
           ) : <div className="b-in support" key={p.id}>{p.body}</div>)}
           {history.length > 0 && (
