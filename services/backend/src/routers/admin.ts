@@ -7,7 +7,7 @@ import { prisma } from "../db.js";
 import { router, staffProcedure } from "../trpc.js";
 import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
-import { computeHold, deductCarrierAdjustments, type SellerRecord } from "../payments/payout.js";
+import { computeHold, deductCarrierAdjustments, sellerPayoutRecord } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 import { publishDraft, releaseReviewedFrames, staffDraft, staffDrafts } from "../catalogue/publication.js";
 import { availableFrame, cleanShelfUploads, reviewPhotos } from "../catalogue/photoRetention.js";
@@ -31,8 +31,8 @@ const isPhotoPath = (v: string | null): v is string => v !== null && parsePhotoP
 const idInput = z.object({ id: z.string() });
 
 async function lockUnpaidPayout(tx: Prisma.TransactionClient, id: string) {
-  const [payout] = await tx.$queryRaw<Pick<Payout, "storeId" | "status" | "heldUntil" | "netCents" | "paidAt">[]>`
-    SELECT "storeId", "status", "heldUntil", "netCents", "paidAt" FROM "Payout" WHERE "id" = ${id} FOR UPDATE
+  const [payout] = await tx.$queryRaw<Pick<Payout, "storeId" | "orderId" | "status" | "heldUntil" | "netCents" | "paidAt">[]>`
+    SELECT "storeId", "orderId", "status", "heldUntil", "netCents", "paidAt" FROM "Payout" WHERE "id" = ${id} FOR UPDATE
   `;
   if (!payout) throw new TRPCError({ code: "NOT_FOUND", message: "No such payout." });
   if (payout.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "That payout has already been paid." });
@@ -608,32 +608,8 @@ export const adminRouter = router({
   }),
 
   /** PAY-8 â€” what hold a seller would get today, for the console to explain. */
-  payoutHoldFor: staffProcedure("finance:read").input(idInput).query(async ({ input }) => {
-    const [record] = await prisma.$queryRaw<SellerRecord[]>`
-      WITH seller_orders AS (
-        SELECT s."orderId", bool_and(s.status = 'delivered') AS delivered,
-               bool_or(c.id IS NOT NULL) AS disputed
-        FROM "Shipment" s
-        LEFT JOIN "RefundClaim" c ON c."orderId" = s."orderId"
-          AND c.status IN ('manual_review', 'approved', 'auto_approved')
-          AND (c."shipmentId" = s.id OR (c."shipmentId" IS NULL AND (
-            -- Older claims can identify a parcel by an item, or just an order
-            -- when that order has a single seller.
-            EXISTS (SELECT 1 FROM "RefundClaimItem" ci
-                    JOIN "ShipmentItem" si ON si.id = ci."shipmentItemId"
-                    WHERE ci."claimId" = c.id AND si."shipmentId" = s.id)
-            OR NOT EXISTS (SELECT 1 FROM "Shipment" other
-                           WHERE other."orderId" = s."orderId" AND other."storeId" <> s."storeId")
-          )))
-        WHERE s."storeId" = ${input.id}
-        GROUP BY s."orderId"
-      )
-      SELECT count(*) FILTER (WHERE delivered AND NOT disputed)::int AS "cleanDeliveredOrders",
-             count(*) FILTER (WHERE disputed)::int AS "disputedOrders"
-      FROM seller_orders
-    `;
-    return computeHold(record!, new Date());
-  }),
+  payoutHoldFor: staffProcedure("finance:read").input(idInput).query(async ({ input }) =>
+    computeHold(await sellerPayoutRecord(prisma, input.id), new Date())),
 
   /* ------------------------------------------- ADM-5 money, all audited */
 
@@ -668,6 +644,23 @@ export const adminRouter = router({
     .mutation(async ({ input, ctx }) => {
       return prisma.$transaction(async (tx) => {
         const before = await lockUnpaidPayout(tx, input.payoutId);
+        const parcels = await tx.$queryRaw<{ deliveredAt: Date | null; orderStatus: string }[]>`
+          SELECT s."deliveredAt", o.status AS "orderStatus" FROM "Shipment" s
+          JOIN "Order" o ON o.id = s."orderId"
+          WHERE s."orderId" = ${before.orderId} AND s."storeId" = ${before.storeId}
+          ORDER BY s.id FOR SHARE OF o, s
+        `;
+        if (!parcels.length || parcels[0]!.orderStatus === "cancelled") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This payout needs a valid seller shipment on an active order." });
+        }
+        const deliveredAt = parcels.every((p) => p.deliveredAt)
+          ? new Date(Math.max(...parcels.map((p) => p.deliveredAt!.getTime())))
+          : null;
+        const hold = computeHold(await sellerPayoutRecord(tx, before.storeId), deliveredAt);
+        if (hold.tier !== "established" && (!hold.heldUntil || hold.heldUntil.getTime() > Date.now())) {
+          const message = hold.heldUntil ? `This payout is held until ${hold.heldUntil.toISOString()}.` : "Awaiting delivery of all of this seller's parcels.";
+          throw new TRPCError({ code: "BAD_REQUEST", message });
+        }
         const settlement = await deductCarrierAdjustments(tx, before.storeId, input.payoutId, before.netCents);
         const after = await tx.payout.update({
           where: { id: input.payoutId },

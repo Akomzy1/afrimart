@@ -22,7 +22,8 @@ import { photoStore } from "../storage/store.js";
 import { photoLinkIsValid, signedPhotoUrl } from "../storage/access.js";
 import { registerPhotoRoute } from "../storage/route.js";
 import { setPayoutDashboard } from "../payments/dashboard.js";
-import { SELLER_TRUSTED_AFTER_ORDERS } from "../config.js";
+import { REFUND_WINDOW_DAYS, SELLER_TRUSTED_AFTER_ORDERS } from "../config.js";
+import { handleTrackingEvent } from "../notifications/pipeline.js";
 import type { ResolvedSession } from "../auth/session.js";
 
 const P = "sgn-";
@@ -79,6 +80,8 @@ const reviewer = callerFor({ staff: await sessionFor("reviewer@afrimart.test") }
 
 async function sweep() {
   const stores = { storeId: { startsWith: P } };
+  await prisma.webhookEvent.deleteMany({ where: { shipmentId: { startsWith: P } } });
+  await prisma.notification.deleteMany({ where: { orderId: { startsWith: P } } });
   await prisma.sellerMessage.deleteMany({ where: stores });
   await prisma.carrierAdjustment.deleteMany({ where: stores });
   await prisma.payout.deleteMany({ where: stores });
@@ -428,16 +431,43 @@ try {
   }
 
   console.log("\n=== a payout is posted to the seller's thread, once ===");
+  const payoutOrderId = id("order-x-AB12");
   const payout = await prisma.payout.create({
-    data: { storeId: storeA.id, orderId: id("order-x-AB12"), grossCents: 10000, takeRateBps: 1300, fulfilmentFeeCents: 199, netCents: 8501, status: "scheduled" },
+    data: { storeId: storeA.id, orderId: payoutOrderId, grossCents: 10000, takeRateBps: 1300, fulfilmentFeeCents: 199, netCents: 8501, status: "scheduled" },
   });
+  const release = () => outcome(finance.admin.releasePayout({ payoutId: payout.id, note: "weekly run" }));
+  check("a payout without a linked seller shipment cannot release", (await release()).code === "BAD_REQUEST");
+  await prisma.order.create({ data: { id: payoutOrderId, buyerId: buyerOwner.id, totalCents: 10000, shippingCents: 0, taxCents: 0 } });
+  const matureDelivery = new Date(Date.now() - (REFUND_WINDOW_DAYS + 1) * 86400000);
+  const splitId = id("payout-split");
+  const remainingId = id("payout-shop-b");
+  const parcel = { orderId: payoutOrderId, storeId: storeA.id, temperatureClass: "ambient" } as const;
+  await prisma.shipment.createMany({ data: [
+    { ...parcel, id: id("payout-first"), status: "delivered", deliveredAt: matureDelivery },
+    { ...parcel, id: splitId, status: "in_transit" },
+    { ...parcel, id: remainingId, storeId: storeB.id, status: "in_transit" },
+  ] });
+  check("a new seller waits for their last parcel", (await release()).code === "BAD_REQUEST");
+  const recentPayout = await prisma.payout.create({ data: { storeId: storeB.id, orderId, grossCents: 100, netCents: 100, takeRateBps: 0, fulfilmentFeeCents: 0 } });
+  const recent = await outcome(finance.admin.releasePayout({ payoutId: recentPayout.id }));
+  const confirmed = await ops.admin.interveneShipment({ shipmentId: pendingParcelId, action: "mark_delivered" });
+  if (!("deliveredAt" in confirmed) || !confirmed.deliveredAt) throw new Error("Delivery confirmation time is missing");
+  const deadline = new Date(confirmed.deliveredAt.getTime() + REFUND_WINDOW_DAYS * 86400000);
+  check("reconfirming delivery preserves the refund-window deadline", recent.code === "BAD_REQUEST" && recent.message.includes(deadline.toISOString()));
+  check("a blocked release posts no payout notice or audit entry",
+    await prisma.sellerMessage.count({ where: { payoutId: recentPayout.id } }) === 0 &&
+    await prisma.auditLogEntry.count({ where: { subjectId: recentPayout.id, action: "payout.release" } }) === 0);
+  const scan = { provider: "test", providerEventId: id("payout-scan"), shipmentId: splitId, status: "delivered", occurredAt: matureDelivery };
+  await handleTrackingEvent(scan);
+  await handleTrackingEvent({ ...scan, providerEventId: id("repeat-scan"), occurredAt: new Date() });
+  check("a replay preserves the carrier's original delivery time",
+    (await prisma.shipment.findUniqueOrThrow({ where: { id: splitId } })).deliveredAt?.getTime() === matureDelivery.getTime());
   const aThread = () => callerFor({ identity: `store:${storeA.id}` }).merchant.thread();
   check("before it is paid there is nothing in the thread", (await aThread()).messages.length === 0);
   check("only finance can release a payout", (await outcome(ops.admin.releasePayout({ payoutId: payout.id }))).code === "FORBIDDEN");
   const hold = { payoutId: payout.id, until: new Date(Date.now() + 86400000), reason: "Awaiting reconciliation" };
   const held = await finance.admin.holdPayout(hold);
   check("finance can hold an unpaid payout", held.status === "held" && held.paidAt === null);
-  const release = () => outcome(finance.admin.releasePayout({ payoutId: payout.id, note: "weekly run" }));
   const attempts = await Promise.all([release(), release()]);
   const paidAt = attempts.find((attempt) => attempt.code === "ok")?.value?.paidAt;
   check("exactly one concurrent release succeeds", Boolean(paidAt) && attempts.some((attempt) => attempt.code === "BAD_REQUEST"),
@@ -495,8 +525,9 @@ try {
   check("finance cannot assign a parcel correction to another seller",
     (await outcome(finance.admin.recordChargeback({ ...correction, storeId: storeA.id }))).code === "BAD_REQUEST");
   const charge = await finance.admin.recordChargeback(correction);
+  await handleTrackingEvent({ ...scan, providerEventId: id("shop-b-scan"), shipmentId: remainingId });
   const newPayout = (storeId: string, netCents: number) => prisma.payout.create({
-    data: { storeId, orderId, grossCents: netCents, takeRateBps: 0, fulfilmentFeeCents: 0, netCents },
+    data: { storeId, orderId: payoutOrderId, grossCents: netCents, takeRateBps: 0, fulfilmentFeeCents: 0, netCents },
   });
   const pay = (p: { id: string }) => finance.admin.releasePayout({ payoutId: p.id });
   const unaffected = await pay(await newPayout(storeA.id, 500));

@@ -32,6 +32,33 @@ export interface SellerRecord {
   disputedOrders: number;
 }
 
+export async function sellerPayoutRecord(db: Prisma.TransactionClient, storeId: string) {
+  const [record] = await db.$queryRaw<SellerRecord[]>`
+    WITH seller_orders AS (
+      SELECT s."orderId", bool_and(s.status = 'delivered') AS delivered,
+             bool_or(c.id IS NOT NULL) AS disputed
+      FROM "Shipment" s
+      LEFT JOIN "RefundClaim" c ON c."orderId" = s."orderId"
+        AND c.status IN ('manual_review', 'approved', 'auto_approved')
+        AND (c."shipmentId" = s.id OR (c."shipmentId" IS NULL AND (
+          -- Older claims can identify a parcel by an item, or just an order
+          -- when that order has a single seller.
+          EXISTS (SELECT 1 FROM "RefundClaimItem" ci
+                  JOIN "ShipmentItem" si ON si.id = ci."shipmentItemId"
+                  WHERE ci."claimId" = c.id AND si."shipmentId" = s.id)
+          OR NOT EXISTS (SELECT 1 FROM "Shipment" other
+                         WHERE other."orderId" = s."orderId" AND other."storeId" <> s."storeId")
+        )))
+      WHERE s."storeId" = ${storeId}
+      GROUP BY s."orderId"
+    )
+    SELECT count(*) FILTER (WHERE delivered AND NOT disputed)::int AS "cleanDeliveredOrders",
+           count(*) FILTER (WHERE disputed)::int AS "disputedOrders"
+    FROM seller_orders
+  `;
+  return record!;
+}
+
 export function holdTierFor(record: SellerRecord): HoldTier {
   // A dispute resets a seller to the longest hold regardless of volume: the
   // record is meant to measure reliability, not merely time served.
@@ -62,7 +89,7 @@ export function computeHold(record: SellerRecord, deliveredAt: Date | null): Pay
     };
   }
   const heldUntil = new Date(deliveredAt);
-  heldUntil.setDate(heldUntil.getDate() + holdDays);
+  heldUntil.setUTCDate(heldUntil.getUTCDate() + holdDays);
   return {
     tier,
     holdDays,

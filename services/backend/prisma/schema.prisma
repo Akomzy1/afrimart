@@ -273,6 +273,8 @@ model Shipment {
   trackingNumber    String?
   labelUrl          String?
   status            ShipmentStatus    @default(pending)
+  /// Confirmed delivery time used to start the payout hold for this parcel.
+  deliveredAt       DateTime?
   declineReason      String?           @db.VarChar(500)
   estimatedDelivery DateTime?
   /// QC-2 — the seller's photo of the open box, taken before sealing. Metadata
