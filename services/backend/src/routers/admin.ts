@@ -545,12 +545,17 @@ export const adminRouter = router({
    * platform's commission and fees, plus tax, plus what the carriers cost.
    */
   reconciliation: staffProcedure("finance:read").query(async () => {
-    const [orders, payouts, adjustments, charges, records, parcels] = await prisma.$transaction([
-      prisma.order.findMany({ select: { totalCents: true, shippingCents: true, taxCents: true, status: true } }),
+    const collectedPayment = { status: { in: ["succeeded", "partially_refunded", "refunded"] } };
+    const [orderCount, collectedOrders, payouts, adjustments, charges, records, parcels] = await prisma.$transaction([
+      prisma.order.count(),
+      prisma.order.aggregate({
+        where: { payment: { is: collectedPayment } },
+        _sum: { shippingCents: true, taxCents: true },
+      }),
       prisma.payout.findMany({ include: { store: { select: { name: true } } } }),
       prisma.carrierAdjustment.findMany({ include: { store: { select: { name: true } } } }),
       prisma.payment.aggregate({
-        where: { status: { in: ["succeeded", "partially_refunded", "refunded"] } },
+        where: collectedPayment,
         _sum: { buyerChargeCents: true },
       }),
       sellerPayoutRecords(prisma),
@@ -558,8 +563,8 @@ export const adminRouter = router({
     ], { isolationLevel: "RepeatableRead" });
 
     const buyerChargedCents = charges._sum.buyerChargeCents ?? 0;
-    const taxCollectedCents = orders.reduce((n, o) => n + o.taxCents, 0);
-    const shippingCollectedCents = orders.reduce((n, o) => n + o.shippingCents, 0);
+    const taxCollectedCents = collectedOrders._sum.taxCents ?? 0;
+    const shippingCollectedCents = collectedOrders._sum.shippingCents ?? 0;
     const sellerGrossCents = payouts.reduce((n, p) => n + p.grossCents, 0);
     const sellerNetCents = payouts.reduce((n, p) => n + p.netCents, 0);
     const sellerPaidCents = payouts.reduce((n, p) => n + (p.paidAt ? p.netCents : 0), 0);
@@ -590,7 +595,7 @@ export const adminRouter = router({
     const heldPayouts = payoutRows.filter((p) => p.availability.blocked);
 
     return {
-      orderCount: orders.length,
+      orderCount,
       buyerChargedCents,
       taxCollectedCents,
       shippingCollectedCents,

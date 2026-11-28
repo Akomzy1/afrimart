@@ -783,12 +783,12 @@ function Reconciliation() {
         <div className="op-card">
           <div className="k">Shipping collected</div>
           <div className="v">{money(d.shippingCollectedCents)}</div>
-          <div className="s">passed to carriers</div>
+          <div className="s">Before refunds</div>
         </div>
         <div className="op-card">
           <div className="k">Tax collected</div>
           <div className="v">{money(d.taxCollectedCents)}</div>
-          <div className="s">remitted separately</div>
+          <div className="s">Before refunds</div>
         </div>
         <div className={`op-card${d.heldCount ? " alert" : ""}`}>
           <div className="k">Blocked from release</div>
