@@ -479,10 +479,34 @@ try {
   const parcel = { orderId: payoutOrderId, storeId: storeA.id, temperatureClass: "ambient" } as const;
   await prisma.shipment.createMany({ data: [
     { ...parcel, id: id("payout-first"), status: "delivered", deliveredAt: matureDelivery },
-    { ...parcel, id: splitId, status: "in_transit" },
     { ...parcel, id: remainingId, storeId: storeB.id, status: "in_transit" },
   ] });
-  check("a new seller waits for their last parcel", (await release()).code === "BAD_REQUEST");
+  async function checkAwaitingPayment(label: string) {
+    const attempt = await release();
+    const report = await finance.admin.reconciliation();
+    const availability = report.payouts.find((p) => p.id === payout.id)?.availability;
+    check(label, attempt.code === "BAD_REQUEST" && attempt.message === "Awaiting payment" &&
+      availability?.blocked === true && availability.label === attempt.message && availability.eligibleAt === null &&
+      report.heldCount === baseline.heldCount + 1 && report.heldCents === baseline.heldCents + payout.netCents);
+  }
+  await checkAwaitingPayment("a delivered order with no payment waits even after the refund window");
+  const funding = await prisma.payment.create({ data: {
+    orderId: payoutOrderId, stripePaymentIntentId: id("payout-funding"), buyerChargeCents: 10000,
+  } });
+  await checkAwaitingPayment("a pending payment blocks release in both finance paths");
+  await prisma.payment.update({ where: { id: funding.id }, data: { status: "failed" } });
+  await checkAwaitingPayment("a failed payment stays blocked on retry");
+  const untouched = await prisma.payout.findUniqueOrThrow({ where: { id: payout.id } });
+  check("unfunded release attempts leave the payout, audit trail, and merchant notices untouched",
+    untouched.updatedAt.getTime() === payout.updatedAt.getTime() && untouched.paidAt === null &&
+    untouched.netCents === payout.netCents && untouched.adjustmentsCents === 0 &&
+    await prisma.sellerMessage.count({ where: { payoutId: payout.id } }) === 0 &&
+    await prisma.auditLogEntry.count({ where: { subjectId: payout.id, action: "payout.release" } }) === 0);
+  await prisma.shipment.create({ data: { ...parcel, id: splitId, status: "in_transit" } });
+  await prisma.payment.update({ where: { id: funding.id }, data: { status: "succeeded" } });
+  const awaitingDelivery = await release();
+  check("successful payment still requires delivery of the seller's last parcel",
+    awaitingDelivery.code === "BAD_REQUEST" && awaitingDelivery.message === "Awaiting delivery");
   const recentPayout = await prisma.payout.create({ data: { storeId: storeB.id, orderId, grossCents: 100, netCents: 100, takeRateBps: 0, fulfilmentFeeCents: 0 } });
   const recent = await outcome(finance.admin.releasePayout({ payoutId: recentPayout.id }));
   const confirmed = await ops.admin.interveneShipment({ shipmentId: pendingParcelId, action: "mark_delivered" });

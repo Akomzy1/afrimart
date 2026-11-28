@@ -7,7 +7,7 @@ import { prisma } from "../db.js";
 import { router, staffProcedure } from "../trpc.js";
 import { writeAudit, type AuditedAction } from "../auth/audit.js";
 import { CATALOGUE_AUTO_APPROVE_CONFIDENCE, STUCK_ORDER_HOURS } from "../config.js";
-import { computeHold, deductCarrierAdjustments, payoutAvailability, sellerPayoutRecord, sellerPayoutRecords, unpaidPayoutParcels } from "../payments/payout.js";
+import { collectedPaymentStatuses, computeHold, deductCarrierAdjustments, payoutAvailability, sellerPayoutRecord, sellerPayoutRecords, unpaidPayoutParcels } from "../payments/payout.js";
 import { computeScore, ladderFor, visibilityMultiplierFor } from "../quality/score.js";
 import { publishDraft, releaseReviewedFrames, staffDraft, staffDrafts } from "../catalogue/publication.js";
 import { availableFrame, cleanShelfUploads, reviewPhotos } from "../catalogue/photoRetention.js";
@@ -545,7 +545,7 @@ export const adminRouter = router({
    * platform's commission and fees, plus tax, plus what the carriers cost.
    */
   reconciliation: staffProcedure("finance:read").query(async () => {
-    const collectedPayment = { status: { in: ["succeeded", "partially_refunded", "refunded"] } };
+    const collectedPayment = { status: { in: collectedPaymentStatuses } };
     const [orderCount, collectedOrders, payouts, adjustments, charges, records, parcels] = await prisma.$transaction([
       prisma.order.count(),
       prisma.order.aggregate({

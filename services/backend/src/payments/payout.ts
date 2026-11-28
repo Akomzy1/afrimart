@@ -67,13 +67,17 @@ export async function sellerPayoutRecord(db: Prisma.TransactionClient, storeId: 
   return record ?? emptyRecord;
 }
 
-type PayoutParcel = { payoutId: string; orderStatus: string; deliveredAt: Date | null };
+export const collectedPaymentStatuses = ["succeeded", "partially_refunded", "refunded"];
 
-// A release locks its order and parcels until settlement commits. The finance
+type PayoutParcel = { payoutId: string; orderStatus: string; paymentStatus: string | null; deliveredAt: Date | null };
+
+// A release locks its payment, order, and parcels until settlement commits. The finance
 // report reads the same rows for all unpaid payouts from a repeatable snapshot.
 export function unpaidPayoutParcels(db: Prisma.TransactionClient, lockPayoutId?: string) {
   return db.$queryRaw<PayoutParcel[]>`
-    SELECT p.id AS "payoutId", s."deliveredAt", o.status AS "orderStatus"
+    SELECT p.id AS "payoutId", s."deliveredAt", o.status AS "orderStatus",
+           (SELECT pay.status FROM "Payment" pay WHERE pay."orderId" = p."orderId"
+            ${lockPayoutId === undefined ? Prisma.empty : Prisma.sql`FOR SHARE`}) AS "paymentStatus"
     FROM "Payout" p JOIN "Shipment" s ON s."orderId" = p."orderId" AND s."storeId" = p."storeId"
     JOIN "Order" o ON o.id = s."orderId"
     WHERE p."paidAt" IS NULL
@@ -85,6 +89,10 @@ export function payoutAvailability(paidAt: Date | null, record: SellerRecord | u
   if (paidAt) return { blocked: false, label: "Paid", eligibleAt: null };
   if (!parcels.length) return { blocked: true, label: "Missing seller shipment", eligibleAt: null };
   if (parcels[0]!.orderStatus === "cancelled") return { blocked: true, label: "Order cancelled", eligibleAt: null };
+  const paymentStatus = parcels[0]!.paymentStatus;
+  if (!paymentStatus || !collectedPaymentStatuses.includes(paymentStatus)) {
+    return { blocked: true, label: "Awaiting payment", eligibleAt: null };
+  }
   const deliveredAt = parcels.every((p) => p.deliveredAt)
     ? new Date(Math.max(...parcels.map((p) => p.deliveredAt!.getTime())))
     : null;
