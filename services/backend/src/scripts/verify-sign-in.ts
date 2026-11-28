@@ -459,6 +459,7 @@ try {
   await prisma.payment.update({ where: { orderId: failedOrder.id }, data: { status: "succeeded" } });
   check("a full refund preserves gross collections and a successful retry adds the second order once",
     await collectionsMatch(6800, 1100, 150));
+  await setStatus("succeeded"); // The delivery-window fixture below has no issued refund.
 
   console.log("\n=== a payout is posted to the seller's thread, once ===");
   const baseline = await finance.admin.reconciliation();
@@ -653,6 +654,61 @@ try {
     finalReport.sellerPaidCents === beforeSettlement.sellerPaidCents + 600 &&
     finalReport.sellerNetCents === finalReport.sellerPaidCents + finalReport.sellerUnpaidCents);
   check("deductions reconcile with gross sales", finalReport.reconciliationDriftCents === beforeSettlement.reconciliationDriftCents);
+
+  console.log("\n=== refund responsibility on unpaid seller payouts ===");
+  const sellerBalance = await newPayout(storeA.id, 550);
+  const otherBalance = await newPayout(storeB.id, 450);
+  const refundHold = "Refund needs finance review";
+  const refundFunding = (status: string) => prisma.payment.update({ where: { id: funding.id }, data: { status } });
+  const refundData = { buyerId: buyerOwner.id, orderId: payoutOrderId, reason: "damaged", status: "auto_approved" };
+  async function refundDenied(balance: { id: string }) {
+    const result = await outcome(pay(balance));
+    const report = await finance.admin.reconciliation();
+    const state = report.payouts.find((p) => p.id === balance.id)?.availability;
+    return result.code === "BAD_REQUEST" && result.message === refundHold &&
+      state?.blocked === true && state.label === refundHold && state.eligibleAt === null;
+  }
+  await refundFunding("partially_refunded");
+  check("a partial refund without an issued claim holds both sellers", await refundDenied(sellerBalance) && await refundDenied(otherBalance));
+  await refundFunding("succeeded");
+  const splitRefund = await prisma.refundClaim.create({ data: {
+    ...refundData, amountCents: 1000, shipmentId: splitId,
+  } });
+  check("a payout waits while an approved refund is being issued", await refundDenied(sellerBalance));
+  await prisma.refundClaim.update({ where: { id: splitRefund.id }, data: { refundedAt: new Date() } });
+  check("an issued refund with unresolved responsibility holds its seller even when payment still says succeeded",
+    await refundDenied(sellerBalance));
+  await refundFunding("partially_refunded");
+  const recovered = (cents: number) => finance.admin.resolveRefundClaim({
+    claimId: splitRefund.id, decision: "approve", recoveryTarget: "seller", recoveredCents: cents,
+  });
+  await recovered(400);
+  const incomplete = (await finance.admin.refundClaims()).find((c) => c.id === splitRefund.id);
+  check("partial seller recovery stays in the finance queue and holds only the affected split-order payout",
+    incomplete?.recoveredCents === 400 && await refundDenied(sellerBalance) && (await pay(otherBalance)).netCents === 450);
+  check("blocked refund releases leave the payout amount, audit and merchant notice untouched",
+    (await prisma.payout.findUniqueOrThrow({ where: { id: sellerBalance.id } })).updatedAt.getTime() === sellerBalance.updatedAt.getTime() &&
+    await prisma.sellerMessage.count({ where: { payoutId: sellerBalance.id } }) === 0 &&
+    await prisma.auditLogEntry.count({ where: { subjectId: sellerBalance.id, action: "payout.release" } }) === 0);
+  check("finance cannot reduce recorded recovery or recover more than the refund",
+    (await outcome(recovered(300))).code === "BAD_REQUEST" && (await outcome(recovered(1001))).code === "BAD_REQUEST");
+  await recovered(1000);
+  check("recording the outstanding recovery audits one approval and two recovery totals",
+    await prisma.auditLogEntry.count({ where: { subjectId: splitRefund.id, action: "refund.approve" } }) === 1 &&
+    await prisma.auditLogEntry.count({ where: { subjectId: splitRefund.id, action: "refund.recovery_recorded" } }) === 2);
+  check("completed seller recovery clears the finance queue and permits ordinary payout release",
+    !(await finance.admin.refundClaims()).some((c) => c.id === splitRefund.id) && (await pay(sellerBalance)).netCents === 550);
+  const fullA = await newPayout(storeA.id, 300);
+  const fullB = await newPayout(storeB.id, 200);
+  await refundFunding("refunded");
+  check("an incompletely accounted full refund holds both unpaid sellers", await refundDenied(fullA) && await refundDenied(fullB));
+  const legacyRefund = await prisma.refundClaim.create({ data: { ...refundData, amountCents: 7000, refundedAt: new Date() } });
+  await prisma.refundClaim.create({ data: { ...refundData, amountCents: 2000, shipmentId: remainingId, recoveryTarget: "carrier", refundedAt: new Date() } });
+  check("an order-only refund of unknown responsibility holds both sellers even when all amounts match",
+    await refundDenied(fullA) && await refundDenied(fullB));
+  await finance.admin.resolveRefundClaim({ claimId: legacyRefund.id, decision: "approve", recoveryTarget: "platform" });
+  check("carrier and platform liabilities on a fully refunded order leave both seller payouts releasable",
+    (await pay(fullA)).netCents === 300 && (await pay(fullB)).netCents === 200);
 
   console.log("\n=== See all payouts: a fresh link, made on request, never stored ===");
   const asked2: string[] = [];

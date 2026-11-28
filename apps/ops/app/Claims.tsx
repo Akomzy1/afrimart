@@ -38,6 +38,7 @@ export function Claims({ canResolve }: { canResolve: boolean }) {
   const resolve = trpc.admin.resolveRefundClaim.useMutation({
     onSuccess: () => {
       utils.admin.refundClaims.invalidate();
+      utils.admin.reconciliation.invalidate();
       utils.admin.auditLog.invalidate();
     },
   });
@@ -77,10 +78,10 @@ export function Claims({ canResolve }: { canResolve: boolean }) {
         />
       )}
 
-      <h2 style={{ marginTop: 22 }}>Refunded straight away</h2>
+      <h2 style={{ marginTop: 22 }}>Approved refunds</h2>
       <p className="lede">
-        Small, clean reports with a photo are refunded at once (QC-8: refund first, recover afterwards). They are listed
-        here so the cost can be assigned to the seller or carrier that caused it.
+        Assign responsibility and record the total recovered so far. An unpaid seller payout stays on hold until
+        the seller-funded amount has been recovered.
       </p>
       {!recorded.length ? (
         <div className="op-empty">Nothing yet.</div>
@@ -221,9 +222,10 @@ function ClaimTable({
                     <input
                       className="op-input"
                       style={{ marginTop: 6 }}
-                      placeholder="Recovered ($)"
+                      aria-label="Total recovered in dollars"
+                      placeholder="Total recovered ($)"
                       inputMode="decimal"
-                      value={recovered[c.id] ?? ""}
+                      value={recovered[c.id] ?? (c.recoveredCents ? (c.recoveredCents / 100).toFixed(2) : "")}
                       onChange={(e) => setRecovered((r) => ({ ...r, [c.id]: e.target.value }))}
                     />
                   </>
@@ -252,14 +254,14 @@ function ClaimTable({
                             claimId: c.id,
                             decision: "approve",
                             recoveryTarget: chosen,
-                            recoveredCents: Math.round((Number(recovered[c.id]) || 0) * 100),
+                            recoveredCents: recovered[c.id] === undefined ? c.recoveredCents : Math.round(Number(recovered[c.id]) * 100),
                             note: note[c.id]?.trim() || undefined,
                           })
                         }
                       >
                         {c.refundedAt ? "Record recovery" : "Approve and refund"}
                       </button>
-                      {!c.refundedAt && (
+                      {c.status === "manual_review" && !c.refundedAt && (
                         <button
                           type="button"
                           className="op-btn danger"

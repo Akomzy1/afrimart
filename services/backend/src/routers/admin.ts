@@ -669,6 +669,8 @@ export const adminRouter = router({
     .mutation(async ({ input, ctx }) => {
       return prisma.$transaction(async (tx) => {
         const before = await lockUnpaidPayout(tx, input.payoutId);
+        // Wait for any refund approval on this order before taking the eligibility snapshot.
+        await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${before.orderId} FOR SHARE`;
         const parcels = await unpaidPayoutParcels(tx, input.payoutId);
         const availability = payoutAvailability(before.paidAt, await sellerPayoutRecord(tx, before.storeId), parcels, new Date());
         if (availability.blocked) {
@@ -742,7 +744,15 @@ export const adminRouter = router({
   /** QC-9 â€” refund claims waiting on a human. */
   refundClaims: staffProcedure("finance:read").query(async () => {
     const claims = await prisma.refundClaim.findMany({
-      where: { status: { in: ["manual_review", "auto_approved"] } },
+      where: { OR: [
+        { status: { in: ["manual_review", "auto_approved"] } },
+        { status: "approved", OR: [
+          { refundedAt: null },
+          { recoveryTarget: null },
+          { recoveryTarget: { notIn: ["seller", "platform", "carrier"] } },
+          { recoveryTarget: "seller", recoveredCents: { lt: prisma.refundClaim.fields.amountCents } },
+        ] },
+      ] },
       include: { buyer: { select: { email: true } }, items: { include: { shipmentItem: true } } },
       orderBy: { createdAt: "asc" },
       take: 200,
@@ -780,6 +790,7 @@ export const adminRouter = router({
         items: c.items.map((i) => ({ name: i.shipmentItem.nameSnapshot, quantity: i.shipmentItem.quantity, lineTotalCents: i.lineTotalCents })),
         status: c.status,
         recoveryTarget: c.recoveryTarget,
+        recoveredCents: c.recoveredCents,
         refundedAt: c.refundedAt,
         createdAt: c.createdAt,
       };
@@ -869,22 +880,29 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const before = await prisma.refundClaim.findUnique({ where: { id: input.claimId } });
-      if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such claim." });
-      // Closed once it is declined, or approved and paid. An auto-approved claim is
-      // refunded but not yet resolved: approving it records the recovery. One that
-      // is approved but not yet refunded may be approved again, which retries the refund.
-      if (before.status === "rejected" || (before.status === "approved" && before.refundedAt)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "That claim has already been resolved." });
-      }
-      if (input.decision === "reject" && before.refundedAt) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "The buyer has already been refunded, so this can't be rejected. Approve it to record where the cost is recovered from.",
-        });
-      }
-
       return prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT o.id FROM "Order" o JOIN "RefundClaim" c ON c."orderId" = o.id
+          WHERE c.id = ${input.claimId} FOR UPDATE OF o`;
+        const before = await tx.refundClaim.findUnique({ where: { id: input.claimId } });
+        if (!before) throw new TRPCError({ code: "NOT_FOUND", message: "No such claim." });
+        const updatingRecovery = before.status === "approved" && before.refundedAt !== null;
+        const recoveryOpen = !["carrier", "platform"].includes(before.recoveryTarget ?? "") &&
+          (before.recoveryTarget !== "seller" || before.recoveredCents < before.amountCents);
+        if (before.status === "rejected" || (updatingRecovery && !recoveryOpen)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "That claim has already been resolved." });
+        }
+        if (input.decision === "reject" && (before.refundedAt || before.status === "approved" || before.status === "auto_approved")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "An approved refund cannot be rejected." });
+        }
+        if (input.recoveredCents > before.amountCents || input.recoveredCents < before.recoveredCents ||
+            (input.recoveredCents > 0 && (!input.recoveryTarget || input.decision !== "approve")) ||
+            (before.recoveredCents > 0 && before.recoveryTarget && input.recoveryTarget !== before.recoveryTarget)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Record the total recovered from the same party, up to the refund amount." });
+        }
+        if (updatingRecovery && (!input.recoveryTarget ||
+            (input.recoveryTarget === before.recoveryTarget && input.recoveredCents === before.recoveredCents))) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Update the responsibility or the total recovered." });
+        }
         const after = await tx.refundClaim.update({
           where: { id: input.claimId },
           data: {
@@ -895,14 +913,14 @@ export const adminRouter = router({
           },
         });
         await writeAudit(tx, ctx.staff, {
-          action: input.decision === "approve" ? "refund.approve" : "refund.reject",
+          action: updatingRecovery ? "refund.recovery_recorded" : input.decision === "approve" ? "refund.approve" : "refund.reject",
           subjectType: "refund",
           subjectId: input.claimId,
           before: { status: before.status, recoveryTarget: before.recoveryTarget, recoveredCents: before.recoveredCents },
           after: { status: after.status, recoveryTarget: after.recoveryTarget, recoveredCents: after.recoveredCents },
           note: input.note,
         });
-        if (input.decision === "approve" && input.recoveryTarget && input.recoveredCents > 0) {
+        if (!updatingRecovery && input.decision === "approve" && input.recoveryTarget && input.recoveredCents > before.recoveredCents) {
           await writeAudit(tx, ctx.staff, {
             action: "refund.recovery_recorded",
             subjectType: "refund",

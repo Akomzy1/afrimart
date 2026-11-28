@@ -69,17 +69,45 @@ export async function sellerPayoutRecord(db: Prisma.TransactionClient, storeId: 
 
 export const collectedPaymentStatuses = ["succeeded", "partially_refunded", "refunded"];
 
-type PayoutParcel = { payoutId: string; orderStatus: string; paymentStatus: string | null; deliveredAt: Date | null };
+type PayoutParcel = {
+  payoutId: string; orderStatus: string; paymentStatus: string | null; refundReview: boolean; deliveredAt: Date | null;
+};
 
 // A release locks its payment, order, and parcels until settlement commits. The finance
 // report reads the same rows for all unpaid payouts from a repeatable snapshot.
 export function unpaidPayoutParcels(db: Prisma.TransactionClient, lockPayoutId?: string) {
   return db.$queryRaw<PayoutParcel[]>`
     SELECT p.id AS "payoutId", s."deliveredAt", o.status AS "orderStatus",
-           (SELECT pay.status FROM "Payment" pay WHERE pay."orderId" = p."orderId"
-            ${lockPayoutId === undefined ? Prisma.empty : Prisma.sql`FOR SHARE`}) AS "paymentStatus"
+           pay.status AS "paymentStatus",
+           (refunds."sellerHold" OR CASE pay.status
+              WHEN 'partially_refunded' THEN refunds."issuedCents" = 0
+              WHEN 'refunded' THEN refunds."issuedCents" <> pay."buyerChargeCents"
+              ELSE false END) AS "refundReview"
     FROM "Payout" p JOIN "Shipment" s ON s."orderId" = p."orderId" AND s."storeId" = p."storeId"
     JOIN "Order" o ON o.id = s."orderId"
+    LEFT JOIN LATERAL (
+      SELECT status, "buyerChargeCents" FROM "Payment" WHERE "orderId" = p."orderId"
+      ${lockPayoutId === undefined ? Prisma.empty : Prisma.sql`FOR SHARE`}
+    ) pay ON true
+    CROSS JOIN LATERAL (
+      SELECT COALESCE(sum(c."amountCents") FILTER (WHERE c."refundedAt" IS NOT NULL), 0) AS "issuedCents",
+             COALESCE(bool_or(
+               (scope.sellers IS NULL OR p."storeId" = ANY(scope.sellers))
+               AND (c."recoveryTarget" IS NULL OR c."recoveryTarget" NOT IN ('seller', 'platform', 'carrier')
+                    OR (c."recoveryTarget" = 'seller' AND c."recoveredCents" < c."amountCents"))
+             ), false) AS "sellerHold"
+      FROM "RefundClaim" c
+      CROSS JOIN LATERAL (
+        SELECT array_agg(DISTINCT affected."storeId") AS sellers
+        FROM "Shipment" affected
+        WHERE affected."orderId" = c."orderId" AND (affected.id = c."shipmentId" OR
+          (c."shipmentId" IS NULL AND EXISTS (
+            SELECT 1 FROM "RefundClaimItem" ci JOIN "ShipmentItem" si ON si.id = ci."shipmentItemId"
+            WHERE ci."claimId" = c.id AND si."shipmentId" = affected.id
+          )))
+      ) scope
+      WHERE c."orderId" = p."orderId" AND (c."refundedAt" IS NOT NULL OR c.status IN ('approved', 'auto_approved'))
+    ) refunds
     WHERE p."paidAt" IS NULL
     ${lockPayoutId === undefined ? Prisma.empty : Prisma.sql`AND p.id = ${lockPayoutId} ORDER BY s.id FOR SHARE OF o, s`}
   `;
@@ -93,6 +121,7 @@ export function payoutAvailability(paidAt: Date | null, record: SellerRecord | u
   if (!paymentStatus || !collectedPaymentStatuses.includes(paymentStatus)) {
     return { blocked: true, label: "Awaiting payment", eligibleAt: null };
   }
+  if (parcels[0]!.refundReview) return { blocked: true, label: "Refund needs finance review", eligibleAt: null };
   const deliveredAt = parcels.every((p) => p.deliveredAt)
     ? new Date(Math.max(...parcels.map((p) => p.deliveredAt!.getTime())))
     : null;

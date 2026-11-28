@@ -106,6 +106,9 @@ export const claimsRouter = router({
       if (decision.status === "rejected") throw new TRPCError({ code: "BAD_REQUEST", message: decision.reasonGiven });
 
       const claim = await prisma.$transaction(async (tx) => {
+        if (decision.status === "auto_approved") {
+          await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${shipment.orderId} FOR UPDATE`;
+        }
         const created = await tx.refundClaim.create({
           data: {
             buyerId: ctx.buyerId,

@@ -505,6 +505,7 @@ model RefundClaim {
   resolvedAt      DateTime?
 
   @@index([buyerId, createdAt])
+  @@index([orderId])
 }
 
 enum CatalogueDraftStatus {
