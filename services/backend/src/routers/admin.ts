@@ -545,16 +545,19 @@ export const adminRouter = router({
    * platform's commission and fees, plus tax, plus what the carriers cost.
    */
   reconciliation: staffProcedure("finance:read").query(async () => {
-    const [orders, payouts, adjustments, payments, records, parcels] = await prisma.$transaction([
+    const [orders, payouts, adjustments, charges, records, parcels] = await prisma.$transaction([
       prisma.order.findMany({ select: { totalCents: true, shippingCents: true, taxCents: true, status: true } }),
       prisma.payout.findMany({ include: { store: { select: { name: true } } } }),
       prisma.carrierAdjustment.findMany({ include: { store: { select: { name: true } } } }),
-      prisma.payment.findMany({ select: { buyerChargeCents: true, status: true } }),
+      prisma.payment.aggregate({
+        where: { status: { in: ["succeeded", "partially_refunded", "refunded"] } },
+        _sum: { buyerChargeCents: true },
+      }),
       sellerPayoutRecords(prisma),
       unpaidPayoutParcels(prisma),
     ], { isolationLevel: "RepeatableRead" });
 
-    const buyerChargedCents = payments.reduce((n, p) => n + p.buyerChargeCents, 0);
+    const buyerChargedCents = charges._sum.buyerChargeCents ?? 0;
     const taxCollectedCents = orders.reduce((n, o) => n + o.taxCents, 0);
     const shippingCollectedCents = orders.reduce((n, o) => n + o.shippingCents, 0);
     const sellerGrossCents = payouts.reduce((n, p) => n + p.grossCents, 0);

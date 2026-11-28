@@ -90,6 +90,7 @@ async function sweep() {
   await prisma.refundClaim.deleteMany({ where: { buyerId: { startsWith: P } } });
   await prisma.shipmentItem.deleteMany({ where: { shipmentId: { startsWith: P } } });
   await prisma.shipment.deleteMany({ where: { id: { startsWith: P } } });
+  await prisma.payment.deleteMany({ where: { orderId: { startsWith: P } } });
   await prisma.order.deleteMany({ where: { buyerId: { startsWith: P } } });
   await prisma.kitchenLicence.deleteMany({ where: stores });
   await prisma.sellerBadge.deleteMany({ where: stores });
@@ -429,6 +430,28 @@ try {
     await prisma.refundClaim.create({ data: { ...claimData, orderId: cleanOrderIds[0], status: "approved" } });
     check("an older order-only claim counts when one seller fulfilled the order", (await previewHold()).tier === "new");
   }
+
+  console.log("\n=== buyers charged counts collected payments before refunds ===");
+  const buyersCharged = async () => (await finance.admin.reconciliation()).buyerChargedCents;
+  const priorCharges = await buyersCharged();
+  const payment = await prisma.payment.create({
+    data: { orderId, stripePaymentIntentId: id("intent"), buyerChargeCents: 5000 },
+  });
+  const failedOrder = await prisma.order.create({ data: {
+    id: id("failed-order"), buyerId: buyerOwner.id, totalCents: 1800, shippingCents: 300, taxCents: 50,
+    payment: { create: { stripePaymentIntentId: id("failed-intent"), buyerChargeCents: 1800, status: "failed" } },
+  } });
+  check("pending and failed payments add zero to buyers charged", await buyersCharged() === priorCharges);
+  const setStatus = (status: string) => prisma.payment.update({ where: { id: payment.id }, data: { status } });
+  await setStatus("succeeded");
+  await setStatus("succeeded");
+  check("a repeated success counts the charge once", await buyersCharged() === priorCharges + 5000);
+  await setStatus("partially_refunded");
+  check("a partial refund preserves the original gross charge", await buyersCharged() === priorCharges + 5000);
+  await setStatus("refunded");
+  await prisma.payment.update({ where: { orderId: failedOrder.id }, data: { status: "succeeded" } });
+  check("a full refund preserves the original charge and a successful retry adds only its own amount",
+    await buyersCharged() === priorCharges + 6800);
 
   console.log("\n=== a payout is posted to the seller's thread, once ===");
   const baseline = await finance.admin.reconciliation();

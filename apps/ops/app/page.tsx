@@ -766,7 +766,7 @@ function Reconciliation() {
         <div className="op-card">
           <div className="k">Buyers charged</div>
           <div className="v">{money(d.buyerChargedCents)}</div>
-          <div className="s">incl. shipping and tax</div>
+          <div className="s">Before refunds · includes shipping and tax</div>
         </div>
         <div className="op-card">
           <div className="k">Unpaid payouts</div>
