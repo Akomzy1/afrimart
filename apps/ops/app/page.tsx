@@ -754,9 +754,8 @@ function Reconciliation() {
     <div className="op-sec">
       <h2>Reconciliation</h2>
       <p className="lede">
-        ADM-5 — does the money add up. Item value sellers sold must equal what they are paid plus the platform&apos;s
-        commission and order fee. Shipping is pass-through and sits outside that identity entirely: it is collected
-        from the buyer and paid to carriers, and is never part of commission (PAY-3).
+        Gross item sales reconcile to paid and unpaid seller payouts, commission, order fees, and carrier corrections
+        already deducted. Pending corrections reduce the seller&apos;s balance when a payout is released.
       </p>
 
       <div className="op-cards">
@@ -770,9 +769,9 @@ function Reconciliation() {
           <div className="s">incl. shipping and tax</div>
         </div>
         <div className="op-card">
-          <div className="k">Sellers owed</div>
-          <div className="v">{money(d.sellerNetCents)}</div>
-          <div className="s">of {money(d.sellerGrossCents)} gross</div>
+          <div className="k">Unpaid payouts</div>
+          <div className="v">{money(d.sellerUnpaidCents)}</div>
+          <div className="s">{money(d.sellerPaidCents)} paid · {money(d.sellerGrossCents)} gross sales</div>
         </div>
         <div className="op-card">
           <div className="k">Platform revenue</div>
@@ -803,34 +802,40 @@ function Reconciliation() {
         </div>
       </div>
 
-      <h2 style={{ marginTop: 22 }}>Carrier adjustments (PAY-9)</h2>
+      <h2 style={{ marginTop: 22 }}>Carrier adjustments</h2>
       <p className="lede">
         Billing corrections from wrong declared weight or dimensions, charged back to the seller who declared them.
       </p>
       {!d.adjustments.length ? (
-        <div className="op-empty">No carrier adjustments. The feed is stubbed until EasyPost is wired.</div>
+        <div className="op-empty">No carrier adjustments recorded.</div>
       ) : (
         <table className="op-table">
           <thead>
             <tr>
               <th>Store</th>
-              <th>Reason</th>
+              <th>Reason and reference</th>
               <th className="num">Declared</th>
               <th className="num">Actual</th>
               <th className="num">Amount</th>
-              <th>Settled</th>
+              <th className="num">Deducted</th>
+              <th className="num">Remaining</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {d.adjustments.map((a) => (
               <tr key={a.id}>
                 <td>{a.storeName}</td>
-                <td className="muted">{a.reason}</td>
+                <td>{a.reason}<div className="muted">{a.carrierReference}</div></td>
                 <td className="num">{(a.declaredWeightOz / 16).toFixed(1)}lb</td>
                 <td className="num">{(a.actualWeightOz / 16).toFixed(1)}lb</td>
                 <td className="num">{money(a.amountCents)}</td>
+                <td className="num">{money(a.appliedCents)}</td>
+                <td className="num">{money(a.remainingCents)}</td>
                 <td>
-                  <span className={`op-pill ${a.settled ? "good" : "warn"}`}>{a.settled ? "settled" : "open"}</span>
+                  <span className={`op-pill ${a.settled ? "good" : "warn"}`}>
+                    {a.settled ? "Settled" : a.appliedCents > 0 ? "Partially deducted" : "Open"}
+                  </span>
                 </td>
               </tr>
             ))}

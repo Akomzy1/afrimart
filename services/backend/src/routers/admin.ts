@@ -559,6 +559,7 @@ export const adminRouter = router({
     const shippingCollectedCents = orders.reduce((n, o) => n + o.shippingCents, 0);
     const sellerGrossCents = payouts.reduce((n, p) => n + p.grossCents, 0);
     const sellerNetCents = payouts.reduce((n, p) => n + p.netCents, 0);
+    const sellerPaidCents = payouts.reduce((n, p) => n + (p.paidAt ? p.netCents : 0), 0);
     const commissionCents = payouts.reduce((n, p) => n + Math.round((p.grossCents * p.takeRateBps) / 10000), 0);
     const fulfilmentFeeCents = payouts.reduce((n, p) => n + p.fulfilmentFeeCents, 0);
     const adjustmentsCents = adjustments.reduce((n, a) => n + a.amountCents, 0);
@@ -592,6 +593,8 @@ export const adminRouter = router({
       shippingCollectedCents,
       sellerGrossCents,
       sellerNetCents,
+      sellerPaidCents,
+      sellerUnpaidCents: sellerNetCents - sellerPaidCents,
       commissionCents,
       fulfilmentFeeCents,
       adjustmentsCents,
@@ -607,6 +610,7 @@ export const adminRouter = router({
       reconciliationDriftCents: sellerGrossCents - (sellerNetCents + commissionCents + fulfilmentFeeCents + deductedCents),
       adjustments: adjustments.map((a) => ({
         id: a.id,
+        carrierReference: a.carrierReference,
         storeName: a.store.name,
         amountCents: a.amountCents,
         reason: a.reason,
@@ -614,6 +618,7 @@ export const adminRouter = router({
         actualWeightOz: a.actualWeightOz,
         settled: Boolean(a.settledPayoutId),
         appliedCents: a.appliedCents,
+        remainingCents: a.amountCents - a.appliedCents,
       })),
       payouts: payoutRows,
     };

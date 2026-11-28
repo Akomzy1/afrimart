@@ -561,10 +561,19 @@ try {
   check("another seller receives their full payout", unaffected.netCents === 500 && unaffected.adjustmentsCents === 0);
   const first = await newPayout(storeB.id, 500);
   const later = await Promise.all([newPayout(storeB.id, 700), newPayout(storeB.id, 700)]);
-  const driftBefore = (await finance.admin.reconciliation()).reconciliationDriftCents;
+  const beforeSettlement = await finance.admin.reconciliation();
+  const openAdjustment = beforeSettlement.adjustments.find((a) => a.id === charge.id);
+  check("finance sees the open carrier reference and full outstanding amount",
+    openAdjustment?.carrierReference === correction.carrierReference && openAdjustment.appliedCents === 0 &&
+    openAdjustment.remainingCents === 1300 && !openAdjustment.settled);
   const reduced = await pay(first);
   const chargeRow = () => prisma.carrierAdjustment.findUniqueOrThrow({ where: { id: charge.id } });
   const partial = await chargeRow();
+  const afterPartial = await finance.admin.reconciliation();
+  const partialAdjustment = afterPartial.adjustments.find((a) => a.id === charge.id);
+  check("partial recovery lowers unpaid payouts without increasing cash paid",
+    afterPartial.sellerUnpaidCents === beforeSettlement.sellerUnpaidCents - 500 && afterPartial.sellerPaidCents === beforeSettlement.sellerPaidCents &&
+    partialAdjustment?.appliedCents === 500 && partialAdjustment.remainingCents === 800 && !partialAdjustment.settled);
   const note = await prisma.sellerMessage.findUniqueOrThrow({ where: { payoutId: first.id } });
   check("a small payout covers part of the correction and carries the remainder",
     reduced.netCents === 0 && reduced.adjustmentsCents === 500 && partial.appliedCents === 500 && partial.settledPayoutId === null);
@@ -582,7 +591,14 @@ try {
     const [part] = (entry.after as { deductions: { adjustmentId: string; cents: number }[] }).deductions;
     return part?.adjustmentId === charge.id && part.cents === [reduced, ...paid].find((p) => p.id === entry.subjectId)?.adjustmentsCents;
   }));
-  check("deductions reconcile with gross sales", (await finance.admin.reconciliation()).reconciliationDriftCents === driftBefore);
+  const finalReport = await finance.admin.reconciliation();
+  const settledAdjustment = finalReport.adjustments.find((a) => a.id === charge.id);
+  check("settled corrections leave zero outstanding and paid totals include only the released net",
+    settledAdjustment?.settled === true && settledAdjustment.appliedCents === 1300 && settledAdjustment.remainingCents === 0 &&
+    finalReport.sellerUnpaidCents === beforeSettlement.sellerUnpaidCents - 1900 &&
+    finalReport.sellerPaidCents === beforeSettlement.sellerPaidCents + 600 &&
+    finalReport.sellerNetCents === finalReport.sellerPaidCents + finalReport.sellerUnpaidCents);
+  check("deductions reconcile with gross sales", finalReport.reconciliationDriftCents === beforeSettlement.reconciliationDriftCents);
 
   console.log("\n=== See all payouts: a fresh link, made on request, never stored ===");
   const asked2: string[] = [];
